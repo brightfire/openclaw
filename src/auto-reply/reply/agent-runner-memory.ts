@@ -496,11 +496,9 @@ export async function runPreflightCompactionIfNeeded(params: {
     20_000;
   const softThresholdTokens = memoryFlushPlan?.softThresholdTokens ?? 4_000;
   const freshPersistedTokens = resolveFreshSessionTotalTokens(entry);
-  const persistedTotalTokens = entry.totalTokens;
-  const hasPersistedTotalTokens =
-    typeof persistedTotalTokens === "number" &&
-    Number.isFinite(persistedTotalTokens) &&
-    persistedTotalTokens > 0;
+  // [brightfire] Removed early return on totalTokensFresh — allows preflight compaction
+  // regardless of whether token counts are fresh (BF patch context-estimate-compaction).
+  // We keep upstream's transcript byte-size check to allow compaction on byte threshold.
   const maxActiveTranscriptBytes = resolveMaxActiveTranscriptBytes(params.cfg);
   const shouldCheckActiveTranscriptBytes = typeof maxActiveTranscriptBytes === "number";
   const transcriptSizeSnapshot = shouldCheckActiveTranscriptBytes
@@ -517,14 +515,15 @@ export async function runPreflightCompactionIfNeeded(params: {
       })
     : undefined;
   const activeTranscriptBytes = transcriptSizeSnapshot?.byteSize;
+  const persistedTotalTokens = entry.totalTokens;
+  const hasPersistedTotalTokens =
+    typeof persistedTotalTokens === "number" &&
+    Number.isFinite(persistedTotalTokens) &&
+    persistedTotalTokens > 0;
   const shouldCompactByTranscriptBytes =
     typeof activeTranscriptBytes === "number" &&
     typeof maxActiveTranscriptBytes === "number" &&
     activeTranscriptBytes >= maxActiveTranscriptBytes;
-  const shouldUseTranscriptFallback = entry.totalTokensFresh === false || !hasPersistedTotalTokens;
-  if (!shouldUseTranscriptFallback && !shouldCompactByTranscriptBytes) {
-    return entry ?? params.sessionEntry;
-  }
   const promptTokenEstimate = estimatePromptTokensForMemoryFlush(
     params.promptForEstimate ?? params.followupRun.prompt,
   );

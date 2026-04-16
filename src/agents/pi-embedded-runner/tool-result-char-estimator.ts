@@ -1,7 +1,8 @@
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 
 export const CHARS_PER_TOKEN_ESTIMATE = 4;
-export const TOOL_RESULT_CHARS_PER_TOKEN_ESTIMATE = 2;
+export const TOOL_RESULT_CHARS_PER_TOKEN_ESTIMATE = 4; // [brightfire] align with CHARS_PER_TOKEN_ESTIMATE — remove 2x tool-result multiplier
+
 const IMAGE_CHAR_ESTIMATE = 8_000;
 
 export type MessageCharEstimateCache = WeakMap<AgentMessage, number>;
