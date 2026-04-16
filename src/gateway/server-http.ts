@@ -78,6 +78,7 @@ let httpAuthUtilsModulePromise: Promise<typeof import("./http-auth-utils.js")> |
 let pluginRouteRuntimeScopesModulePromise:
   | Promise<typeof import("./server/plugin-route-runtime-scopes.js")>
   | undefined;
+let xgwHttpModulePromise: Promise<typeof import("./xgw/inbound.js")> | undefined;
 
 function getIdentityAvatarModule() {
   identityAvatarModulePromise ??= import("../agents/identity-avatar.js");
@@ -132,6 +133,11 @@ function getToolsInvokeHttpModule() {
 function getVoiceClawRealtimeUpgradeModule() {
   voiceClawRealtimeUpgradeModulePromise ??= import("./voiceclaw-realtime/upgrade.js");
   return voiceClawRealtimeUpgradeModulePromise;
+}
+
+function getXgwHttpModule() {
+  xgwHttpModulePromise ??= import("./xgw/inbound.js");
+  return xgwHttpModulePromise;
 }
 
 function getCanvasAuthModule() {
@@ -216,6 +222,10 @@ function isToolsInvokePath(pathname: string): boolean {
 
 function isManagedOutgoingImagePath(pathname: string): boolean {
   return pathname.startsWith("/api/chat/media/outgoing/");
+}
+
+function isXgwPath(pathname: string): boolean {
+  return pathname === "/hooks/xgw" || pathname === "/hooks/xgw/callback";
 }
 
 function isSessionKillPath(pathname: string): boolean {
@@ -622,6 +632,21 @@ export function createGatewayHttpServer(opts: {
               allowRealIpFallback,
               rateLimiter,
             }),
+        });
+      }
+      if (isXgwPath(scopedRequestPath)) {
+        requestStages.push({
+          name: "xgw",
+          run: async () => {
+            const xgw = await getXgwHttpModule();
+            if (scopedRequestPath === "/hooks/xgw") {
+              return xgw.handleXgwHook(req, res);
+            }
+            if (scopedRequestPath === "/hooks/xgw/callback") {
+              return xgw.handleXgwCallback(req, res);
+            }
+            return false;
+          },
         });
       }
       if (isSessionKillPath(scopedRequestPath)) {
