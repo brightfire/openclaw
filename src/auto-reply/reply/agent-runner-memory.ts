@@ -385,15 +385,8 @@ export async function runPreflightCompactionIfNeeded(params: {
     20_000;
   const softThresholdTokens = memoryFlushPlan?.softThresholdTokens ?? 4_000;
   const freshPersistedTokens = resolveFreshSessionTotalTokens(entry);
-  const persistedTotalTokens = entry.totalTokens;
-  const hasPersistedTotalTokens =
-    typeof persistedTotalTokens === "number" &&
-    Number.isFinite(persistedTotalTokens) &&
-    persistedTotalTokens > 0;
-  const shouldUseTranscriptFallback = entry.totalTokensFresh === false || !hasPersistedTotalTokens;
-  if (!shouldUseTranscriptFallback) {
-    return entry ?? params.sessionEntry;
-  }
+  // [brightfire] removed totalTokensFresh early return — allows preflight compaction
+  // regardless of whether token counts are fresh (patch 002 bug #2)
   const promptTokenEstimate = estimatePromptTokensForMemoryFlush(
     params.promptForEstimate ?? params.followupRun.prompt,
   );
