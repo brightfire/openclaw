@@ -83,6 +83,7 @@ import {
 } from "../session-utils.js";
 import { applySessionsPatchToStore } from "../sessions-patch.js";
 import { resolveSessionKeyFromResolveParams } from "../sessions-resolve.js";
+import { handleCrossGatewayDispatch } from "./sessions-xgw.js";
 import { chatHandlers } from "./chat.js";
 import type {
   GatewayClient,
@@ -448,7 +449,21 @@ async function handleSessionSend(params: {
     return;
   }
   const p = params.params;
-  const key = requireSessionKey((p as { key?: unknown }).key, params.respond);
+  const rawKey = (p as { key?: unknown }).key;
+  const rawKeyStr = typeof rawKey === "string" ? rawKey : "";
+
+  // ── Cross-gateway dispatch: key starts with "@" ──
+  // E.g. "@ember/skynet" or "@ember/xgw:abc123"
+  if (rawKeyStr.startsWith("@")) {
+    await handleCrossGatewayDispatch({
+      params: p,
+      respond: params.respond,
+      context: params.context,
+    });
+    return;
+  }
+
+  const key = requireSessionKey(rawKey, params.respond);
   if (!key) {
     return;
   }

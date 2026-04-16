@@ -10,6 +10,7 @@ import type { CronConfig } from "./types.cron.js";
 import type {
   CanvasHostConfig,
   DiscoveryConfig,
+  FleetConfig,
   GatewayConfig,
   TalkConfig,
 } from "./types.gateway.js";
@@ -121,6 +122,8 @@ export type OpenClawConfig = {
   talk?: TalkConfig;
   gateway?: GatewayConfig;
   memory?: MemoryConfig;
+  /** Fleet configuration for multi-gateway deployments. */
+  fleet?: FleetConfig;
   mcp?: McpConfig;
 };
 

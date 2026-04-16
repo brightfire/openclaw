@@ -452,3 +452,43 @@ export type GatewayConfig = {
    */
   channelMaxRestartsPerHour?: number;
 };
+
+// ── Cross-Gateway (XGW) Fleet Config ────────────────────────────────
+
+export type XgwPeerConfig = {
+  /** Peer gateway URL (e.g. "http://10.18.32.20:18789"). */
+  url?: string;
+  /** Token to authenticate outbound requests to this peer. */
+  token?: string;
+};
+
+export type XgwReceptionistConfig = {
+  /** Session key for the receptionist dispatcher (default: "agent:receptionist:main"). */
+  sessionKey?: string;
+};
+
+export type XgwConfig = {
+  /** Enable cross-gateway messaging (default: false). */
+  enabled?: boolean;
+  /** This gateway's short name (e.g. "aster", "ember"). */
+  gatewayName?: string;
+  /** Agent ID to use for cross-gateway worker sessions (default: "skynet"). */
+  agentId?: string;
+  /** Max simultaneous XGW worker sessions (default: 10). */
+  maxConcurrent?: number;
+  /** Max pending async callbacks (default: 20). */
+  maxPendingAsync?: number;
+  /** Exposure TTL in seconds for remotely addressable worker sessions (default: 300). */
+  exposureTtlSeconds?: number;
+  /** Inbound tokens mapped to peer identities. Key = peer name, value = auth token. */
+  acceptedTokens?: Record<string, string>;
+  /** Peer gateway configurations. Key = peer name. */
+  peers?: Record<string, XgwPeerConfig>;
+  /** Receptionist session routing config. */
+  receptionist?: XgwReceptionistConfig;
+};
+
+export type FleetConfig = {
+  /** Cross-gateway (XGW/Skynet) configuration. */
+  crossGateway?: XgwConfig;
+};
