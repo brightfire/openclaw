@@ -364,7 +364,7 @@ describe("gateway XGW HTTP routes", () => {
     });
   });
 
-  it("returns 404 for nonexistent exposed xgw sessions", async () => {
+  it("returns 403 for nonexistent exposed xgw sessions", async () => {
     const subagent = createSubagentRuntime();
     setGatewaySubagentRuntime(subagent);
 
@@ -400,11 +400,11 @@ describe("gateway XGW HTTP routes", () => {
             const { res, getBody } = createResponse();
             await dispatchRequest(server, req, res);
 
-            expect(res.statusCode).toBe(404);
+            expect(res.statusCode).toBe(403);
             expect(JSON.parse(getBody())).toEqual({
               ok: false,
-              status: "not_found",
-              error: "unknown session key",
+              status: "forbidden",
+              error: "session not accessible",
             });
           },
         });
@@ -580,7 +580,7 @@ describe("gateway XGW HTTP routes", () => {
     nowSpy.mockRestore();
   });
 
-  it("expires stale xgw exposure before dispatch and returns 404", async () => {
+  it("expires stale xgw exposure before dispatch and returns 403", async () => {
     const nowMs = Date.parse("2026-04-16T21:00:00.000Z");
     const nowSpy = vi.spyOn(Date, "now").mockReturnValue(nowMs);
 
@@ -627,11 +627,11 @@ describe("gateway XGW HTTP routes", () => {
             const { res, getBody } = createResponse();
             await dispatchRequest(server, req, res);
 
-            expect(res.statusCode).toBe(404);
+            expect(res.statusCode).toBe(403);
             expect(JSON.parse(getBody())).toEqual({
               ok: false,
-              status: "not_found",
-              error: "unknown session key",
+              status: "forbidden",
+              error: "session not accessible",
             });
             expect(subagent.run).not.toHaveBeenCalled();
           },
