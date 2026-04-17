@@ -681,4 +681,482 @@ describe("gateway XGW HTTP routes", () => {
 
     nowSpy.mockRestore();
   });
+
+  // ─── Auth rejection ───────────────────────────────────────────────────────
+
+  it("returns 401 when no authorization header is present", async () => {
+    await withGatewayServer({
+      prefix: "xgw-no-auth-hdr",
+      resolvedAuth: AUTH_NONE,
+      run: async (server) => {
+        const req = new EventEmitter() as IncomingMessage;
+        req.method = "POST";
+        req.url = "/hooks/xgw";
+        req.headers = { host: "localhost:18789", "content-type": "application/json" };
+        req.socket = { remoteAddress: "127.0.0.1" } as IncomingMessage["socket"];
+        setImmediate(() => {
+          req.emit("data", Buffer.from(JSON.stringify({ sessionKey: "skynet", message: "ping" })));
+          req.emit("end");
+        });
+
+        const { res, getBody } = createResponse();
+        await dispatchRequest(server, req, res);
+
+        expect(res.statusCode).toBe(401);
+        expect(JSON.parse(getBody())).toEqual({
+          ok: false,
+          status: "error",
+          error: "unauthorized",
+        });
+      },
+    });
+  });
+
+  it("returns 401 when bearer token is invalid", async () => {
+    await withGatewayServer({
+      prefix: "xgw-bad-bearer",
+      resolvedAuth: AUTH_NONE,
+      run: async (server) => {
+        const req = createStreamingRequest({
+          path: "/hooks/xgw",
+          authorization: "Bearer wrong-token",
+          body: {
+            sessionKey: "skynet",
+            message: "ping",
+            nonce: "nonce-badbearer-zzz",
+            timestamp: Math.floor(Date.now() / 1000),
+          },
+        });
+
+        const { res, getBody } = createResponse();
+        await dispatchRequest(server, req, res);
+
+        expect(res.statusCode).toBe(401);
+        expect(JSON.parse(getBody())).toEqual({
+          ok: false,
+          status: "error",
+          error: "unauthorized",
+        });
+      },
+    });
+  });
+
+  // ─── Input validation ────────────────────────────────────────────────────
+
+  it("returns 400 for invalid JSON body", async () => {
+    await withGatewayServer({
+      prefix: "xgw-bad-json",
+      resolvedAuth: AUTH_NONE,
+      run: async (server) => {
+        const req = new EventEmitter() as IncomingMessage;
+        req.method = "POST";
+        req.url = "/hooks/xgw";
+        req.headers = {
+          host: "localhost:18789",
+          authorization: "Bearer peer-secret",
+          "content-type": "application/json",
+        };
+        req.socket = { remoteAddress: "127.0.0.1" } as IncomingMessage["socket"];
+        setImmediate(() => {
+          req.emit("data", Buffer.from("this is not json {{{}}} at all"));
+          req.emit("end");
+        });
+
+        const { res, getBody } = createResponse();
+        await dispatchRequest(server, req, res);
+
+        expect(res.statusCode).toBe(400);
+        const body = JSON.parse(getBody());
+        expect(body.ok).toBe(false);
+      },
+    });
+  });
+
+  it("returns 400 for missing sessionKey", async () => {
+    await withGatewayServer({
+      prefix: "xgw-missing-sk",
+      resolvedAuth: AUTH_NONE,
+      run: async (server) => {
+        const req = createStreamingRequest({
+          path: "/hooks/xgw",
+          authorization: "Bearer peer-secret",
+          body: {
+            // sessionKey intentionally omitted
+            message: "hello",
+            nonce: "nonce-missing-sk-testval",
+            timestamp: Math.floor(Date.now() / 1000),
+          },
+        });
+
+        const { res, getBody } = createResponse();
+        await dispatchRequest(server, req, res);
+
+        expect(res.statusCode).toBe(400);
+        expect(JSON.parse(getBody())).toEqual({
+          ok: false,
+          status: "error",
+          error: "sessionKey and message required",
+        });
+      },
+    });
+  });
+
+  it("returns 413 when payload exceeds the 1 MB body size limit", async () => {
+    await withGatewayServer({
+      prefix: "xgw-large-payload",
+      resolvedAuth: AUTH_NONE,
+      run: async (server) => {
+        const req = new EventEmitter() as IncomingMessage;
+        req.method = "POST";
+        req.url = "/hooks/xgw";
+        req.headers = {
+          host: "localhost:18789",
+          authorization: "Bearer peer-secret",
+          "content-type": "application/json",
+        };
+        req.socket = { remoteAddress: "127.0.0.1" } as IncomingMessage["socket"];
+        // readJsonBody calls req.destroy() when the limit is exceeded
+        (req as unknown as { destroy: () => void }).destroy = () => {};
+        setImmediate(() => {
+          // 1 MiB + 1 byte exceeds the limit
+          req.emit("data", Buffer.alloc(1048577, 65 /* 'A' */));
+          req.emit("end");
+        });
+
+        const { res, getBody } = createResponse();
+        await dispatchRequest(server, req, res);
+
+        expect(res.statusCode).toBe(413);
+        expect(JSON.parse(getBody())).toEqual({
+          ok: false,
+          status: "error",
+          error: "payload too large",
+        });
+      },
+    });
+  });
+
+  // ─── Enforcement ─────────────────────────────────────────────────────────
+
+  it("returns 503 when XGW is disabled", async () => {
+    mockLoadConfig.mockReturnValue({ fleet: { crossGateway: { enabled: false } } });
+
+    await withGatewayServer({
+      prefix: "xgw-disabled-enforcement",
+      resolvedAuth: AUTH_NONE,
+      run: async (server) => {
+        // /hooks/xgw should return 503
+        const req1 = createStreamingRequest({
+          path: "/hooks/xgw",
+          authorization: "Bearer peer-secret",
+          body: {},
+        });
+        const resp1 = createResponse();
+        await dispatchRequest(server, req1, resp1.res);
+        expect(resp1.res.statusCode).toBe(503);
+
+        // /hooks/xgw/callback should also return 503
+        const req2 = createStreamingRequest({
+          path: "/hooks/xgw/callback",
+          authorization: "Bearer peer-secret",
+          body: {},
+        });
+        const resp2 = createResponse();
+        await dispatchRequest(server, req2, resp2.res);
+        expect(resp2.res.statusCode).toBe(503);
+      },
+    });
+  });
+
+  it("returns 503 when maxConcurrent is exceeded", async () => {
+    const subagent = createSubagentRuntime();
+    setGatewaySubagentRuntime(subagent);
+
+    mockLoadConfig.mockReturnValue({
+      fleet: {
+        crossGateway: {
+          enabled: true,
+          acceptedTokens: { ember: "peer-secret" },
+          peers: { ember: { url: "http://ember.local", token: "peer-secret" } },
+          exposureTtlSeconds: 300,
+          maxConcurrent: 1,
+        },
+      },
+    });
+
+    const stateModule = await import("./state.js");
+    // Pre-saturate the exposure table so getActiveSessionCount() >= maxConcurrent
+    stateModule.setExposure("xgw:slot-taken", {
+      correlationId: "slot-taken",
+      allowedPeer: "ember",
+      createdAt: Date.now() / 1000,
+      expiresAt: Date.now() / 1000 + 600,
+    });
+
+    await withGatewayServer({
+      prefix: "xgw-max-conc",
+      resolvedAuth: AUTH_NONE,
+      run: async (server) => {
+        const req = createStreamingRequest({
+          path: "/hooks/xgw",
+          authorization: "Bearer peer-secret",
+          body: {
+            sessionKey: "skynet",
+            message: "ping",
+            sourceSessionKey: "agent:main",
+            correlationId: "corr-overflow",
+            nonce: "nonce-max-conc-test-abc",
+            timestamp: Math.floor(Date.now() / 1000),
+            timeoutSeconds: 1,
+          },
+        });
+
+        const { res, getBody } = createResponse();
+        await dispatchRequest(server, req, res);
+
+        expect(res.statusCode).toBe(503);
+        expect(JSON.parse(getBody())).toEqual({
+          ok: false,
+          status: "capacity_exceeded",
+          error: "capacity exceeded",
+        });
+        expect(subagent.run).not.toHaveBeenCalled();
+      },
+    });
+  });
+
+  // ─── Nonce / timestamp validation ────────────────────────────────────────
+
+  it("returns 409 when a nonce is replayed by the same peer", async () => {
+    await withGatewayServer({
+      prefix: "xgw-nonce-replay",
+      resolvedAuth: AUTH_NONE,
+      run: async (server) => {
+        const replayNonce = "nonce-replay-unique-aaabbbccc";
+        const ts = Math.floor(Date.now() / 1000);
+
+        // First request: nonce is fresh; session doesn't exist → 403 (nonce is recorded)
+        const req1 = createStreamingRequest({
+          path: "/hooks/xgw",
+          authorization: "Bearer peer-secret",
+          body: {
+            sessionKey: "xgw:replay-test-nonexistent",
+            message: "first",
+            sourceSessionKey: "agent:main",
+            nonce: replayNonce,
+            timestamp: ts,
+          },
+        });
+        const resp1 = createResponse();
+        await dispatchRequest(server, req1, resp1.res);
+        expect(resp1.res.statusCode).toBe(403); // session not accessible — nonce recorded
+
+        // Second request with same nonce → 409 duplicate nonce
+        const req2 = createStreamingRequest({
+          path: "/hooks/xgw",
+          authorization: "Bearer peer-secret",
+          body: {
+            sessionKey: "xgw:replay-test-nonexistent",
+            message: "second",
+            sourceSessionKey: "agent:main",
+            nonce: replayNonce,
+            timestamp: ts,
+          },
+        });
+        const resp2 = createResponse();
+        await dispatchRequest(server, req2, resp2.res);
+        expect(resp2.res.statusCode).toBe(409);
+        expect(JSON.parse(resp2.getBody())).toEqual({
+          ok: false,
+          status: "error",
+          error: "duplicate nonce",
+        });
+      },
+    });
+  });
+
+  it("returns 400 when timestamp is older than 5 minutes", async () => {
+    await withGatewayServer({
+      prefix: "xgw-old-ts",
+      resolvedAuth: AUTH_NONE,
+      run: async (server) => {
+        const req = createStreamingRequest({
+          path: "/hooks/xgw",
+          authorization: "Bearer peer-secret",
+          body: {
+            sessionKey: "skynet",
+            message: "ping",
+            nonce: "nonce-stale-timestamp-qqqrrr",
+            timestamp: Math.floor(Date.now() / 1000) - 301, // 5 min + 1 sec old
+          },
+        });
+
+        const { res, getBody } = createResponse();
+        await dispatchRequest(server, req, res);
+
+        expect(res.statusCode).toBe(400);
+        expect(JSON.parse(getBody())).toEqual({
+          ok: false,
+          status: "error",
+          error: "request expired",
+        });
+      },
+    });
+  });
+
+  // ─── Callback paths ──────────────────────────────────────────────────────
+
+  it("returns 403 when callback is posted by the wrong peer", async () => {
+    const stateModule = await import("./state.js");
+    stateModule.setPendingCallback("corr-wrong-cb-peer", {
+      sourceSessionKey: "agent:main",
+      allowedPeer: "ember", // only ember may deliver
+      createdAt: Date.now() / 1000,
+      expiresAt: Date.now() / 1000 + 600,
+      status: "pending",
+    });
+
+    await withGatewayServer({
+      prefix: "xgw-cb-wrong-peer",
+      resolvedAuth: AUTH_NONE,
+      run: async (server) => {
+        // Post callback using "other" peer token (other-secret), not "ember"
+        const req = createStreamingRequest({
+          path: "/hooks/xgw/callback",
+          authorization: "Bearer other-secret",
+          body: {
+            correlationId: "corr-wrong-cb-peer",
+            status: "ok",
+            reply: "unauthorized payload",
+            nonce: "nonce-wrong-cb-peer-xyz123",
+            timestamp: Math.floor(Date.now() / 1000),
+          },
+        });
+
+        const { res, getBody } = createResponse();
+        await dispatchRequest(server, req, res);
+
+        expect(res.statusCode).toBe(403);
+        expect(JSON.parse(getBody())).toEqual({ ok: false, error: "unauthorized" });
+      },
+    });
+  });
+
+  it("returns 200 already_delivered when the same callback correlationId is posted twice", async () => {
+    const stateModule = await import("./state.js");
+    // Pre-mark the callback as already delivered
+    stateModule.setPendingCallback("corr-double-deliver", {
+      sourceSessionKey: "agent:main",
+      allowedPeer: "ember",
+      createdAt: Date.now() / 1000,
+      expiresAt: Date.now() / 1000 + 600,
+      status: "delivered",
+      deliveredAt: Date.now() / 1000 - 5,
+    });
+
+    await withGatewayServer({
+      prefix: "xgw-cb-idempotent",
+      resolvedAuth: AUTH_NONE,
+      run: async (server) => {
+        const req = createStreamingRequest({
+          path: "/hooks/xgw/callback",
+          authorization: "Bearer peer-secret",
+          body: {
+            correlationId: "corr-double-deliver",
+            status: "ok",
+            reply: "already done",
+            nonce: "nonce-double-deliver-qqqzzz",
+            timestamp: Math.floor(Date.now() / 1000),
+          },
+        });
+
+        const { res, getBody } = createResponse();
+        await dispatchRequest(server, req, res);
+
+        expect(res.statusCode).toBe(200);
+        expect(JSON.parse(getBody())).toEqual({ ok: true, status: "already_delivered" });
+      },
+    });
+  });
+
+  it("returns 410 when callback has expired", async () => {
+    const stateModule = await import("./state.js");
+    stateModule.setPendingCallback("corr-cb-past-expiry", {
+      sourceSessionKey: "agent:main",
+      allowedPeer: "ember",
+      createdAt: Date.now() / 1000 - 700,
+      expiresAt: Date.now() / 1000 - 1, // expired 1 second ago
+      status: "pending",
+    });
+
+    await withGatewayServer({
+      prefix: "xgw-cb-expired",
+      resolvedAuth: AUTH_NONE,
+      run: async (server) => {
+        const req = createStreamingRequest({
+          path: "/hooks/xgw/callback",
+          authorization: "Bearer peer-secret",
+          body: {
+            correlationId: "corr-cb-past-expiry",
+            status: "ok",
+            reply: "too late",
+            nonce: "nonce-expired-cb-pastexpiry",
+            timestamp: Math.floor(Date.now() / 1000),
+          },
+        });
+
+        const { res, getBody } = createResponse();
+        await dispatchRequest(server, req, res);
+
+        expect(res.statusCode).toBe(410);
+        expect(JSON.parse(getBody())).toEqual({ ok: false, error: "callback expired" });
+      },
+    });
+  });
+
+  // ─── Misc ─────────────────────────────────────────────────────────────────
+
+  it("recovers from a corrupt state file on startup", async () => {
+    const stateModule = await import("./state.js");
+
+    // Use the module's own getStateDir() so the path always matches what loadState reads.
+    const stateDir = stateModule.getStateDir();
+    const stateFile = stateModule.getStateFile();
+    fs.mkdirSync(stateDir, { recursive: true });
+    fs.writeFileSync(stateFile, "{corrupt json {{{");
+
+    const stderrMessages: string[] = [];
+    const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation((msg: unknown) => {
+      stderrMessages.push(String(msg));
+      return true;
+    });
+    try {
+      // loadState must not throw on a corrupt file
+      expect(() => stateModule.loadState()).not.toThrow();
+    } finally {
+      stderrSpy.mockRestore();
+    }
+
+    // loadState should log a warning about the corrupt file
+    expect(stderrMessages.some((m) => m.includes("loadState failed"))).toBe(true);
+  });
+
+  it("resolveEnvValue resolves ${ENV_VAR} tokens to environment variable values", async () => {
+    const { resolveEnvValue } = await import("./utils.js");
+
+    process.env.XGW_TEST_RESOLVE_TOKEN = "resolved-from-env";
+    try {
+      expect(resolveEnvValue("${XGW_TEST_RESOLVE_TOKEN}")).toBe("resolved-from-env");
+    } finally {
+      delete process.env.XGW_TEST_RESOLVE_TOKEN;
+    }
+
+    // Missing env var falls back to the literal string
+    expect(resolveEnvValue("${XGW_NONEXISTENT_VAR_QWERTYYYYY}")).toBe(
+      "${XGW_NONEXISTENT_VAR_QWERTYYYYY}",
+    );
+
+    // Plain strings pass through unchanged
+    expect(resolveEnvValue("static-token")).toBe("static-token");
+  });
 });
