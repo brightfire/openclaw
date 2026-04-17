@@ -114,6 +114,8 @@ export interface XgwOutboundResult {
   reply?: string | null;
   sessionKey?: string;
   error?: string;
+  /** Message sequence number from the remote gateway reply, if available. */
+  messageSeq?: number;
 }
 
 /**

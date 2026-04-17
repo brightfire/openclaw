@@ -82,6 +82,13 @@ export async function xgwOutboundDispatch(
 
   const baseUrl = peer.url.replace(/\/+$/, "");
 
+  // Warn if the peer URL is not using HTTPS (but don't block the request).
+  if (!peer.url.startsWith("https://")) {
+    process.stderr.write(
+      `[xgw] outbound request to peer ${gwName} uses insecure URL: ${peer.url}\n`,
+    );
+  }
+
   // Resolve special session key aliases
   let targetKey = remoteKey;
   if (remoteKey === "receptionist") {
@@ -142,26 +149,39 @@ export async function xgwOutboundDispatch(
       return {
         runId: corrId,
         status: "error",
-        error: `HTTP ${res.status}: ${(data as { error?: string } | null)?.error ?? res.statusText}`,
+        error: `HTTP ${res.status}: ${
+          typeof data?.error === "string" ? data.error : res.statusText
+        }`,
       };
     }
 
-    if ((data as { ok?: boolean } | null)?.ok) {
-      return {
-        runId: (data as { runId?: string } | null)?.runId ?? corrId,
-        status: (data as { status?: string } | null)?.status ?? "ok",
-        reply: (data as { reply?: string | null } | null)?.reply ?? null,
-        sessionKey: (data as { sessionKey?: string } | null)?.sessionKey ?? targetKey,
+    if (data?.ok === true) {
+      const remoteRunId = typeof data.runId === "string" && data.runId ? data.runId : corrId;
+      const remoteStatus = typeof data.status === "string" && data.status ? data.status : "ok";
+      const remoteReply =
+        typeof data.reply === "string" ? data.reply : data.reply === null ? null : null;
+      const remoteSessionKey =
+        typeof data.sessionKey === "string" && data.sessionKey ? data.sessionKey : targetKey;
+      const remoteMessageSeq = typeof data.messageSeq === "number" ? data.messageSeq : undefined;
+      const result: XgwOutboundResult = {
+        runId: remoteRunId,
+        status: remoteStatus,
+        reply: remoteReply,
+        sessionKey: remoteSessionKey,
+        ...(remoteMessageSeq !== undefined ? { messageSeq: remoteMessageSeq } : {}),
       };
+      return result;
     }
 
     return {
       runId: corrId,
       status: "error",
-      error: (data as { error?: string } | null)?.error ?? "cross-gateway request failed",
+      error: typeof data?.error === "string" ? data.error : "cross-gateway request failed",
     };
   } catch (err) {
-    if (timer) {clearTimeout(timer);}
+    if (timer) {
+      clearTimeout(timer);
+    }
     const msg =
       (err as { name?: string } | null)?.name === "AbortError"
         ? `cross-gateway unreachable: ${gwName}`
