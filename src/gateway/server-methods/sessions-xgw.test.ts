@@ -341,4 +341,70 @@ describe("handleCrossGatewayDispatch", () => {
       expect.objectContaining({ message: expect.stringContaining("pending async callbacks") }),
     );
   });
+
+  it("logs a stderr warning when outbound peer URL uses http:// instead of https://", async () => {
+    // xgwOutboundDispatch is mocked at the module level in this file, so we call the
+    // real implementation directly to verify the http-warning path.
+    const { xgwOutboundDispatch: realDispatch } =
+      await vi.importActual<typeof import("../xgw/outbound.js")>("../xgw/outbound.js");
+
+    const mockFetchLocal = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        ok: true,
+        runId: "r1",
+        status: "ok",
+        sessionKey: "xgw:s1",
+        reply: "pong",
+      }),
+    });
+    vi.stubGlobal("fetch", mockFetchLocal);
+
+    const stderrMessages: string[] = [];
+    const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation((msg: unknown) => {
+      stderrMessages.push(String(msg));
+      return true;
+    });
+
+    try {
+      await realDispatch(
+        "ember",
+        "skynet",
+        "ping",
+        {
+          fleet: {
+            crossGateway: {
+              enabled: true,
+              peers: { ember: { url: "http://ember.local", token: "secret" } },
+            },
+          },
+        } as never,
+        { timeoutSeconds: 5 },
+      );
+    } finally {
+      stderrSpy.mockRestore();
+      vi.unstubAllGlobals();
+    }
+
+    expect(stderrMessages.some((m) => m.includes("insecure URL"))).toBe(true);
+  });
+
+  it("rejects dispatch when cross-gateway is disabled", async () => {
+    const respond = vi.fn();
+    mockGetXgwConfig.mockReturnValue({ enabled: false, peers: {} });
+
+    await handleCrossGatewayDispatch({
+      params: { key: "@ember/skynet", message: "ping" },
+      respond,
+      context: {} as never,
+    });
+
+    expect(mockXgwOutboundDispatch).not.toHaveBeenCalled();
+    expect(respond).toHaveBeenCalledWith(
+      false,
+      undefined,
+      expect.objectContaining({ message: expect.stringContaining("not enabled") }),
+    );
+  });
 });
