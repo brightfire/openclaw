@@ -570,6 +570,56 @@ describe("gateway XGW HTTP routes", () => {
     });
   });
 
+  it("returns 400 when both async and multiTurn are true", async () => {
+    setGatewaySubagentRuntime(createSubagentRuntime());
+
+    await withTempConfig({
+      prefix: "xgw-http-multiturn-reject",
+      cfg: {
+        gateway: { trustedProxies: [] },
+        fleet: {
+          crossGateway: {
+            enabled: true,
+            acceptedTokens: { ember: "peer-secret" },
+            peers: { ember: { url: "http://ember.local", token: "peer-secret" } },
+            exposureTtlSeconds: 300,
+          },
+        },
+      },
+      run: async () => {
+        await withGatewayServer({
+          prefix: "xgw-http-multiturn-reject",
+          resolvedAuth: AUTH_NONE,
+          run: async (server) => {
+            const req = createStreamingRequest({
+              path: "/hooks/xgw",
+              authorization: "Bearer peer-secret",
+              body: {
+                sessionKey: "xgw:test",
+                message: "ping",
+                sourceSessionKey: "agent:main",
+                nonce: "nonce-mt",
+                timestamp: Math.floor(Date.now() / 1000),
+                async: true,
+                multiTurn: true,
+              },
+            });
+
+            const { res: resp, getBody } = createResponse();
+            await dispatchRequest(server, req, resp);
+
+            expect(resp.statusCode).toBe(400);
+            expect(JSON.parse(getBody())).toEqual({
+              ok: false,
+              status: "error",
+              error: "async and multiTurn are mutually exclusive",
+            });
+          },
+        });
+      },
+    });
+  });
+
   it("expires stale xgw exposure before dispatch and returns 403", async () => {
     const nowMs = Date.parse("2026-04-16T21:00:00.000Z");
     const nowSpy = vi.spyOn(Date, "now").mockReturnValue(nowMs);
