@@ -570,6 +570,70 @@ describe("gateway XGW HTTP routes", () => {
     });
   });
 
+  it("returns 400 when authenticated peer matches gatewayName (circular self-send)", async () => {
+    setGatewaySubagentRuntime(createSubagentRuntime());
+
+    // Configure so that the gateway's own name is "ember" and the peer token
+    // maps to "ember" — i.e., a request arrives claiming to be from ourselves.
+    mockLoadConfig.mockReturnValue({
+      fleet: {
+        crossGateway: {
+          enabled: true,
+          gatewayName: "ember", // our own name
+          acceptedTokens: { ember: "peer-secret" },
+          peers: { ember: { url: "http://ember.local", token: "peer-secret" } },
+          exposureTtlSeconds: 300,
+        },
+      },
+    });
+
+    await withTempConfig({
+      prefix: "xgw-http-self-send",
+      cfg: {
+        gateway: { trustedProxies: [] },
+        fleet: {
+          crossGateway: {
+            enabled: true,
+            gatewayName: "ember",
+            acceptedTokens: { ember: "peer-secret" },
+            peers: { ember: { url: "http://ember.local", token: "peer-secret" } },
+            exposureTtlSeconds: 300,
+          },
+        },
+      },
+      run: async () => {
+        await withGatewayServer({
+          prefix: "xgw-http-self-send",
+          resolvedAuth: AUTH_NONE,
+          run: async (server) => {
+            const req = createStreamingRequest({
+              path: "/hooks/xgw",
+              authorization: "Bearer peer-secret",
+              body: {
+                sessionKey: "skynet",
+                message: "hello from myself",
+                sourceSessionKey: "agent:main",
+                nonce: "nonce-self-send-abc123",
+                timestamp: Math.floor(Date.now() / 1000),
+                timeoutSeconds: 1,
+              },
+            });
+
+            const { res, getBody } = createResponse();
+            await dispatchRequest(server, req, res);
+
+            expect(res.statusCode).toBe(400);
+            expect(JSON.parse(getBody())).toEqual({
+              ok: false,
+              status: "error",
+              error: "circular send: cannot send to self",
+            });
+          },
+        });
+      },
+    });
+  });
+
   it("returns 400 when both async and multiTurn are true", async () => {
     setGatewaySubagentRuntime(createSubagentRuntime());
 

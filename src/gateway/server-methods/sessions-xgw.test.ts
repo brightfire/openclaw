@@ -7,9 +7,27 @@ const mockGetXgwConfig = vi.fn();
 const mockSetPendingCallback = vi.fn();
 const mockSaveState = vi.fn();
 const mockGetActiveCallbackCount = vi.fn(() => 0);
+const mockRunAgentStep = vi.fn();
+const mockResolvePingPongTurns = vi.fn(() => 5);
+const mockBuildAgentToAgentReplyContext = vi.fn(() => "reply context");
+const mockIsReplySkip = vi.fn((text?: string) => (text ?? "").trim() === "REPLY_SKIP");
 
 vi.mock("../../config/io.js", () => ({
   loadConfig: mockLoadConfig,
+}));
+
+vi.mock("../../agents/tools/agent-step.js", () => ({
+  runAgentStep: mockRunAgentStep,
+}));
+
+vi.mock("../../agents/tools/sessions-send-helpers.js", () => ({
+  resolvePingPongTurns: mockResolvePingPongTurns,
+  buildAgentToAgentReplyContext: mockBuildAgentToAgentReplyContext,
+  isReplySkip: mockIsReplySkip,
+}));
+
+vi.mock("../../agents/lanes.js", () => ({
+  AGENT_LANE_NESTED: "nested",
 }));
 
 vi.mock("../../config/sessions.js", () => ({
@@ -405,6 +423,314 @@ describe("handleCrossGatewayDispatch", () => {
       false,
       undefined,
       expect.objectContaining({ message: expect.stringContaining("not enabled") }),
+    );
+  });
+
+  // ── Circular self-send detection ───────────────────────────────────────────
+
+  it("rejects dispatch when target gateway is self (circular send)", async () => {
+    const respond = vi.fn();
+    mockLoadConfig.mockReturnValue({
+      fleet: { crossGateway: { enabled: true, gatewayName: "ember" } },
+    });
+    mockGetXgwConfig.mockReturnValue({
+      enabled: true,
+      gatewayName: "ember",
+      peers: { ember: { url: "http://ember.local", token: "secret" } },
+    });
+
+    await handleCrossGatewayDispatch({
+      params: { key: "@ember/skynet", message: "ping" },
+      respond,
+      context: {} as never,
+    });
+
+    expect(mockXgwOutboundDispatch).not.toHaveBeenCalled();
+    expect(respond).toHaveBeenCalledWith(
+      false,
+      undefined,
+      expect.objectContaining({ message: expect.stringContaining("circular send") }),
+    );
+  });
+
+  // ── multiTurn + async mutual exclusivity ──────────────────────────────────
+
+  it("rejects when both multiTurn and async are true", async () => {
+    const respond = vi.fn();
+
+    await handleCrossGatewayDispatch({
+      params: { key: "@ember/skynet", message: "ping", multiTurn: true, async: true },
+      respond,
+      context: {} as never,
+    });
+
+    expect(mockXgwOutboundDispatch).not.toHaveBeenCalled();
+    expect(respond).toHaveBeenCalledWith(
+      false,
+      undefined,
+      expect.objectContaining({ message: expect.stringContaining("mutually exclusive") }),
+    );
+  });
+
+  // ── Multi-turn loop tests ─────────────────────────────────────────────────
+
+  it("multi-turn basic: fires loop and returns first reply immediately", async () => {
+    const respond = vi.fn();
+    mockResolvePingPongTurns.mockReturnValue(3);
+    mockXgwOutboundDispatch
+      // initial dispatch
+      .mockResolvedValueOnce({
+        runId: "run-1",
+        status: "ok",
+        sessionKey: "xgw:corr-mt",
+        reply: "remote reply 1",
+      })
+      // turn 1 follow-up
+      .mockResolvedValueOnce({
+        status: "ok",
+        sessionKey: "xgw:corr-mt",
+        reply: "remote reply 2",
+      })
+      // turn 2 follow-up
+      .mockResolvedValueOnce({
+        status: "ok",
+        sessionKey: "xgw:corr-mt",
+        reply: "remote reply 3",
+      })
+      // turn 3 follow-up
+      .mockResolvedValueOnce({
+        status: "ok",
+        sessionKey: "xgw:corr-mt",
+        reply: "remote reply 4",
+      });
+    mockRunAgentStep.mockResolvedValue("local reply");
+
+    await handleCrossGatewayDispatch({
+      params: { key: "@ember/skynet", message: "start", multiTurn: true },
+      respond,
+      context: {} as never,
+    });
+
+    // First reply is returned immediately
+    expect(respond).toHaveBeenCalledWith(
+      true,
+      expect.objectContaining({
+        status: "ok",
+        reply: "remote reply 1",
+        remoteSessionKey: "xgw:corr-mt",
+      }),
+      undefined,
+    );
+
+    // Allow the fire-and-forget loop to complete
+    await new Promise((r) => setImmediate(r));
+    await new Promise((r) => setImmediate(r));
+
+    // runAgentStep called once per turn (up to maxTurns=3)
+    expect(mockRunAgentStep).toHaveBeenCalledTimes(3);
+    // outbound dispatch: 1 initial + 3 follow-ups
+    expect(mockXgwOutboundDispatch).toHaveBeenCalledTimes(4);
+  });
+
+  it("multi-turn stops when local agent returns REPLY_SKIP", async () => {
+    const respond = vi.fn();
+    mockResolvePingPongTurns.mockReturnValue(5);
+    mockXgwOutboundDispatch
+      .mockResolvedValueOnce({
+        status: "ok",
+        sessionKey: "xgw:corr-skip-local",
+        reply: "remote reply 1",
+      })
+      .mockResolvedValueOnce({
+        status: "ok",
+        sessionKey: "xgw:corr-skip-local",
+        reply: "remote reply 2",
+      });
+    mockRunAgentStep.mockResolvedValueOnce("local reply 1").mockResolvedValueOnce("REPLY_SKIP"); // stop on turn 2
+
+    await handleCrossGatewayDispatch({
+      params: { key: "@ember/skynet", message: "start", multiTurn: true },
+      respond,
+      context: {} as never,
+    });
+
+    await new Promise((r) => setImmediate(r));
+    await new Promise((r) => setImmediate(r));
+
+    // Only 2 local turns (REPLY_SKIP on turn 2 stops before sending)
+    expect(mockRunAgentStep).toHaveBeenCalledTimes(2);
+    // 1 initial + 1 follow-up (turn 1). Turn 2 local returns REPLY_SKIP, so no 3rd dispatch.
+    expect(mockXgwOutboundDispatch).toHaveBeenCalledTimes(2);
+  });
+
+  it("multi-turn stops when remote agent returns REPLY_SKIP", async () => {
+    const respond = vi.fn();
+    mockResolvePingPongTurns.mockReturnValue(5);
+    mockXgwOutboundDispatch
+      .mockResolvedValueOnce({
+        status: "ok",
+        sessionKey: "xgw:corr-skip-remote",
+        reply: "remote reply 1",
+      })
+      .mockResolvedValueOnce({
+        status: "ok",
+        sessionKey: "xgw:corr-skip-remote",
+        reply: "REPLY_SKIP", // remote stops
+      });
+    mockRunAgentStep.mockResolvedValue("local reply");
+
+    await handleCrossGatewayDispatch({
+      params: { key: "@ember/skynet", message: "start", multiTurn: true },
+      respond,
+      context: {} as never,
+    });
+
+    await new Promise((r) => setImmediate(r));
+    await new Promise((r) => setImmediate(r));
+
+    // 1 local turn ran (turn 1), then remote returned REPLY_SKIP
+    expect(mockRunAgentStep).toHaveBeenCalledTimes(1);
+    // 1 initial + 1 follow-up
+    expect(mockXgwOutboundDispatch).toHaveBeenCalledTimes(2);
+  });
+
+  it("multi-turn enforces turn cap", async () => {
+    const respond = vi.fn();
+    mockResolvePingPongTurns.mockReturnValue(2); // cap at 2
+    mockXgwOutboundDispatch.mockResolvedValue({
+      status: "ok",
+      sessionKey: "xgw:corr-cap",
+      reply: "remote reply",
+    });
+    mockRunAgentStep.mockResolvedValue("local reply");
+
+    await handleCrossGatewayDispatch({
+      params: { key: "@ember/skynet", message: "start", multiTurn: true },
+      respond,
+      context: {} as never,
+    });
+
+    await new Promise((r) => setImmediate(r));
+    await new Promise((r) => setImmediate(r));
+
+    // Exactly 2 turns
+    expect(mockRunAgentStep).toHaveBeenCalledTimes(2);
+    // 1 initial + 2 follow-ups
+    expect(mockXgwOutboundDispatch).toHaveBeenCalledTimes(3);
+  });
+
+  it("multi-turn stops on remote error mid-loop", async () => {
+    const respond = vi.fn();
+    mockResolvePingPongTurns.mockReturnValue(5);
+    mockXgwOutboundDispatch
+      .mockResolvedValueOnce({
+        status: "ok",
+        sessionKey: "xgw:corr-err",
+        reply: "remote reply 1",
+      })
+      .mockResolvedValueOnce({
+        status: "error", // remote error on turn 1 follow-up
+        error: "something went wrong",
+      });
+    mockRunAgentStep.mockResolvedValue("local reply");
+
+    await handleCrossGatewayDispatch({
+      params: { key: "@ember/skynet", message: "start", multiTurn: true },
+      respond,
+      context: {} as never,
+    });
+
+    await new Promise((r) => setImmediate(r));
+    await new Promise((r) => setImmediate(r));
+
+    // 1 local turn ran before remote error
+    expect(mockRunAgentStep).toHaveBeenCalledTimes(1);
+    // 1 initial + 1 follow-up that errored
+    expect(mockXgwOutboundDispatch).toHaveBeenCalledTimes(2);
+  });
+
+  it("multi-turn stops when local agent returns undefined (timeout)", async () => {
+    const respond = vi.fn();
+    mockResolvePingPongTurns.mockReturnValue(5);
+    mockXgwOutboundDispatch.mockResolvedValueOnce({
+      status: "ok",
+      sessionKey: "xgw:corr-undef",
+      reply: "remote reply 1",
+    });
+    mockRunAgentStep.mockResolvedValue(undefined); // timeout/undefined
+
+    await handleCrossGatewayDispatch({
+      params: { key: "@ember/skynet", message: "start", multiTurn: true },
+      respond,
+      context: {} as never,
+    });
+
+    await new Promise((r) => setImmediate(r));
+    await new Promise((r) => setImmediate(r));
+
+    // 1 local step ran, returned undefined → loop stops
+    expect(mockRunAgentStep).toHaveBeenCalledTimes(1);
+    // Only initial dispatch, no follow-up
+    expect(mockXgwOutboundDispatch).toHaveBeenCalledTimes(1);
+  });
+
+  it("multi-turn does not fire loop when first remote reply is empty", async () => {
+    const respond = vi.fn();
+    mockResolvePingPongTurns.mockReturnValue(5);
+    mockXgwOutboundDispatch.mockResolvedValueOnce({
+      status: "ok",
+      sessionKey: "xgw:corr-empty",
+      reply: undefined, // no reply
+    });
+    mockRunAgentStep.mockResolvedValue("local reply");
+
+    await handleCrossGatewayDispatch({
+      params: { key: "@ember/skynet", message: "start", multiTurn: true },
+      respond,
+      context: {} as never,
+    });
+
+    await new Promise((r) => setImmediate(r));
+    await new Promise((r) => setImmediate(r));
+
+    // No loop fired — remote reply was empty
+    expect(mockRunAgentStep).not.toHaveBeenCalled();
+    expect(mockXgwOutboundDispatch).toHaveBeenCalledTimes(1);
+  });
+
+  it("multi-turn dispatches follow-ups to the remote session key from first reply", async () => {
+    const respond = vi.fn();
+    mockResolvePingPongTurns.mockReturnValue(1);
+    mockXgwOutboundDispatch
+      .mockResolvedValueOnce({
+        status: "ok",
+        sessionKey: "xgw:worker-abc",
+        reply: "remote reply 1",
+      })
+      .mockResolvedValueOnce({
+        status: "ok",
+        sessionKey: "xgw:worker-abc",
+        reply: "remote reply 2",
+      });
+    mockRunAgentStep.mockResolvedValue("local reply");
+
+    await handleCrossGatewayDispatch({
+      params: { key: "@ember/skynet", message: "start", multiTurn: true },
+      respond,
+      context: {} as never,
+    });
+
+    await new Promise((r) => setImmediate(r));
+    await new Promise((r) => setImmediate(r));
+
+    // Follow-up should go to the worker session key returned in first reply
+    expect(mockXgwOutboundDispatch).toHaveBeenNthCalledWith(
+      2,
+      "ember",
+      "xgw:worker-abc", // not "skynet"
+      "local reply",
+      expect.any(Object),
+      expect.any(Object),
     );
   });
 });

@@ -6,6 +6,13 @@
  */
 
 import { randomUUID } from "node:crypto";
+import { AGENT_LANE_NESTED } from "../../agents/lanes.js";
+import { runAgentStep } from "../../agents/tools/agent-step.js";
+import {
+  buildAgentToAgentReplyContext,
+  isReplySkip,
+  resolvePingPongTurns,
+} from "../../agents/tools/sessions-send-helpers.js";
 import { loadConfig } from "../../config/io.js";
 import { resolveMainSessionKey } from "../../config/sessions.js";
 import { normalizeOptionalString } from "../../shared/string-coerce.js";
@@ -88,6 +95,18 @@ export async function handleCrossGatewayDispatch(params: {
     return;
   }
 
+  // Circular self-send detection: reject if target gateway is ourselves.
+  const selfGwName = (activeCfg as { fleet?: { crossGateway?: { gatewayName?: string } } })?.fleet
+    ?.crossGateway?.gatewayName;
+  if (selfGwName && gwName === selfGwName) {
+    params.respond(
+      false,
+      undefined,
+      errorShape(ErrorCodes.INVALID_REQUEST, "circular send: cannot send to self"),
+    );
+    return;
+  }
+
   const timeoutMs =
     typeof (p as { timeoutMs?: unknown }).timeoutMs === "number"
       ? (p as { timeoutMs: number }).timeoutMs
@@ -104,6 +123,18 @@ export async function handleCrossGatewayDispatch(params: {
 
   // Async mode: caller-side creates the pendingCallback record before dispatching.
   const isAsync = (p as { async?: unknown }).async === true;
+  const isMultiTurn = (p as { multiTurn?: unknown }).multiTurn === true;
+
+  // multiTurn and async are mutually exclusive
+  if (isMultiTurn && isAsync) {
+    params.respond(
+      false,
+      undefined,
+      errorShape(ErrorCodes.INVALID_REQUEST, "multiTurn and async are mutually exclusive"),
+    );
+    return;
+  }
+
   const callbackTimeoutMs =
     typeof (p as { callbackTimeoutMs?: unknown }).callbackTimeoutMs === "number"
       ? (p as { callbackTimeoutMs: number }).callbackTimeoutMs
@@ -183,6 +214,19 @@ export async function handleCrossGatewayDispatch(params: {
     return;
   }
 
+  // Multi-turn ping-pong: fire the loop and return the first reply immediately.
+  if (isMultiTurn && result.status === "ok" && result.reply) {
+    void runCrossGatewayMultiTurnLoop({
+      gwName,
+      remoteSessionKey: result.sessionKey ?? remoteKey,
+      firstReply: result.reply,
+      callerSessionKey,
+      callerChannel,
+      cfg: activeCfg,
+      timeoutSeconds: Math.floor(timeoutMs / 1000),
+    });
+  }
+
   // Use the actual runId returned by the remote dispatch rather than fabricating
   // one from the idempotency key. Fall back to the idempotency key only if the
   // remote did not return a runId.
@@ -206,4 +250,86 @@ export async function handleCrossGatewayDispatch(params: {
     },
     undefined,
   );
+}
+
+/**
+ * Multi-turn cross-gateway ping-pong loop.
+ *
+ * After the initial XGW send returns the first remote reply, this loop:
+ *   1. Feeds the remote reply into the local requester session (runAgentStep)
+ *   2. If the local agent replies (non-empty, non-REPLY_SKIP), POSTs it back
+ *      to the remote worker session via xgwOutboundDispatch.
+ *   3. Repeats until REPLY_SKIP, empty reply, remote error, or turn cap.
+ *
+ * Runs fire-and-forget (same as local A2A's runSessionsSendA2AFlow).
+ * No announce step — the remote agent's channel is not ours to post to.
+ */
+async function runCrossGatewayMultiTurnLoop(params: {
+  gwName: string;
+  remoteSessionKey: string;
+  firstReply: string;
+  callerSessionKey: string;
+  callerChannel: string;
+  cfg: ReturnType<typeof loadConfig>;
+  timeoutSeconds: number;
+}): Promise<void> {
+  const maxTurns = resolvePingPongTurns(params.cfg);
+  if (maxTurns <= 0) {
+    return;
+  }
+
+  let incomingReply = params.firstReply;
+
+  for (let turn = 1; turn <= maxTurns; turn++) {
+    // Step 1: Feed remote reply into local requester session
+    const replyContext = buildAgentToAgentReplyContext({
+      requesterSessionKey: params.callerSessionKey,
+      requesterChannel: params.callerChannel,
+      targetSessionKey: `@${params.gwName}/${params.remoteSessionKey}`,
+      currentRole: "requester",
+      turn,
+      maxTurns,
+    });
+
+    const localReply = await runAgentStep({
+      sessionKey: params.callerSessionKey,
+      message: incomingReply,
+      extraSystemPrompt: replyContext,
+      timeoutMs: params.timeoutSeconds * 1000,
+      lane: AGENT_LANE_NESTED,
+      sourceSessionKey: `@${params.gwName}/${params.remoteSessionKey}`,
+      sourceChannel: "xgw",
+      sourceTool: "sessions_send",
+    });
+
+    // Step 2: Check for REPLY_SKIP or empty from local agent
+    if (!localReply || isReplySkip(localReply)) {
+      break;
+    }
+
+    // Step 3: POST local reply back to remote worker session (direct dispatch)
+    const activeCfg = loadConfig();
+    const remoteResult = await xgwOutboundDispatch(
+      params.gwName,
+      params.remoteSessionKey,
+      localReply,
+      activeCfg,
+      { timeoutSeconds: params.timeoutSeconds },
+    );
+
+    // Step 4: Check remote result
+    if (remoteResult.status !== "ok" || !remoteResult.reply) {
+      // Network failure, remote error, or empty reply — stop the loop
+      break;
+    }
+
+    // Step 5: Check for REPLY_SKIP from remote agent
+    if (isReplySkip(remoteResult.reply)) {
+      break;
+    }
+
+    incomingReply = remoteResult.reply;
+  }
+
+  // No announce step for cross-gateway — the remote agent's channel is not ours to post to.
 }
