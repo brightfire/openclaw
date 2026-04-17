@@ -125,8 +125,13 @@ export function loadState(): void {
         }
       }
     }
-  } catch {
+  } catch (err) {
     // corrupt or missing — start fresh
+    process.stderr.write(
+      `[xgw] loadState failed (corrupt or missing state file), starting fresh: ${
+        err instanceof Error ? err.message : String(err)
+      }\n`,
+    );
   }
 }
 
@@ -141,8 +146,11 @@ export function saveState(): void {
       exposureTable: Object.fromEntries(exposureTable.entries()),
     };
     fs.writeFileSync(getStateFile(), JSON.stringify(data, null, 2));
-  } catch {
+  } catch (err) {
     // best-effort persistence; no fsync guarantees
+    process.stderr.write(
+      `[xgw] saveState failed: ${err instanceof Error ? err.message : String(err)}\n`,
+    );
   }
 }
 
