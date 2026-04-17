@@ -145,7 +145,7 @@ export async function handleCrossGatewayDispatch(params: {
   if (isAsync) {
     // Pre-generate a correlationId so we can create the pending record before dispatch.
     const xgwCfgForAsync = getXgwConfig(activeCfg);
-    if (getActiveCallbackCount() >= (xgwCfgForAsync.maxPendingAsync ?? 100)) {
+    if (getActiveCallbackCount() >= (xgwCfgForAsync.maxPendingAsync ?? 20)) {
       params.respond(
         false,
         undefined,

@@ -276,6 +276,7 @@ describe("gateway XGW HTTP routes", () => {
                 sessionKey: "xgw:corr-direct",
                 message: "follow-up",
                 sourceSessionKey: "agent:main",
+                correlationId: "corr-direct",
                 nonce: "nonce-direct",
                 timestamp: Math.floor(Date.now() / 1000),
                 timeoutSeconds: 1,
@@ -344,6 +345,7 @@ describe("gateway XGW HTTP routes", () => {
                 sessionKey: "xgw:corr-private",
                 message: "steal session",
                 sourceSessionKey: "agent:main",
+                correlationId: "corr-forbidden-" + Date.now(),
                 nonce: "nonce-forbidden",
                 timestamp: Math.floor(Date.now() / 1000),
               },
@@ -393,6 +395,7 @@ describe("gateway XGW HTTP routes", () => {
                 sessionKey: "xgw:does-not-exist",
                 message: "ping",
                 sourceSessionKey: "agent:main",
+                correlationId: "corr-missing-session",
                 nonce: "nonce-missing",
                 timestamp: Math.floor(Date.now() / 1000),
               },
@@ -662,6 +665,7 @@ describe("gateway XGW HTTP routes", () => {
                 sessionKey: "xgw:test",
                 message: "ping",
                 sourceSessionKey: "agent:main",
+                correlationId: "corr-mt-test",
                 nonce: "nonce-mt",
                 timestamp: Math.floor(Date.now() / 1000),
                 async: true,
@@ -723,6 +727,7 @@ describe("gateway XGW HTTP routes", () => {
                 sessionKey: "xgw:corr-expired",
                 message: "ping",
                 sourceSessionKey: "agent:main",
+                correlationId: "corr-expired-test",
                 nonce: "nonce-expired",
                 timestamp: Math.floor(Date.now() / 1000),
               },
@@ -847,6 +852,7 @@ describe("gateway XGW HTTP routes", () => {
           body: {
             // sessionKey intentionally omitted
             message: "hello",
+            correlationId: "corr-missing-sk-testval",
             nonce: "nonce-missing-sk-testval",
             timestamp: Math.floor(Date.now() / 1000),
           },
@@ -860,6 +866,66 @@ describe("gateway XGW HTTP routes", () => {
           ok: false,
           status: "error",
           error: "sessionKey and message required",
+        });
+      },
+    });
+  });
+
+  it("returns 400 for missing correlationId", async () => {
+    await withGatewayServer({
+      prefix: "xgw-missing-corrid",
+      resolvedAuth: AUTH_NONE,
+      run: async (server) => {
+        const req = createStreamingRequest({
+          path: "/hooks/xgw",
+          authorization: "Bearer peer-secret",
+          body: {
+            sessionKey: "skynet",
+            message: "hello",
+            // correlationId intentionally omitted
+            nonce: "nonce-missing-corrid",
+            timestamp: Math.floor(Date.now() / 1000),
+          },
+        });
+
+        const { res, getBody } = createResponse();
+        await dispatchRequest(server, req, res);
+
+        expect(res.statusCode).toBe(400);
+        expect(JSON.parse(getBody())).toEqual({
+          ok: false,
+          status: "error",
+          error: "missing required field: correlationId",
+        });
+      },
+    });
+  });
+
+  it("returns 400 for missing nonce", async () => {
+    await withGatewayServer({
+      prefix: "xgw-missing-nonce",
+      resolvedAuth: AUTH_NONE,
+      run: async (server) => {
+        const req = createStreamingRequest({
+          path: "/hooks/xgw",
+          authorization: "Bearer peer-secret",
+          body: {
+            sessionKey: "skynet",
+            message: "hello",
+            correlationId: "corr-missing-nonce-test",
+            // nonce intentionally omitted
+            timestamp: Math.floor(Date.now() / 1000),
+          },
+        });
+
+        const { res, getBody } = createResponse();
+        await dispatchRequest(server, req, res);
+
+        expect(res.statusCode).toBe(400);
+        expect(JSON.parse(getBody())).toEqual({
+          ok: false,
+          status: "error",
+          error: "missing required field: nonce",
         });
       },
     });
@@ -1007,6 +1073,7 @@ describe("gateway XGW HTTP routes", () => {
             sessionKey: "xgw:replay-test-nonexistent",
             message: "first",
             sourceSessionKey: "agent:main",
+            correlationId: "corr-replay-test-1",
             nonce: replayNonce,
             timestamp: ts,
           },
@@ -1023,6 +1090,7 @@ describe("gateway XGW HTTP routes", () => {
             sessionKey: "xgw:replay-test-nonexistent",
             message: "second",
             sourceSessionKey: "agent:main",
+            correlationId: "corr-replay-test-2",
             nonce: replayNonce,
             timestamp: ts,
           },
@@ -1050,6 +1118,7 @@ describe("gateway XGW HTTP routes", () => {
           body: {
             sessionKey: "skynet",
             message: "ping",
+            correlationId: "corr-stale-timestamp",
             nonce: "nonce-stale-timestamp-qqqrrr",
             timestamp: Math.floor(Date.now() / 1000) - 301, // 5 min + 1 sec old
           },
