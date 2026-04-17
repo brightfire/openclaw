@@ -239,6 +239,10 @@ export function notePendingCallbackDeliveryAttempt(
   entry.lastDeliveryError = details?.error;
 }
 
+export function getPendingCallbackEntries(): [string, XgwPendingCallback][] {
+  return Array.from(pendingCallbacks.entries());
+}
+
 export function getActiveCallbackCount(): number {
   let count = 0;
   for (const [, entry] of pendingCallbacks.entries()) {

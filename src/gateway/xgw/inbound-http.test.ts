@@ -222,9 +222,10 @@ describe("gateway XGW HTTP routes", () => {
             }
             expect(res.statusCode).toBe(200);
             expect(JSON.parse(getBody())).toEqual({ ok: true, status: "delivered" });
+            // Callback is delivered directly to sourceSessionKey — no xgw: prefix fabrication.
             expect(subagent.run).toHaveBeenCalledWith(
               expect.objectContaining({
-                sessionKey: "xgw:agent:main",
+                sessionKey: "agent:main",
                 deliver: true,
                 channel: "internal",
               }),
@@ -412,7 +413,10 @@ describe("gateway XGW HTTP routes", () => {
     });
   });
 
-  it("registers async callbacks, persists restart-safe state, and marks outbound delivery complete", async () => {
+  it("accepts async requests and POSTs callback to the calling peer (receiver-side, no local state)", async () => {
+    // In the new ownership model, the RECEIVER (Gateway B) does NOT create a
+    // pendingCallback record. It just runs the worker and POSTs the result back
+    // to the caller via /hooks/xgw/callback.
     const subagent = createSubagentRuntime();
     setGatewaySubagentRuntime(subagent);
     mockFetch.mockResolvedValue({ ok: true, status: 200, text: vi.fn(async () => "") });
@@ -467,50 +471,41 @@ describe("gateway XGW HTTP routes", () => {
           },
         });
 
+        // Let the fire-and-forget async callback handler complete
         await new Promise((resolve) => setImmediate(resolve));
         await new Promise((resolve) => setImmediate(resolve));
 
-        const pending = stateModule.getPendingCallback("corr-async");
-        expect(pending).toMatchObject({
-          sourceSessionKey: "agent:main",
-          allowedPeer: "ember",
-          status: "delivered",
-          resultStatus: "ok",
-          targetSessionKey: "xgw:corr-async",
-        });
-        expect(pending?.deliveredAt).toEqual(expect.any(Number));
+        // Receiver should NOT have created a local pendingCallback record.
+        // The caller (ember) owns the pending record, not the receiver.
+        expect(stateModule.getPendingCallback("corr-async")).toBeUndefined();
+
+        // Receiver SHOULD have POSTed the callback back to the calling peer.
         expect(mockFetch).toHaveBeenCalledWith(
           "http://ember.local/hooks/xgw/callback",
-          expect.objectContaining({ method: "POST" }),
+          expect.objectContaining({
+            method: "POST",
+            body: expect.stringContaining("corr-async"),
+          }),
         );
-
-        const persisted = JSON.parse(fs.readFileSync(stateModule.getStateFile(), "utf-8")) as {
-          pendingCallbacks?: Record<string, Record<string, unknown>>;
-        };
-        expect(persisted.pendingCallbacks?.["corr-async"]).toMatchObject({
-          status: "delivered",
-          resultStatus: "ok",
-          targetSessionKey: "xgw:corr-async",
-        });
-
-        stateModule.loadState();
-        expect(stateModule.getPendingCallback("corr-async")).toMatchObject({
-          status: "delivered",
-          resultStatus: "ok",
-        });
       },
     });
   });
 
-  it("keeps failed outbound callback deliveries pending across reload and prunes expired callbacks", async () => {
-    const nowMs = Date.parse("2026-04-16T21:00:00.000Z");
-    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(nowMs);
+  it("on first failed outbound callback delivery, receiver does not crash and has no local state", async () => {
+    // The RECEIVER does not track pendingCallback state. When the callback POST
+    // fails on the first attempt, postCallbackWithRetry will retry in the
+    // background (with 5s, 15s delays). Here we just verify the receiver
+    // does not crash and does not create local state, and that the first
+    // callback attempt was attempted at the correct URL.
     const subagent = createSubagentRuntime();
     setGatewaySubagentRuntime(subagent);
+    // Only fail the first attempt; simulate immediate resolution for the test.
+    mockFetch.mockRejectedValueOnce(new Error("connection refused"));
+    // Subsequent attempts (retries) should be intercepted too
     mockFetch.mockResolvedValue({ ok: false, status: 502, text: vi.fn(async () => "bad gateway") });
 
     await withTempConfig({
-      prefix: "xgw-http-async-reload",
+      prefix: "xgw-http-async-fail",
       cfg: {
         gateway: { trustedProxies: [] },
         fleet: {
@@ -525,7 +520,7 @@ describe("gateway XGW HTTP routes", () => {
         const stateModule = await import("./state.js");
 
         await withGatewayServer({
-          prefix: "xgw-http-async-reload",
+          prefix: "xgw-http-async-fail",
           resolvedAuth: AUTH_NONE,
           run: async (server) => {
             const req = createStreamingRequest({
@@ -535,49 +530,44 @@ describe("gateway XGW HTTP routes", () => {
                 sessionKey: "skynet",
                 message: "ping async",
                 sourceSessionKey: "agent:main",
-                correlationId: "corr-reload",
-                nonce: "nonce-reload",
+                correlationId: "corr-fail",
+                nonce: "nonce-fail",
                 timestamp: Math.floor(Date.now() / 1000),
                 async: true,
                 callbackTimeoutSeconds: 60,
               },
             });
 
-            const { res } = createResponse();
+            const { res, getBody } = createResponse();
             await dispatchRequest(server, req, res);
+
+            // Response is 200-accepted regardless of callback delivery
             expect(res.statusCode).toBe(200);
+            expect(JSON.parse(getBody())).toMatchObject({
+              ok: true,
+              status: "accepted",
+              correlationId: "corr-fail",
+            });
           },
         });
 
+        // Receiver has no local pending record — caller owns that
+        expect(stateModule.getPendingCallback("corr-fail")).toBeUndefined();
+
+        // Let the first async callback attempt happen
         await new Promise((resolve) => setImmediate(resolve));
         await new Promise((resolve) => setImmediate(resolve));
 
-        expect(stateModule.getPendingCallback("corr-reload")).toMatchObject({
-          status: "pending",
-          lastDeliveryError: expect.stringContaining("status=502"),
-          targetSessionKey: "xgw:corr-reload",
-        });
+        // At least the first callback attempt was made to the caller's URL
+        expect(mockFetch).toHaveBeenCalledWith(
+          "http://ember.local/hooks/xgw/callback",
+          expect.objectContaining({ method: "POST" }),
+        );
 
-        stateModule.loadState();
-        expect(stateModule.getPendingCallback("corr-reload")).toMatchObject({
-          status: "pending",
-          lastDeliveryError: expect.stringContaining("status=502"),
-        });
-
-        nowSpy.mockReturnValue(nowMs + 61_000);
-        stateModule.pruneExpired();
-        expect(stateModule.getPendingCallback("corr-reload")).toMatchObject({
-          status: "expired",
-          resultStatus: "timeout",
-        });
-
-        nowSpy.mockReturnValue(nowMs + (61 + 3601) * 1000);
-        stateModule.pruneExpired();
-        expect(stateModule.getPendingCallback("corr-reload")).toBeUndefined();
+        // Receiver still has no local state
+        expect(stateModule.getPendingCallback("corr-fail")).toBeUndefined();
       },
     });
-
-    nowSpy.mockRestore();
   });
 
   it("expires stale xgw exposure before dispatch and returns 403", async () => {
