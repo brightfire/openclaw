@@ -5,10 +5,12 @@
  * and the proven implementation in ~/.openclaw/extensions/skynet/index.ts.
  */
 
+import type { FleetConfig } from "../../config/types.gateway.js";
+
 /**
  * Fleet XGW configuration section.
  */
-export interface XgwConfig {
+export interface XgwConfig extends NonNullable<FleetConfig["crossGateway"]> {
   enabled?: boolean;
   /** This gateway's name (e.g. "aster", "ember"). */
   gatewayName?: string;
@@ -96,6 +98,11 @@ export interface XgwPendingCallback {
   createdAt: number;
   expiresAt: number;
   status: "pending" | "delivered" | "expired";
+  targetSessionKey?: string;
+  deliveredAt?: number;
+  resultStatus?: "ok" | "error" | "timeout" | "cancelled";
+  lastDeliveryAttemptAt?: number;
+  lastDeliveryError?: string;
 }
 
 /**

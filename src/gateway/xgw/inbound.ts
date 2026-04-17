@@ -10,9 +10,16 @@
 
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import os from "node:os";
 import { loadConfig } from "../../config/config.js";
 import { formatErrorMessage } from "../../infra/errors.js";
+import type {
+  SubagentGetSessionMessagesResult,
+  SubagentRunParams,
+  SubagentRunResult,
+  SubagentWaitParams,
+  SubagentWaitResult,
+} from "../../plugins/runtime/types.js";
+import type { InputProvenance } from "../../sessions/input-provenance.js";
 import {
   checkNonce,
   getActiveCallbackCount,
@@ -21,6 +28,8 @@ import {
   getPendingCallback,
   loadState,
   markCallbackDelivered,
+  markCallbackExpired,
+  notePendingCallbackDeliveryAttempt,
   pruneExpired,
   refreshExposure,
   saveState,
@@ -28,11 +37,7 @@ import {
   setPendingCallback,
   validateTimestamp,
 } from "./state.js";
-import type {
-  XgwConfig,
-  XgwInboundRequest,
-  XgwInboundResponse,
-} from "./types.js";
+import type { XgwConfig, XgwInboundResponse } from "./types.js";
 import { XGW_SESSION_PREFIX } from "./types.js";
 
 // ── Agent dispatch ──────────────────────────────────────────────────
@@ -41,21 +46,19 @@ import { XGW_SESSION_PREFIX } from "./types.js";
 // embedded runner. The actual gateway imports setGatewaySubagentRuntime
 // during startup.
 const GATEWAY_SUBAGENT_SYMBOL = Symbol.for("openclaw.plugin.gatewaySubagentRuntime");
-const XGW5_PATCHED_MARKER = "XGW5_PATCHED";
+
+type XgwMessageBlock = { type: string; text?: string };
+type XgwSessionMessage = { role?: string; content?: string | XgwMessageBlock[] };
 
 interface SubagentRuntime {
-  run(args: {
+  run(
+    args: SubagentRunParams & { channel?: string; inputProvenance?: InputProvenance },
+  ): Promise<SubagentRunResult>;
+  waitForRun(args: SubagentWaitParams): Promise<SubagentWaitResult>;
+  getSessionMessages(args: {
     sessionKey: string;
-    message: string;
-    deliver?: boolean;
-    idempotencyKey?: string;
-    channel?: string;
-    lane?: string;
-    extraSystemPrompt?: string;
-    inputProvenance?: Record<string, unknown>;
-  }): Promise<{ runId: string }>;
-  waitForRun(args: { runId: string; timeoutMs?: number }): Promise<{ status: string; error?: string }>;
-  getSessionMessages(args: { sessionKey: string; limit?: number }): Promise<{ messages: Array<{ role: string; content: string | Array<{ type: string; text?: string }> }> }>;
+    limit?: number;
+  }): Promise<SubagentGetSessionMessagesResult>;
   deleteSession(args: { sessionKey: string; deleteTranscript?: boolean }): Promise<void>;
 }
 
@@ -70,28 +73,20 @@ function getSubagent(): SubagentRuntime | null {
 
 function getXgwConfig(): XgwConfig {
   try {
-    return (loadConfig()?.fleet?.crossGateway ?? {}) as XgwConfig;
+    const cfg = loadConfig() as { fleet?: { crossGateway?: XgwConfig } } | undefined;
+    return cfg?.fleet?.crossGateway ?? {};
   } catch {
     return {};
   }
-}
-
-function getXgwTokens(): Record<string, string> {
-  return getXgwConfig().acceptedTokens ?? {};
 }
 
 function getAcceptedTokens(): Record<string, string> {
   try {
-    const cfg = loadConfig();
-    const xgwCfg = cfg?.fleet?.crossGateway;
-    return (xgwCfg as { acceptedTokens?: Record<string, string> })?.acceptedTokens ?? {};
+    const cfg = loadConfig() as { fleet?: { crossGateway?: XgwConfig } } | undefined;
+    return cfg?.fleet?.crossGateway?.acceptedTokens ?? {};
   } catch {
     return {};
   }
-}
-
-function getXgwPeers(): Record<string, { url?: string; token?: string }> {
-  return getXgwConfig().peers ?? {};
 }
 
 function resolveEnvValue(val: string): string {
@@ -121,10 +116,7 @@ function authenticateXgwToken(token: string): string | null {
   const tokenBuf = Buffer.from(token);
   for (const [peer, known] of Object.entries(tokens)) {
     const knownBuf = Buffer.from(resolveEnvValue(known));
-    if (
-      tokenBuf.length === knownBuf.length &&
-      timingSafeEqual(tokenBuf, knownBuf)
-    ) {
+    if (tokenBuf.length === knownBuf.length && timingSafeEqual(tokenBuf, knownBuf)) {
       return peer;
     }
   }
@@ -166,7 +158,7 @@ async function spawnWorker(
   saveState();
 
   const sourceIdentity = `[Cross-gateway message from ${peer}${sourceSessionKey ? "/" + sourceSessionKey : ""}]`;
-  const inputProv = {
+  const inputProv: InputProvenance = {
     kind: "inter_session",
     sourceSessionKey: sourceSessionKey || `${peer}:unknown`,
     sourceChannel: sourceChannel || "xgw",
@@ -185,7 +177,7 @@ async function spawnWorker(
       inputProvenance: inputProv,
     });
     return { ok: true, runId, status: "ok", sessionKey };
-  } catch (err) {
+  } catch {
     setExposure(sessionKey, {
       correlationId,
       allowedPeer: peer,
@@ -205,8 +197,11 @@ async function dispatchDirect(
   cfg: XgwConfig,
 ): Promise<XgwInboundResponse> {
   const exposure = getExposure(sessionKey);
-  if (!exposure || exposure.allowedPeer !== peer) {
-    return { ok: false, status: "error", error: "session not accessible" };
+  if (!exposure) {
+    return { ok: false, status: "not_found", error: "unknown session key" };
+  }
+  if (exposure.allowedPeer !== peer) {
+    return { ok: false, status: "forbidden", error: "session not accessible" };
   }
 
   // Refresh expiry
@@ -232,13 +227,16 @@ async function dispatchDirect(
     await subagent.waitForRun({ runId, timeoutMs: timeoutSeconds * 1000 });
 
     const { messages } = await subagent.getSessionMessages({ sessionKey, limit: 1 });
-    const lastMsg = messages?.[0];
+    const lastMsg = messages?.[0] as XgwSessionMessage | undefined;
     const reply =
       lastMsg?.role === "assistant"
         ? typeof lastMsg.content === "string"
           ? lastMsg.content
           : Array.isArray(lastMsg.content)
-            ? lastMsg.content.filter((b) => b.type === "text").map((b) => b.text).join("\n")
+            ? lastMsg.content
+                .filter((b): b is XgwMessageBlock => b.type === "text")
+                .map((b) => b.text ?? "")
+                .join("\n")
             : ""
         : "";
 
@@ -256,21 +254,27 @@ async function dispatchDirect(
 /**
  * Read the last assistant reply from a session.
  */
-async function extractReply(
-  sessionKey: string,
-): Promise<string | undefined> {
+async function extractReply(sessionKey: string): Promise<string | undefined> {
   const subagent = getSubagent();
-  if (!subagent) {return undefined;}
+  if (!subagent) {
+    return undefined;
+  }
 
   try {
     const { messages } = await subagent.getSessionMessages({ sessionKey, limit: 5 });
     for (let i = (messages || []).length - 1; i >= 0; i--) {
-      const msg = messages![i];
-      if (msg.role === "assistant") {
-        if (typeof msg.content === "string") {return msg.content;}
-        if (Array.isArray(msg.content)) {
-          return msg.content.filter((b) => b.type === "text").map((b) => b.text).join("\n");
-        }
+      const msg = messages[i] as XgwSessionMessage | undefined;
+      if (!msg || msg.role !== "assistant") {
+        continue;
+      }
+      if (typeof msg.content === "string") {
+        return msg.content;
+      }
+      if (Array.isArray(msg.content)) {
+        return msg.content
+          .filter((b): b is XgwMessageBlock => b.type === "text")
+          .map((b) => b.text ?? "")
+          .join("\n");
       }
     }
   } catch {
@@ -287,7 +291,10 @@ function sendJson(res: ServerResponse, status: number, body: Record<string, unkn
   res.end(JSON.stringify(body));
 }
 
-function readJsonBody(req: IncomingMessage, maxBytes: number): Promise<{
+function readJsonBody(
+  req: IncomingMessage,
+  maxBytes: number,
+): Promise<{
   ok: boolean;
   value?: Record<string, unknown>;
   error?: string;
@@ -313,7 +320,10 @@ function readJsonBody(req: IncomingMessage, maxBytes: number): Promise<{
     });
     req.on("end", () => {
       try {
-        const value = JSON.parse(Buffer.concat(chunks).toString("utf-8")) as Record<string, unknown>;
+        const value = JSON.parse(Buffer.concat(chunks).toString("utf-8")) as Record<
+          string,
+          unknown
+        >;
         resolve({ ok: true, value });
       } catch {
         resolve({ ok: false, error: "invalid JSON" });
@@ -324,16 +334,13 @@ function readJsonBody(req: IncomingMessage, maxBytes: number): Promise<{
 
 // ── Main handler: POST /hooks/xgw ───────────────────────────────────
 
-export async function handleXgwHook(
-  req: IncomingMessage,
-  res: ServerResponse,
-): Promise<boolean> {
+export async function handleXgwHook(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
   if (req.method !== "POST") {
     return false;
   }
 
   // Parse auth header
-  const authHeader = req.headers["authorization"] as string | undefined;
+  const authHeader = req.headers["authorization"];
   if (!authHeader?.startsWith("Bearer ")) {
     sendJson(res, 401, { ok: false, status: "error", error: "unauthorized" });
     return true;
@@ -350,8 +357,13 @@ export async function handleXgwHook(
   // Parse body
   const body = await readJsonBody(req, 1048576);
   if (!body.ok) {
-    const st = body.error === "payload too large" ? 413 : body.error === "request body timeout" ? 408 : 400;
-    sendJson(res, st, { ok: false, status: "error", error: st === 413 ? "payload too large" : body.error });
+    const st =
+      body.error === "payload too large" ? 413 : body.error === "request body timeout" ? 408 : 400;
+    sendJson(res, st, {
+      ok: false,
+      status: "error",
+      error: st === 413 ? "payload too large" : body.error,
+    });
     return true;
   }
   const p = body.value as Record<string, unknown>;
@@ -398,7 +410,7 @@ export async function handleXgwHook(
 
     if (!result.ok) {
       const httpStatus = result.status === "capacity_exceeded" ? 503 : 500;
-      sendJson(res, httpStatus, result);
+      sendJson(res, httpStatus, result as unknown as Record<string, unknown>);
       return true;
     }
 
@@ -410,12 +422,22 @@ export async function handleXgwHook(
           : 600;
 
       const now = Date.now() / 1000;
+      if (getActiveCallbackCount() >= (cfg.maxPendingAsync ?? 100)) {
+        sendJson(res, 503, {
+          ok: false,
+          status: "capacity_exceeded",
+          error: "too many pending async callbacks",
+        });
+        return true;
+      }
+
       setPendingCallback(correlationId, {
         sourceSessionKey: sourceSessionKey || "unknown",
         allowedPeer: peer,
         createdAt: now,
         expiresAt: now + cbTimeout,
         status: "pending",
+        targetSessionKey: result.sessionKey,
       });
       saveState();
 
@@ -470,10 +492,11 @@ export async function handleXgwHook(
   if (sessionKey.startsWith(XGW_SESSION_PREFIX)) {
     const result = await dispatchDirect(sessionKey, message, peer, timeoutSeconds, cfg);
     if (!result.ok) {
-      const httpStatus = result.status === "timeout" ? 504 : 403;
-      sendJson(res, httpStatus, result);
+      const httpStatus =
+        result.status === "timeout" ? 504 : result.status === "not_found" ? 404 : 403;
+      sendJson(res, httpStatus, result as unknown as Record<string, unknown>);
     } else {
-      sendJson(res, 200, result);
+      sendJson(res, 200, result as unknown as Record<string, unknown>);
     }
     return true;
   }
@@ -481,12 +504,13 @@ export async function handleXgwHook(
   // === Receptionist key routing ===
   const rxKey = getReceptionistKey();
   if (sessionKey === rxKey || sessionKey.startsWith("agent:receptionist")) {
-    // Route to receptionist session — dispatch directly
     const result = await dispatchDirect(sessionKey, message, peer, timeoutSeconds, cfg);
     if (!result.ok) {
-      sendJson(res, 403, result);
+      const httpStatus =
+        result.status === "timeout" ? 504 : result.status === "not_found" ? 403 : 403;
+      sendJson(res, httpStatus, result as unknown as Record<string, unknown>);
     } else {
-      sendJson(res, 200, result);
+      sendJson(res, 200, result as unknown as Record<string, unknown>);
     }
     return true;
   }
@@ -508,26 +532,40 @@ async function handleAsyncCallback(
   peer: string,
 ): Promise<void> {
   const subagent = getSubagent();
-  if (!subagent) {return;}
+  if (!subagent) {
+    return;
+  }
 
   let workerTimedOut = false;
   try {
     const waitResult = await subagent.waitForRun({ runId, timeoutMs });
-    if (waitResult?.status === "timeout") {workerTimedOut = true;}
+    if (waitResult?.status === "timeout") {
+      workerTimedOut = true;
+    }
   } catch {
     workerTimedOut = true;
   }
 
+  const pending = getPendingCallback(correlationId);
+  if (!pending || pending.status !== "pending") {
+    return;
+  }
+
   let reply: string | undefined;
-  let resultStatus = workerTimedOut ? "timeout" : "ok";
+  let resultStatus: "ok" | "timeout" | "error" = "ok";
   let resultError: string | undefined;
   if (workerTimedOut) {
+    resultStatus = "timeout";
     resultError = `Worker timed out after ${Math.floor(timeoutMs / 1000)}s`;
   }
 
   if (!workerTimedOut) {
     reply = await extractReply(sessionKey);
     if (!reply) {
+      // Worker completed but produced no reply — treat as a soft error
+      resultStatus = "error";
+      resultError = "Worker completed but no reply was produced";
+    } else {
       resultStatus = "ok";
     }
   }
@@ -558,6 +596,9 @@ async function handleAsyncCallback(
 
   const callbackUrl = `${(peerCfg?.url ?? "").replace(/\/+$/, "")}/hooks/xgw/callback`;
 
+  notePendingCallbackDeliveryAttempt(correlationId);
+  saveState();
+
   try {
     const resp = await fetch(callbackUrl, {
       method: "POST",
@@ -570,21 +611,30 @@ async function handleAsyncCallback(
 
     if (!resp.ok) {
       const bodyText = await resp.text().catch(() => "");
-      // eslint-disable-next-line no-console
-      console.warn(
-        `[xgw] callback POST failed for %s: status=%s body=%s`,
-        correlationId,
-        resp.status,
-        bodyText.substring(0, 200),
-      );
+      const errMsg = `status=${resp.status} body=${bodyText.substring(0, 200)}`;
+      notePendingCallbackDeliveryAttempt(correlationId, { error: errMsg });
+      if (resultStatus === "timeout") {
+        markCallbackExpired(correlationId);
+      }
+      saveState();
+      console.warn(`[xgw] callback POST failed for %s: %s`, correlationId, errMsg);
+      return;
     }
-  } catch {
-    // eslint-disable-next-line no-console
-    console.warn(`[xgw] callback delivery error for %s`, correlationId);
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : "callback delivery error";
+    notePendingCallbackDeliveryAttempt(correlationId, { error: errMsg });
+    if (resultStatus === "timeout") {
+      markCallbackExpired(correlationId);
+    }
+    saveState();
+    console.warn(`[xgw] callback delivery error for %s: %s`, correlationId, errMsg);
+    return;
   }
 
-  // Mark as delivered in local state
-  markCallbackDelivered(correlationId);
+  markCallbackDelivered(correlationId, {
+    resultStatus,
+    targetSessionKey: sessionKey,
+  });
   saveState();
 }
 
@@ -599,7 +649,7 @@ export async function handleXgwCallback(
   }
 
   // Auth
-  const authHeader = req.headers["authorization"] as string | undefined;
+  const authHeader = req.headers["authorization"];
   if (!authHeader?.startsWith("Bearer ")) {
     sendJson(res, 401, { ok: false, error: "unauthorized" });
     return true;
@@ -668,7 +718,7 @@ export async function handleXgwCallback(
 
   // Expired
   if (pending.status === "expired" || pending.expiresAt < Date.now() / 1000) {
-    pending.status = "expired";
+    markCallbackExpired(correlationId);
     saveState();
     sendJson(res, 410, { ok: false, error: "callback expired" });
     return true;
@@ -701,10 +751,11 @@ export async function handleXgwCallback(
 
   try {
     // Use hooks-like dispatch pattern for delivery
-    const deliverySk = pending.sourceSessionKey.startsWith(XGW_SESSION_PREFIX) ||
+    const deliverySk =
+      pending.sourceSessionKey.startsWith(XGW_SESSION_PREFIX) ||
       pending.sourceSessionKey.startsWith("hook:")
-      ? pending.sourceSessionKey
-      : `${XGW_SESSION_PREFIX}${pending.sourceSessionKey}`;
+        ? pending.sourceSessionKey
+        : `${XGW_SESSION_PREFIX}${pending.sourceSessionKey}`;
 
     await subagent.run({
       message: msgLines.join("\n"),
@@ -715,13 +766,17 @@ export async function handleXgwCallback(
     });
 
     // Mark delivered and refresh exposure for follow-up
-    markCallbackDelivered(correlationId);
+    markCallbackDelivered(correlationId, {
+      resultStatus: status as "ok" | "error" | "timeout" | "cancelled",
+      targetSessionKey: sessionKey || pending.targetSessionKey,
+    });
     if (sessionKey) {
       refreshExposure(sessionKey, getXgwConfig().exposureTtlSeconds ?? 300);
+    } else if (pending.targetSessionKey) {
+      refreshExposure(pending.targetSessionKey, getXgwConfig().exposureTtlSeconds ?? 300);
     }
     saveState();
   } catch (err) {
-    // eslint-disable-next-line no-console
     console.error(
       `[xgw] callback delivery failed for %s: %s`,
       correlationId,
