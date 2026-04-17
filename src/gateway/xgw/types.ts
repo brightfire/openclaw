@@ -24,8 +24,6 @@ export interface XgwConfig extends NonNullable<FleetConfig["crossGateway"]> {
   acceptedTokens?: Record<string, string>;
   /** Peer gateway configurations. */
   peers?: Record<string, XgwPeerConfig>;
-  /** Receptionist session key (for dispatcher routing). */
-  receptionist?: { sessionKey?: string };
 }
 
 export interface XgwPeerConfig {
@@ -50,7 +48,6 @@ export interface XgwInboundRequest {
   multiTurn?: boolean;
   async?: boolean;
   callbackTimeoutSeconds?: number;
-  replyBack?: boolean;
 }
 
 /**

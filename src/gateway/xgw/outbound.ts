@@ -8,6 +8,7 @@
 import { randomUUID } from "node:crypto";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import type { XgwConfig, XgwOutboundResult } from "./types.js";
+import { resolveEnvValue } from "./utils.js";
 
 /** Delay helper. */
 function delay(ms: number): Promise<void> {
@@ -73,28 +74,6 @@ export async function postCallbackWithRetry(
 }
 
 /**
- * Resolve ${ENV_VAR} syntax to the actual environment variable value.
- */
-function resolveEnvValue(val: string): string {
-  if (val.startsWith("${") && val.endsWith("}")) {
-    const envVar = val.slice(2, -1);
-    const envVal = process.env[envVar];
-    if (envVal !== undefined && envVal !== "") {
-      return envVal;
-    }
-    // Log warning if available; otherwise silent fallback
-    if (typeof process !== "undefined" && typeof process.stderr !== "undefined") {
-      try {
-        process.stderr.write(`[xgw] unresolved env var \${${envVar}}, using literal\n`);
-      } catch {
-        // swallow
-      }
-    }
-  }
-  return val;
-}
-
-/**
  * Extract the XGW config section from the gateway config.
  */
 export function getXgwConfig(cfg: OpenClawConfig): XgwConfig {
@@ -155,11 +134,7 @@ export async function xgwOutboundDispatch(
     );
   }
 
-  // Resolve special session key aliases
-  let targetKey = remoteKey;
-  if (remoteKey === "receptionist") {
-    targetKey = xgwCfg.receptionist?.sessionKey ?? "agent:receptionist:main";
-  }
+  const targetKey = remoteKey;
 
   const corrId = opts?.correlationId ?? randomUUID();
   const nonce = randomUUID();
@@ -178,7 +153,6 @@ export async function xgwOutboundDispatch(
     nonce,
     timestamp: ts,
     timeoutSeconds: timeoutSec,
-    replyBack: true,
   };
 
   if (opts?.async) {

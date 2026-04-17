@@ -489,11 +489,6 @@ export type XgwPeerConfig = {
   token?: string;
 };
 
-export type XgwReceptionistConfig = {
-  /** Session key for the receptionist dispatcher (default: "agent:receptionist:main"). */
-  sessionKey?: string;
-};
-
 export type XgwConfig = {
   /** Enable cross-gateway messaging (default: false). */
   enabled?: boolean;
@@ -511,8 +506,6 @@ export type XgwConfig = {
   acceptedTokens?: Record<string, string>;
   /** Peer gateway configurations. Key = peer name. */
   peers?: Record<string, XgwPeerConfig>;
-  /** Receptionist session routing config. */
-  receptionist?: XgwReceptionistConfig;
 };
 
 export type FleetConfig = {

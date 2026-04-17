@@ -38,6 +38,7 @@ import {
 } from "./state.js";
 import type { XgwConfig, XgwInboundResponse } from "./types.js";
 import { XGW_SESSION_PREFIX } from "./types.js";
+import { resolveEnvValue } from "./utils.js";
 
 // ── Agent dispatch ──────────────────────────────────────────────────
 
@@ -51,7 +52,11 @@ type XgwSessionMessage = { role?: string; content?: string | XgwMessageBlock[] }
 
 interface SubagentRuntime {
   run(
-    args: SubagentRunParams & { channel?: string; inputProvenance?: InputProvenance },
+    args: SubagentRunParams & {
+      channel?: string;
+      inputProvenance?: InputProvenance;
+      agentId?: string;
+    },
   ): Promise<SubagentRunResult>;
   waitForRun(args: SubagentWaitParams): Promise<SubagentWaitResult>;
   getSessionMessages(args: {
@@ -88,26 +93,6 @@ function getAcceptedTokens(): Record<string, string> {
   }
 }
 
-function resolveEnvValue(val: string): string {
-  if (val.startsWith("${") && val.endsWith("}")) {
-    const envVar = val.slice(2, -1);
-    const envVal = process.env[envVar];
-    if (envVal !== undefined && envVal !== "") {
-      return envVal;
-    }
-    try {
-      process.stderr.write(`[xgw] unresolved env var \${${envVar}}, using literal\n`);
-    } catch {
-      // swallow
-    }
-  }
-  return val;
-}
-
-function getReceptionistKey(): string {
-  return (getXgwConfig().receptionist?.sessionKey ?? "agent:receptionist:main").trim();
-}
-
 // ── Auth ────────────────────────────────────────────────────────────
 
 function authenticateXgwToken(token: string): string | null {
@@ -132,6 +117,7 @@ async function spawnWorker(
   peer: string,
   cfg: XgwConfig,
 ): Promise<XgwInboundResponse> {
+  const agentId = cfg.agentId ?? "skynet";
   const subagent = getSubagent();
   if (!subagent) {
     return { ok: false, status: "error", error: "internal error" };
@@ -174,6 +160,7 @@ async function spawnWorker(
       lane: "nested",
       extraSystemPrompt: sourceIdentity,
       inputProvenance: inputProv,
+      agentId,
     });
     return { ok: true, runId, status: "ok", sessionKey };
   } catch {
@@ -491,20 +478,6 @@ export async function handleXgwHook(req: IncomingMessage, res: ServerResponse): 
     return true;
   }
 
-  // === Receptionist key routing ===
-  const rxKey = getReceptionistKey();
-  if (sessionKey === rxKey || sessionKey.startsWith("agent:receptionist")) {
-    const result = await dispatchDirect(sessionKey, message, peer, timeoutSeconds, cfg);
-    if (!result.ok) {
-      const httpStatus =
-        result.status === "timeout" ? 504 : result.status === "not_found" ? 403 : 403;
-      sendJson(res, httpStatus, result as unknown as Record<string, unknown>);
-    } else {
-      sendJson(res, 200, result as unknown as Record<string, unknown>);
-    }
-    return true;
-  }
-
   // Unknown session key
   sendJson(res, 400, { ok: false, status: "error", error: "unknown session key" });
   return true;
@@ -787,6 +760,10 @@ async function notifyExpiredCallbacks(): Promise<void> {
 
 // ── Initialization ──────────────────────────────────────────────────
 
+// ── Lifecycle ───────────────────────────────────────────────────────
+
+let pruneInterval: ReturnType<typeof setInterval> | null = null;
+
 /**
  * Called during gateway startup to initialize XGW state.
  */
@@ -795,9 +772,19 @@ export function initXgw(): void {
   pruneExpired();
   saveState();
   // Periodic prune + expired callback notification every 60s
-  setInterval(() => {
+  pruneInterval = setInterval(() => {
     void notifyExpiredCallbacks()
       .then(() => pruneExpired())
       .catch(() => pruneExpired());
   }, 60_000);
+}
+
+/**
+ * Called during gateway shutdown to clean up XGW resources.
+ */
+export function shutdownXgw(): void {
+  if (pruneInterval) {
+    clearInterval(pruneInterval);
+    pruneInterval = null;
+  }
 }
