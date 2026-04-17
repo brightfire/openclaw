@@ -4,6 +4,9 @@ const mockLoadConfig = vi.fn();
 const mockResolveMainSessionKey = vi.fn();
 const mockXgwOutboundDispatch = vi.fn();
 const mockGetXgwConfig = vi.fn();
+const mockSetPendingCallback = vi.fn();
+const mockSaveState = vi.fn();
+const mockGetActiveCallbackCount = vi.fn(() => 0);
 
 vi.mock("../../config/io.js", () => ({
   loadConfig: mockLoadConfig,
@@ -16,6 +19,12 @@ vi.mock("../../config/sessions.js", () => ({
 vi.mock("../xgw/outbound.js", () => ({
   xgwOutboundDispatch: mockXgwOutboundDispatch,
   getXgwConfig: mockGetXgwConfig,
+}));
+
+vi.mock("../xgw/state.js", () => ({
+  setPendingCallback: mockSetPendingCallback,
+  saveState: mockSaveState,
+  getActiveCallbackCount: mockGetActiveCallbackCount,
 }));
 
 const { handleCrossGatewayDispatch } = await import("./sessions-xgw.js");
@@ -211,6 +220,125 @@ describe("handleCrossGatewayDispatch", () => {
       false,
       undefined,
       expect.objectContaining({ message: "gateway timeout: ember" }),
+    );
+  });
+
+  // ── Caller-side async ownership tests ──────────────────────────────────────
+
+  it("creates caller-side pendingCallback record before dispatching async request", async () => {
+    const respond = vi.fn();
+    mockXgwOutboundDispatch.mockResolvedValue({
+      runId: "corr-async-1",
+      status: "accepted",
+      sessionKey: "xgw:corr-async-1",
+      correlationId: "corr-async-1",
+      reply: null,
+    });
+
+    await handleCrossGatewayDispatch({
+      params: {
+        key: "@ember/skynet",
+        message: "async task",
+        async: true,
+        callbackTimeoutMs: 120_000,
+        callerSessionKey: "agent:main:subagent:abc",
+        callerChannel: "slack",
+      },
+      respond,
+      context: {} as never,
+    });
+
+    // Caller must have created the pending record BEFORE dispatching
+    expect(mockSetPendingCallback).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        sourceSessionKey: "agent:main:subagent:abc",
+        allowedPeer: "ember",
+        status: "pending",
+      }),
+    );
+    expect(mockSaveState).toHaveBeenCalled();
+
+    // outbound dispatch must include async=true
+    expect(mockXgwOutboundDispatch).toHaveBeenCalledWith(
+      "ember",
+      "skynet",
+      "async task",
+      expect.any(Object),
+      expect.objectContaining({
+        async: true,
+        callbackTimeoutSeconds: 120,
+      }),
+    );
+
+    // Response must be accepted status with null reply
+    expect(respond).toHaveBeenCalledWith(
+      true,
+      expect.objectContaining({
+        status: "accepted",
+        reply: null,
+        sessionKey: "@ember/skynet",
+      }),
+      undefined,
+    );
+  });
+
+  it("delivers callback result directly to sourceSessionKey without xgw: prefix", async () => {
+    // This test verifies the corrected callback delivery path: sourceSessionKey is
+    // used directly, without fabricating an 'xgw:<sourceSessionKey>' prefix.
+    // The actual delivery logic lives in handleXgwCallback in inbound.ts;
+    // here we verify that setPendingCallback is called with the correct
+    // sourceSessionKey so delivery will reach the right session.
+    const respond = vi.fn();
+    mockXgwOutboundDispatch.mockResolvedValue({
+      runId: "corr-delivery",
+      status: "accepted",
+      sessionKey: "xgw:corr-delivery",
+      correlationId: "corr-delivery",
+      reply: null,
+    });
+
+    await handleCrossGatewayDispatch({
+      params: {
+        key: "@ember/skynet",
+        message: "deliver test",
+        async: true,
+        callerSessionKey: "agent:main:slack:channel:abc123",
+        callerChannel: "slack",
+      },
+      respond,
+      context: {} as never,
+    });
+
+    // The pending record must store the real caller session key (no xgw: prefix).
+    const setPendingCall = mockSetPendingCallback.mock.calls[0];
+    expect(setPendingCall).toBeDefined();
+    const [, pendingEntry] = setPendingCall as [string, { sourceSessionKey: string }];
+    expect(pendingEntry.sourceSessionKey).toBe("agent:main:slack:channel:abc123");
+    expect(pendingEntry.sourceSessionKey).not.toMatch(/^xgw:/);
+  });
+
+  it("rejects async dispatch when pending callback capacity is exceeded", async () => {
+    const respond = vi.fn();
+    mockGetActiveCallbackCount.mockReturnValue(100);
+    mockGetXgwConfig.mockReturnValue({
+      enabled: true,
+      maxPendingAsync: 100,
+      peers: { ember: { url: "http://ember.local", token: "secret" } },
+    });
+
+    await handleCrossGatewayDispatch({
+      params: { key: "@ember/skynet", message: "overflow", async: true },
+      respond,
+      context: {} as never,
+    });
+
+    expect(mockSetPendingCallback).not.toHaveBeenCalled();
+    expect(mockXgwOutboundDispatch).not.toHaveBeenCalled();
+    expect(respond).toHaveBeenCalledWith(
+      false,
+      undefined,
+      expect.objectContaining({ message: expect.stringContaining("pending async callbacks") }),
     );
   });
 });

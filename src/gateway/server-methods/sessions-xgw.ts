@@ -5,12 +5,14 @@
  * to the target gateway via XGW instead of local session dispatch.
  */
 
+import { randomUUID } from "node:crypto";
 import { loadConfig } from "../../config/io.js";
 import { resolveMainSessionKey } from "../../config/sessions.js";
 import { normalizeOptionalString } from "../../shared/string-coerce.js";
 import { errorShape } from "../protocol/index.js";
 import { ErrorCodes } from "../protocol/index.js";
 import { xgwOutboundDispatch, getXgwConfig } from "../xgw/outbound.js";
+import { getActiveCallbackCount, setPendingCallback, saveState } from "../xgw/state.js";
 import type { GatewayRequestContext, RespondFn } from "./types.js";
 
 export async function handleCrossGatewayDispatch(params: {
@@ -100,10 +102,50 @@ export async function handleCrossGatewayDispatch(params: {
   const callerChannel =
     normalizeOptionalString((p as { callerChannel?: unknown }).callerChannel) ?? "gateway_rpc";
 
+  // Async mode: caller-side creates the pendingCallback record before dispatching.
+  const isAsync = (p as { async?: unknown }).async === true;
+  const callbackTimeoutMs =
+    typeof (p as { callbackTimeoutMs?: unknown }).callbackTimeoutMs === "number"
+      ? (p as { callbackTimeoutMs: number }).callbackTimeoutMs
+      : 600_000;
+  const callbackTimeoutSeconds = Math.max(1, Math.floor(callbackTimeoutMs / 1000));
+
+  let preCorrelationId: string | undefined;
+  if (isAsync) {
+    // Pre-generate a correlationId so we can create the pending record before dispatch.
+    const xgwCfgForAsync = getXgwConfig(activeCfg);
+    if (getActiveCallbackCount() >= (xgwCfgForAsync.maxPendingAsync ?? 100)) {
+      params.respond(
+        false,
+        undefined,
+        errorShape(ErrorCodes.UNAVAILABLE, "Too many pending async callbacks"),
+      );
+      return;
+    }
+
+    preCorrelationId = randomUUID();
+    const now = Date.now() / 1000;
+    setPendingCallback(preCorrelationId, {
+      sourceSessionKey: callerSessionKey,
+      allowedPeer: gwName,
+      createdAt: now,
+      expiresAt: now + callbackTimeoutSeconds,
+      status: "pending",
+    });
+    saveState();
+  }
+
   const result = await xgwOutboundDispatch(gwName, remoteKey, message.trim(), activeCfg, {
     timeoutSeconds: Math.floor(timeoutMs / 1000),
     agentSessionKey: callerSessionKey,
     agentChannel: callerChannel,
+    ...(isAsync && preCorrelationId
+      ? {
+          async: true as const,
+          callbackTimeoutSeconds,
+          correlationId: preCorrelationId,
+        }
+      : {}),
   });
 
   if (result.status === "error" || result.status === "forbidden") {
@@ -120,6 +162,23 @@ export async function handleCrossGatewayDispatch(params: {
       false,
       undefined,
       errorShape(ErrorCodes.AGENT_TIMEOUT, result.error || "Gateway timeout"),
+    );
+    return;
+  }
+
+  // For async dispatches, return the accepted status immediately.
+  if (isAsync || result.status === "accepted") {
+    const correlationId = result.correlationId ?? preCorrelationId;
+    params.respond(
+      true,
+      {
+        status: "accepted",
+        correlationId,
+        sessionKey: rawKey,
+        remoteSessionKey: result.sessionKey,
+        reply: null,
+      },
+      undefined,
     );
     return;
   }

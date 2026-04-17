@@ -9,6 +9,69 @@ import { randomUUID } from "node:crypto";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import type { XgwConfig, XgwOutboundResult } from "./types.js";
 
+/** Delay helper. */
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export interface CallbackPostResult {
+  ok: boolean;
+  status?: number;
+  error?: string;
+}
+
+/**
+ * POST a callback result to the calling gateway at /hooks/xgw/callback.
+ * Retries up to 3 times with exponential backoff: 5s, 15s, 45s.
+ *
+ * @param peerUrl - Base URL of the calling gateway peer
+ * @param outboundToken - Bearer token for the calling peer
+ * @param payload - Callback body to POST
+ * @returns ok: true on success, ok: false with error after all retries exhausted
+ */
+export async function postCallbackWithRetry(
+  peerUrl: string,
+  outboundToken: string,
+  payload: Record<string, unknown>,
+): Promise<CallbackPostResult> {
+  const callbackUrl = `${peerUrl.replace(/\/+$/, "")}/hooks/xgw/callback`;
+  const MAX_ATTEMPTS = 3;
+  // Delays: 5s, 15s, 45s (5 * 3^(n-1))
+  const RETRY_DELAYS_MS = [5_000, 15_000, 45_000];
+
+  let lastError = "";
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    if (attempt > 0) {
+      await delay(RETRY_DELAYS_MS[attempt - 1] ?? 5_000);
+    }
+    try {
+      const resp = await fetch(callbackUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${outboundToken}`,
+        },
+        body: JSON.stringify(payload),
+      });
+      if (resp.ok) {
+        return { ok: true, status: resp.status };
+      }
+      const bodyText = await resp.text().catch(() => "");
+      lastError = `status=${resp.status} body=${bodyText.substring(0, 200)}`;
+      process.stderr.write(
+        `[xgw] callback POST attempt ${attempt + 1}/${MAX_ATTEMPTS} failed: ${lastError}\n`,
+      );
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : String(err);
+      process.stderr.write(
+        `[xgw] callback POST attempt ${attempt + 1}/${MAX_ATTEMPTS} error: ${lastError}\n`,
+      );
+    }
+  }
+
+  return { ok: false, error: lastError };
+}
+
 /**
  * Resolve ${ENV_VAR} syntax to the actual environment variable value.
  */
@@ -57,6 +120,9 @@ export async function xgwOutboundDispatch(
     timeoutSeconds?: number;
     agentSessionKey?: string;
     agentChannel?: string;
+    async?: boolean;
+    callbackTimeoutSeconds?: number;
+    correlationId?: string;
   },
 ): Promise<XgwOutboundResult> {
   const xgwCfg = getXgwConfig(cfg);
@@ -95,7 +161,7 @@ export async function xgwOutboundDispatch(
     targetKey = xgwCfg.receptionist?.sessionKey ?? "agent:receptionist:main";
   }
 
-  const corrId = randomUUID();
+  const corrId = opts?.correlationId ?? randomUUID();
   const nonce = randomUUID();
   const ts = Math.floor(Date.now() / 1000);
   const timeoutSec =
@@ -103,7 +169,7 @@ export async function xgwOutboundDispatch(
       ? Math.min(120, Math.max(1, Math.floor(opts.timeoutSeconds)))
       : 30;
 
-  const reqBody = {
+  const reqBody: Record<string, unknown> = {
     sessionKey: targetKey,
     message,
     sourceSessionKey: opts?.agentSessionKey ?? "",
@@ -114,6 +180,13 @@ export async function xgwOutboundDispatch(
     timeoutSeconds: timeoutSec,
     replyBack: true,
   };
+
+  if (opts?.async) {
+    reqBody.async = true;
+    if (typeof opts.callbackTimeoutSeconds === "number") {
+      reqBody.callbackTimeoutSeconds = opts.callbackTimeoutSeconds;
+    }
+  }
 
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
@@ -168,6 +241,7 @@ export async function xgwOutboundDispatch(
         status: remoteStatus,
         reply: remoteReply,
         sessionKey: remoteSessionKey,
+        correlationId: corrId,
         ...(remoteMessageSeq !== undefined ? { messageSeq: remoteMessageSeq } : {}),
       };
       return result;

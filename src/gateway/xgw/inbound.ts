@@ -20,21 +20,20 @@ import type {
   SubagentWaitResult,
 } from "../../plugins/runtime/types.js";
 import type { InputProvenance } from "../../sessions/input-provenance.js";
+import { postCallbackWithRetry } from "./outbound.js";
 import {
   checkNonce,
-  getActiveCallbackCount,
   getActiveSessionCount,
   getExposure,
   getPendingCallback,
+  getPendingCallbackEntries,
   loadState,
   markCallbackDelivered,
   markCallbackExpired,
-  notePendingCallbackDeliveryAttempt,
   pruneExpired,
   refreshExposure,
   saveState,
   setExposure,
-  setPendingCallback,
   validateTimestamp,
 } from "./state.js";
 import type { XgwConfig, XgwInboundResponse } from "./types.js";
@@ -431,26 +430,6 @@ export async function handleXgwHook(req: IncomingMessage, res: ServerResponse): 
           ? Math.min(3600, Math.max(1, Math.floor(p.callbackTimeoutSeconds)))
           : 600;
 
-      const now = Date.now() / 1000;
-      if (getActiveCallbackCount() >= (cfg.maxPendingAsync ?? 100)) {
-        sendJson(res, 503, {
-          ok: false,
-          status: "capacity_exceeded",
-          error: "too many pending async callbacks",
-        });
-        return true;
-      }
-
-      setPendingCallback(correlationId, {
-        sourceSessionKey: sourceSessionKey || "unknown",
-        allowedPeer: peer,
-        createdAt: now,
-        expiresAt: now + cbTimeout,
-        status: "pending",
-        targetSessionKey: result.sessionKey,
-      });
-      saveState();
-
       sendJson(res, 200, {
         ok: true,
         status: "accepted",
@@ -458,13 +437,15 @@ export async function handleXgwHook(req: IncomingMessage, res: ServerResponse): 
         sessionKey: result.sessionKey,
       });
 
-      // Fire-and-forget: wait for worker, extract reply, POST callback
-      void handleAsyncCallback(
+      // Fire-and-forget: wait for worker, extract reply, POST callback back to caller.
+      // The caller (Gateway A) owns the pendingCallback record — we just deliver.
+      void handleAsyncCallbackOutbound(
         result.runId!,
         result.sessionKey!,
         correlationId,
         cbTimeout * 1000,
         peer,
+        sourceSessionKey || "unknown",
       ).catch(() => {
         // errors logged internally
       });
@@ -530,15 +511,20 @@ export async function handleXgwHook(req: IncomingMessage, res: ServerResponse): 
 }
 
 /**
- * Fire-and-forget async callback delivery.
- * Waits for worker run, extracts reply, POSTs callback to the peer's URL.
+ * Fire-and-forget outbound async callback delivery (receiver side).
+ *
+ * Waits for the local worker session to complete, extracts its reply, then
+ * POSTs the callback result back to the calling gateway at /hooks/xgw/callback
+ * with exponential-backoff retry.  The receiver does NOT own a pendingCallback
+ * record — the caller (Gateway A) created that record locally before dispatching.
  */
-async function handleAsyncCallback(
+async function handleAsyncCallbackOutbound(
   runId: string,
   sessionKey: string,
   correlationId: string,
   timeoutMs: number,
   peer: string,
+  _sourceSessionKey: string,
 ): Promise<void> {
   const subagent = getSubagent();
   if (!subagent) {
@@ -555,23 +541,16 @@ async function handleAsyncCallback(
     workerTimedOut = true;
   }
 
-  const pending = getPendingCallback(correlationId);
-  if (!pending || pending.status !== "pending") {
-    return;
-  }
-
   let reply: string | undefined;
   let resultStatus: "ok" | "timeout" | "error" = "ok";
   let resultError: string | undefined;
+
   if (workerTimedOut) {
     resultStatus = "timeout";
     resultError = `Worker timed out after ${Math.floor(timeoutMs / 1000)}s`;
-  }
-
-  if (!workerTimedOut) {
+  } else {
     reply = await extractReply(sessionKey);
     if (!reply) {
-      // Worker completed but produced no reply — treat as a soft error
       resultStatus = "error";
       resultError = "Worker completed but no reply was produced";
     } else {
@@ -583,68 +562,36 @@ async function handleAsyncCallback(
   const peers = cfg.peers ?? {};
   const peerCfg = peers[peer];
   const outboundToken = peerCfg?.token ? resolveEnvValue(peerCfg.token) : "";
+  const peerUrl = peerCfg?.url ?? "";
 
   const callbackPayload: Record<string, unknown> = {
     correlationId,
     sessionKey,
+    nonce: randomUUID(),
+    timestamp: Math.floor(Date.now() / 1000),
   };
 
-  if (resultStatus === "error" || resultError) {
-    callbackPayload.status = "error";
-    callbackPayload.error = resultError || reply || "";
-  } else if (resultStatus === "timeout") {
+  if (resultStatus === "timeout") {
     callbackPayload.status = "timeout";
-    callbackPayload.error = resultError || "Worker timed out";
+    callbackPayload.error = resultError ?? "Worker timed out";
+  } else if (resultStatus === "error") {
+    callbackPayload.status = "error";
+    callbackPayload.error = resultError ?? "";
   } else {
     callbackPayload.status = "ok";
-    callbackPayload.reply = reply || "";
+    callbackPayload.reply = reply ?? "";
   }
 
-  callbackPayload.nonce = randomUUID();
-  callbackPayload.timestamp = Math.floor(Date.now() / 1000);
+  const result = await postCallbackWithRetry(peerUrl, outboundToken, callbackPayload);
 
-  const callbackUrl = `${(peerCfg?.url ?? "").replace(/\/+$/, "")}/hooks/xgw/callback`;
-
-  notePendingCallbackDeliveryAttempt(correlationId);
-  saveState();
-
-  try {
-    const resp = await fetch(callbackUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${outboundToken}`,
-      },
-      body: JSON.stringify(callbackPayload),
-    });
-
-    if (!resp.ok) {
-      const bodyText = await resp.text().catch(() => "");
-      const errMsg = `status=${resp.status} body=${bodyText.substring(0, 200)}`;
-      notePendingCallbackDeliveryAttempt(correlationId, { error: errMsg });
-      if (resultStatus === "timeout") {
-        markCallbackExpired(correlationId);
-      }
-      saveState();
-      console.warn(`[xgw] callback POST failed for %s: %s`, correlationId, errMsg);
-      return;
-    }
-  } catch (err) {
-    const errMsg = err instanceof Error ? err.message : "callback delivery error";
-    notePendingCallbackDeliveryAttempt(correlationId, { error: errMsg });
-    if (resultStatus === "timeout") {
-      markCallbackExpired(correlationId);
-    }
-    saveState();
-    console.warn(`[xgw] callback delivery error for %s: %s`, correlationId, errMsg);
-    return;
+  if (!result.ok) {
+    console.error(
+      `[xgw] callback delivery permanently failed for %s after retries: %s`,
+      correlationId,
+      result.error,
+    );
+    // Caller-side record will be pruned/expired by the caller's own pruner.
   }
-
-  markCallbackDelivered(correlationId, {
-    resultStatus,
-    targetSessionKey: sessionKey,
-  });
-  saveState();
 }
 
 // ── Callback handler: POST /hooks/xgw/callback ─────────────────────
@@ -769,16 +716,11 @@ export async function handleXgwCallback(
   }
 
   try {
-    // Use hooks-like dispatch pattern for delivery
-    const deliverySk =
-      pending.sourceSessionKey.startsWith(XGW_SESSION_PREFIX) ||
-      pending.sourceSessionKey.startsWith("hook:")
-        ? pending.sourceSessionKey
-        : `${XGW_SESSION_PREFIX}${pending.sourceSessionKey}`;
-
+    // Deliver directly to the sourceSessionKey — no xgw: prefix fabrication.
+    // The caller created the pendingCallback record with the real caller session key.
     await subagent.run({
       message: msgLines.join("\n"),
-      sessionKey: deliverySk,
+      sessionKey: pending.sourceSessionKey,
       idempotencyKey: `xgw:callback:${correlationId}:${randomUUID()}`,
       deliver: true,
       channel: "internal",
@@ -810,6 +752,39 @@ export async function handleXgwCallback(
   return true;
 }
 
+// ── Expired callback notification ──────────────────────────────────
+
+/**
+ * Push a timeout notification to the sourceSessionKey for any pending callbacks
+ * that have expired since the last prune cycle.
+ */
+async function notifyExpiredCallbacks(): Promise<void> {
+  const subagent = getSubagent();
+  if (!subagent) {
+    return;
+  }
+
+  const now = Date.now() / 1000;
+  for (const [correlationId, entry] of getPendingCallbackEntries()) {
+    if (entry.status === "pending" && entry.expiresAt < now) {
+      // Mark expired first so we don't retry on the next cycle
+      markCallbackExpired(correlationId);
+      try {
+        await subagent.run({
+          message: "[Cross-gateway callback timed out]",
+          sessionKey: entry.sourceSessionKey,
+          idempotencyKey: `xgw:timeout:${correlationId}:${randomUUID()}`,
+          deliver: true,
+          channel: "internal",
+        });
+      } catch {
+        // best-effort: if delivery fails, the session may already be gone
+      }
+    }
+  }
+  saveState();
+}
+
 // ── Initialization ──────────────────────────────────────────────────
 
 /**
@@ -819,8 +794,10 @@ export function initXgw(): void {
   loadState();
   pruneExpired();
   saveState();
-  // Periodic prune every 60s
+  // Periodic prune + expired callback notification every 60s
   setInterval(() => {
-    pruneExpired();
+    void notifyExpiredCallbacks()
+      .then(() => pruneExpired())
+      .catch(() => pruneExpired());
   }, 60_000);
 }

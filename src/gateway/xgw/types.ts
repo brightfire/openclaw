@@ -116,6 +116,8 @@ export interface XgwOutboundResult {
   error?: string;
   /** Message sequence number from the remote gateway reply, if available. */
   messageSeq?: number;
+  /** Correlation ID used for this request (caller-side pending callback key). */
+  correlationId?: string;
 }
 
 /**
