@@ -101,8 +101,8 @@ import {
 import { applySessionsPatchToStore } from "../sessions-patch.js";
 import { resolveSessionKeyFromResolveParams } from "../sessions-resolve.js";
 import { setGatewayDedupeEntry } from "./agent-wait-dedupe.js";
-import { handleCrossGatewayDispatch } from "./sessions-xgw.js";
 import { chatHandlers } from "./chat.js";
+import { handleCrossGatewayDispatch } from "./sessions-xgw.js";
 import type {
   GatewayClient,
   GatewayRequestContext,
@@ -539,6 +539,20 @@ async function handleSessionSend(params: {
   isWebchatConnect: GatewayRequestHandlerOptions["isWebchatConnect"];
   interruptIfActive: boolean;
 }) {
+  // ── Cross-gateway dispatch: key starts with "@" ──
+  // Check before schema validation so callers can include provenance fields
+  // (callerSessionKey, callerChannel) that aren't in SessionsSendParamsSchema.
+  // E.g. "@ember/skynet" or "@ember/xgw:abc123"
+  const rawKeyEarly = (params.params as { key?: unknown }).key;
+  if (typeof rawKeyEarly === "string" && rawKeyEarly.startsWith("@")) {
+    await handleCrossGatewayDispatch({
+      params: params.params,
+      respond: params.respond,
+      context: params.context,
+    });
+    return;
+  }
+
   if (
     !assertValidParams(params.params, validateSessionsSendParams, params.method, params.respond)
   ) {
@@ -546,18 +560,6 @@ async function handleSessionSend(params: {
   }
   const p = params.params;
   const rawKey = (p as { key?: unknown }).key;
-  const rawKeyStr = typeof rawKey === "string" ? rawKey : "";
-
-  // ── Cross-gateway dispatch: key starts with "@" ──
-  // E.g. "@ember/skynet" or "@ember/xgw:abc123"
-  if (rawKeyStr.startsWith("@")) {
-    await handleCrossGatewayDispatch({
-      params: p,
-      respond: params.respond,
-      context: params.context,
-    });
-    return;
-  }
 
   const key = requireSessionKey(rawKey, params.respond);
   if (!key) {
