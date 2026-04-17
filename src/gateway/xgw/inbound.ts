@@ -377,6 +377,18 @@ export async function handleXgwHook(req: IncomingMessage, res: ServerResponse): 
       ? Math.min(120, Math.max(1, Math.floor(p.timeoutSeconds)))
       : 30;
   const isAsync = p.async === true;
+  const isMultiTurn = p.multiTurn === true;
+
+  // TODO: implement multi-turn cross-gateway ping-pong loop (DESIGN.md §4.3)
+  // async=true and multiTurn=true are mutually exclusive (DESIGN.md §4.4)
+  if (isAsync && isMultiTurn) {
+    sendJson(res, 400, {
+      ok: false,
+      status: "error",
+      error: "async and multiTurn are mutually exclusive",
+    });
+    return true;
+  }
 
   if (!sessionKey || !message) {
     sendJson(res, 400, { ok: false, status: "error", error: "sessionKey and message required" });
