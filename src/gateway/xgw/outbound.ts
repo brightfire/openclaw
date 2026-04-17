@@ -45,6 +45,13 @@ export async function postCallbackWithRetry(
     if (attempt > 0) {
       await delay(RETRY_DELAYS_MS[attempt - 1] ?? 5_000);
     }
+    // Refresh nonce and timestamp on each attempt so the remote gateway
+    // doesn't reject retries as duplicate-nonce (409).
+    const effectivePayload = {
+      ...payload,
+      nonce: randomUUID(),
+      timestamp: Math.floor(Date.now() / 1000),
+    };
     try {
       const resp = await fetch(callbackUrl, {
         method: "POST",
@@ -52,7 +59,7 @@ export async function postCallbackWithRetry(
           "Content-Type": "application/json",
           Authorization: `Bearer ${outboundToken}`,
         },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(effectivePayload),
       });
       if (resp.ok) {
         return { ok: true, status: resp.status };

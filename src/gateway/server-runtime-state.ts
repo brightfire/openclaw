@@ -47,6 +47,7 @@ import {
 import type { ReadinessChecker } from "./server/readiness.js";
 import type { GatewayTlsRuntime } from "./server/tls.js";
 import type { GatewayWsClient } from "./server/ws-types.js";
+import { initXgw } from "./xgw/inbound.js";
 
 export async function createGatewayRuntimeState(params: {
   cfg: import("../config/config.js").OpenClawConfig;
@@ -167,6 +168,12 @@ export async function createGatewayRuntimeState(params: {
         "⚠️  gateway.controlUi.dangerouslyAllowHostHeaderOriginFallback=true is enabled. " +
           "Host-header origin fallback weakens origin checks and should only be used as break-glass.",
       );
+    }
+    // Initialize XGW (load persisted state, start prune interval)
+    try {
+      initXgw();
+    } catch {
+      // XGW init failure is non-fatal; will fall back to defaults
     }
     const httpServers: HttpServer[] = [];
     const httpBindHosts: string[] = [];
