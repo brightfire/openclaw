@@ -350,6 +350,13 @@ export async function handleXgwHook(req: IncomingMessage, res: ServerResponse): 
 
   const cfg = getXgwConfig();
 
+  // Circular self-send detection: reject if the authenticated peer is ourselves.
+  const selfName = cfg.gatewayName;
+  if (selfName && peer === selfName) {
+    sendJson(res, 400, { ok: false, status: "error", error: "circular send: cannot send to self" });
+    return true;
+  }
+
   // Parse body
   const body = await readJsonBody(req, 1048576);
   if (!body.ok) {
@@ -379,8 +386,8 @@ export async function handleXgwHook(req: IncomingMessage, res: ServerResponse): 
   const isAsync = p.async === true;
   const isMultiTurn = p.multiTurn === true;
 
-  // TODO: implement multi-turn cross-gateway ping-pong loop (DESIGN.md §4.3)
-  // async=true and multiTurn=true are mutually exclusive (DESIGN.md §4.4)
+  // async=true and multiTurn=true are mutually exclusive (DESIGN.md §4.4);
+  // multi-turn loop runs on the sending gateway, not here (DESIGN.md §4.3).
   if (isAsync && isMultiTurn) {
     sendJson(res, 400, {
       ok: false,
