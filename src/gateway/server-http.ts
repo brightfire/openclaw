@@ -91,6 +91,7 @@ let sessionHistoryHttpModulePromise:
   | undefined;
 let sessionKillHttpModulePromise: Promise<typeof import("./session-kill-http.js")> | undefined;
 let toolsInvokeHttpModulePromise: Promise<typeof import("./tools-invoke-http.js")> | undefined;
+let xgwHttpModulePromise: Promise<typeof import("./xgw/inbound.js")> | undefined;
 
 function getBundledChannelsModule() {
   bundledChannelsModulePromise ??= import("../channels/plugins/bundled.js");
@@ -140,6 +141,11 @@ function getSessionKillHttpModule() {
 function getToolsInvokeHttpModule() {
   toolsInvokeHttpModulePromise ??= import("./tools-invoke-http.js");
   return toolsInvokeHttpModulePromise;
+}
+
+function getXgwHttpModule() {
+  xgwHttpModulePromise ??= import("./xgw/inbound.js");
+  return xgwHttpModulePromise;
 }
 
 type HookDispatchers = {
@@ -255,6 +261,10 @@ function isOpenResponsesPath(pathname: string): boolean {
 
 function isToolsInvokePath(pathname: string): boolean {
   return pathname === "/tools/invoke";
+}
+
+function isXgwPath(pathname: string): boolean {
+  return pathname === "/hooks/xgw" || pathname === "/hooks/xgw/callback";
 }
 
 function isSessionKillPath(pathname: string): boolean {
@@ -971,6 +981,21 @@ export function createGatewayHttpServer(opts: {
               allowRealIpFallback,
               rateLimiter,
             }),
+        });
+      }
+      if (isXgwPath(requestPath)) {
+        requestStages.push({
+          name: "xgw",
+          run: async () => {
+            const xgw = await getXgwHttpModule();
+            if (requestPath === "/hooks/xgw") {
+              return xgw.handleXgwHook(req, res);
+            }
+            if (requestPath === "/hooks/xgw/callback") {
+              return xgw.handleXgwCallback(req, res);
+            }
+            return false;
+          },
         });
       }
       if (isSessionKillPath(requestPath)) {
