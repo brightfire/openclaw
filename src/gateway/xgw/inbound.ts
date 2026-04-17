@@ -32,6 +32,7 @@ import {
   markCallbackExpired,
   pruneExpired,
   refreshExposure,
+  removeExposure,
   saveState,
   setExposure,
   validateTimestamp,
@@ -164,12 +165,7 @@ async function spawnWorker(
     });
     return { ok: true, runId, status: "ok", sessionKey };
   } catch {
-    setExposure(sessionKey, {
-      correlationId,
-      allowedPeer: peer,
-      createdAt: now,
-      expiresAt: now, // expire immediately on failure
-    });
+    removeExposure(sessionKey);
     saveState();
     return { ok: false, status: "error", error: "internal error" };
   }
@@ -376,8 +372,8 @@ export async function handleXgwHook(req: IncomingMessage, res: ServerResponse): 
   const message = typeof p.message === "string" ? p.message.trim() : "";
   const sourceSessionKey = typeof p.sourceSessionKey === "string" ? p.sourceSessionKey : "";
   const sourceChannel = typeof p.sourceChannel === "string" ? p.sourceChannel : undefined;
-  const correlationId = typeof p.correlationId === "string" ? p.correlationId : randomUUID();
-  const nonce = typeof p.nonce === "string" ? p.nonce : randomUUID();
+  const correlationId = p.correlationId as string | undefined;
+  const nonce = p.nonce as string | undefined;
   const timestamp = typeof p.timestamp === "number" ? p.timestamp : 0;
   const timeoutSeconds =
     typeof p.timeoutSeconds === "number" && Number.isFinite(p.timeoutSeconds)
@@ -388,6 +384,19 @@ export async function handleXgwHook(req: IncomingMessage, res: ServerResponse): 
 
   // async=true and multiTurn=true are mutually exclusive (DESIGN.md §4.4);
   // multi-turn loop runs on the sending gateway, not here (DESIGN.md §4.3).
+  if (!correlationId || !correlationId.length) {
+    sendJson(res, 400, {
+      ok: false,
+      status: "error",
+      error: "missing required field: correlationId",
+    });
+    return true;
+  }
+  if (!nonce || !nonce.length) {
+    sendJson(res, 400, { ok: false, status: "error", error: "missing required field: nonce" });
+    return true;
+  }
+
   if (isAsync && isMultiTurn) {
     sendJson(res, 400, {
       ok: false,
@@ -451,7 +460,6 @@ export async function handleXgwHook(req: IncomingMessage, res: ServerResponse): 
         correlationId,
         cbTimeout * 1000,
         peer,
-        sourceSessionKey || "unknown",
       ).catch(() => {
         // errors logged internally
       });
@@ -516,7 +524,6 @@ async function handleAsyncCallbackOutbound(
   correlationId: string,
   timeoutMs: number,
   peer: string,
-  _sourceSessionKey: string,
 ): Promise<void> {
   const subagent = getSubagent();
   if (!subagent) {
@@ -577,10 +584,9 @@ async function handleAsyncCallbackOutbound(
   const result = await postCallbackWithRetry(peerUrl, outboundToken, callbackPayload);
 
   if (!result.ok) {
-    console.error(
-      `[xgw] callback delivery permanently failed for %s after retries: %s`,
-      correlationId,
-      result.error,
+    process.stderr.write(
+      `[xgw] callback delivery permanently failed for ${correlationId} after retries: ${result.error ?? "unknown"}
+`,
     );
     // Caller-side record will be pruned/expired by the caller's own pruner.
   }
@@ -634,7 +640,7 @@ export async function handleXgwCallback(
   const errorMsg = typeof p.error === "string" ? p.error : "";
   const sessionKey = typeof p.sessionKey === "string" ? p.sessionKey : "";
   const nonce = typeof p.nonce === "string" ? p.nonce : "";
-  const timestamp = typeof p.timestamp === "number" ? p.timestamp : 0;
+  const timestamp = p.timestamp as number | undefined;
 
   if (!correlationId) {
     sendJson(res, 400, { ok: false, error: "missing correlationId" });
@@ -647,7 +653,7 @@ export async function handleXgwCallback(
     return true;
   }
 
-  if (timestamp && !validateTimestamp(timestamp)) {
+  if (timestamp !== undefined && !validateTimestamp(timestamp)) {
     sendJson(res, 410, { ok: false, error: "request expired" });
     return true;
   }
@@ -730,10 +736,9 @@ export async function handleXgwCallback(
     }
     saveState();
   } catch (err) {
-    console.error(
-      `[xgw] callback delivery failed for %s: %s`,
-      correlationId,
-      formatErrorMessage(err),
+    process.stderr.write(
+      `[xgw] callback delivery failed for ${correlationId}: ${formatErrorMessage(err)}
+`,
     );
     // Return 200 to prevent peer retries that would also fail
     sendJson(res, 200, { ok: true, status: "delivery_failed" });
