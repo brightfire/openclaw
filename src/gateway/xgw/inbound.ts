@@ -198,7 +198,7 @@ async function dispatchDirect(
 ): Promise<XgwInboundResponse> {
   const exposure = getExposure(sessionKey);
   if (!exposure) {
-    return { ok: false, status: "not_found", error: "unknown session key" };
+    return { ok: false, status: "forbidden", error: "session not accessible" };
   }
   if (exposure.allowedPeer !== peer) {
     return { ok: false, status: "forbidden", error: "session not accessible" };
@@ -337,6 +337,16 @@ function readJsonBody(
 export async function handleXgwHook(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
   if (req.method !== "POST") {
     return false;
+  }
+
+  // Check enabled
+  if (getXgwConfig().enabled !== true) {
+    sendJson(res, 503, {
+      ok: false,
+      status: "error",
+      error: "cross-gateway messaging is not enabled",
+    });
+    return true;
   }
 
   // Parse auth header
@@ -492,8 +502,7 @@ export async function handleXgwHook(req: IncomingMessage, res: ServerResponse): 
   if (sessionKey.startsWith(XGW_SESSION_PREFIX)) {
     const result = await dispatchDirect(sessionKey, message, peer, timeoutSeconds, cfg);
     if (!result.ok) {
-      const httpStatus =
-        result.status === "timeout" ? 504 : result.status === "not_found" ? 404 : 403;
+      const httpStatus = result.status === "timeout" ? 504 : 403;
       sendJson(res, httpStatus, result as unknown as Record<string, unknown>);
     } else {
       sendJson(res, 200, result as unknown as Record<string, unknown>);
@@ -646,6 +655,16 @@ export async function handleXgwCallback(
 ): Promise<boolean> {
   if (req.method !== "POST") {
     return false;
+  }
+
+  // Check enabled
+  if (getXgwConfig().enabled !== true) {
+    sendJson(res, 503, {
+      ok: false,
+      status: "error",
+      error: "cross-gateway messaging is not enabled",
+    });
+    return true;
   }
 
   // Auth
