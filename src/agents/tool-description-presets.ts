@@ -28,6 +28,7 @@ export function describeSessionsSendTool(): string {
   return [
     "Send a message into another visible session by sessionKey or label.",
     "Use this to delegate follow-up work to an existing session; waits for the target run and returns the updated assistant reply when available.",
+    "For cross-gateway messaging to remote fleet peers, use @<gateway>/session keys (see cross-gateway skill).",
   ].join(" ");
 }
 
