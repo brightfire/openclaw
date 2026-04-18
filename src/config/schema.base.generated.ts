@@ -22719,6 +22719,44 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
           "Plugin system controls for enabling extensions, constraining load scope, configuring entries, and tracking installs. Keep plugin policy explicit and least-privilege in production environments.",
       },
     },
+      fleet: {
+        type: "object",
+        properties: {
+          crossGateway: {
+            type: "object",
+            properties: {
+              enabled: { type: "boolean" },
+              gatewayName: { type: "string" },
+              agentId: { type: "string" },
+              maxConcurrent: { type: "integer" },
+              maxPendingAsync: { type: "integer" },
+              exposureTtlSeconds: { type: "integer" },
+              acceptedTokens: {
+                type: "object",
+                additionalProperties: { type: "string" },
+              },
+              peers: {
+                type: "object",
+                additionalProperties: {
+                  type: "object",
+                  properties: {
+                    url: { type: "string" },
+                    token: { type: "string" },
+                  },
+                  additionalProperties: false,
+                },
+              },
+            },
+            additionalProperties: false,
+            title: "Cross-Gateway (XGW) Configuration",
+            description: "Cross-gateway messaging configuration. Enables dispatching sessions_send calls to remote OpenClaw instances.",
+          },
+        },
+        additionalProperties: false,
+        title: "Fleet",
+        description: "Fleet configuration for multi-gateway deployments.",
+      },
+    },
     required: ["commands"],
     additionalProperties: false,
     title: "OpenClawConfig",
