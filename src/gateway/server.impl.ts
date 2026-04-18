@@ -884,6 +884,12 @@ export async function startGatewayServer(
       clearSecretsRuntimeSnapshot,
       closeMcpServer: closeMcpLoopbackServerOnDemand,
     });
+    // Shut down XGW lifecycle if it was enabled at startup
+    if ((cfgAtStart as { fleet?: { crossGateway?: { enabled?: boolean } } }).fleet?.crossGateway?.enabled === true) {
+      await import("./xgw/inbound.js")
+        .then(({ shutdownXgw }) => shutdownXgw())
+        .catch(() => {});
+    }
   };
   const { getRuntimeSnapshot, startChannels, startChannel, stopChannel, markChannelLoggedOut } =
     channelManager;
@@ -1459,6 +1465,11 @@ export async function startGatewayServer(
         cron: runtimeState.cronState.cron,
         logCron,
       });
+      // Initialize XGW lifecycle if cross-gateway is enabled
+      if ((cfgAtStart as { fleet?: { crossGateway?: { enabled?: boolean } } }).fleet?.crossGateway?.enabled === true) {
+        const { initXgw } = await import("./xgw/inbound.js");
+        initXgw();
+      }
     }
     startupTrace.detail("memory.post-ready", collectProcessMemoryUsageMb());
   } catch (err) {
