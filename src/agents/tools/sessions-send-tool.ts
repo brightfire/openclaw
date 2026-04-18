@@ -48,16 +48,19 @@ async function startAgentRun(params: {
   runId: string;
   sendParams: Record<string, unknown>;
   sessionKey: string;
-}): Promise<{ ok: true; runId: string } | { ok: false; result: ReturnType<typeof jsonResult> }> {
+  timeoutSeconds: number;
+}): Promise<{ ok: true; runId: string; status?: string; reply?: string | null } | { ok: false; result: ReturnType<typeof jsonResult> }> {
   try {
-    const response = await params.callGateway<{ runId: string }>({
+    const response = await params.callGateway<{ runId: string; status?: string; reply?: string | null }>({
       method: "agent",
       params: params.sendParams,
-      timeoutMs: 10_000,
+      timeoutMs: params.timeoutSeconds * 1000 + 2000,
     });
     return {
       ok: true,
       runId: typeof response?.runId === "string" && response.runId ? response.runId : params.runId,
+      status: response?.status,
+      reply: response?.reply,
     };
   } catch (err) {
     const messageText =
@@ -309,12 +312,13 @@ export function createSessionsSendTool(opts?: {
           runId,
           sendParams,
           sessionKey: displayKey,
+          timeoutSeconds: 0,
         });
         if (!start.ok) {
           return start.result;
         }
         runId = start.runId;
-        startA2AFlow(undefined, runId);
+        startA2AFlow(start.reply ?? undefined, runId);
         return jsonResult({
           runId,
           status: "accepted",
@@ -328,11 +332,33 @@ export function createSessionsSendTool(opts?: {
         runId,
         sendParams,
         sessionKey: displayKey,
+        timeoutSeconds,
       });
       if (!start.ok) {
         return start.result;
       }
       runId = start.runId;
+
+      if (start.status === "ok" && typeof start.reply === "string") {
+        startA2AFlow(start.reply);
+        return jsonResult({
+          runId,
+          status: "ok",
+          reply: start.reply,
+          sessionKey: displayKey,
+          delivery,
+        });
+      }
+      if (start.status === "accepted") {
+        startA2AFlow(start.reply ?? undefined, runId);
+        return jsonResult({
+          runId,
+          status: "accepted",
+          sessionKey: displayKey,
+          delivery,
+        });
+      }
+
       const result = await waitForAgentRunAndReadUpdatedAssistantReply({
         runId,
         sessionKey: resolvedKey,
