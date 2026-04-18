@@ -24,6 +24,23 @@ Each active patch has a **canonical branch** (`brightfire/<name>`) that contains
 | trusted-proxy-loopback-password-fallback | `brightfire/trusted-proxy-loopback` | `58f1404caf` |
 | control-ui-configurable-title | `brightfire/control-ui-title` | `c87162eba5` |
 
+## Versioning
+
+Brightfire releases use a `-bf<N>` suffix appended to the upstream version:
+
+```
+2026.4.15-bf1   ← first Brightfire release on top of upstream 2026.4.15
+2026.4.15-bf2   ← second Brightfire release
+2026.4.16-bf1   ← first Brightfire release on top of upstream 2026.4.16
+```
+
+The version lives in `package.json`. Before each build+release:
+1. Bump the `-bf<N>` counter on a `chore/bump-bf<N>` branch
+2. PR + merge to `stable/*`
+3. Build → tarball will be `openclaw-2026.4.15-bf<N>.tgz`
+
+When pulling a new upstream release, reset the counter to `-bf1`.
+
 ## Branch hygiene rules
 
 - **One canonical branch per atomic feature/fix.** If a fix requires changes to multiple files (e.g. Zod schema + generated schema + feature code), those ALL belong in the same branch and the same squashed commit.
