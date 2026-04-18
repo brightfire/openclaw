@@ -82,6 +82,7 @@ import {
   waitForTerminalGatewayDedupe,
 } from "./agent-wait-dedupe.js";
 import { normalizeRpcAttachmentsToChatAttachments } from "./attachment-normalize.js";
+import { handleCrossGatewayDispatch } from "./sessions-xgw.js";
 import type { GatewayRequestHandlerOptions, GatewayRequestHandlers } from "./types.js";
 
 const RESET_COMMAND_RE = /^\/(new|reset)(?:\s+([\s\S]*))?$/i;
@@ -278,6 +279,17 @@ function dispatchAgentRunFromGateway(params: {
 
 export const agentHandlers: GatewayRequestHandlers = {
   agent: async ({ params, respond, context, client, isWebchatConnect }) => {
+    // ── Cross-gateway dispatch interception ──
+    const rawSessionKeyEarly = (params as { sessionKey?: unknown }).sessionKey;
+    if (typeof rawSessionKeyEarly === "string" && rawSessionKeyEarly.startsWith("@")) {
+      await handleCrossGatewayDispatch({
+        params: { ...params, key: rawSessionKeyEarly },
+        respond,
+        context,
+      });
+      return;
+    }
+
     const p = params;
     if (!validateAgentParams(p)) {
       respond(

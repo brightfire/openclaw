@@ -27,13 +27,13 @@ instead of a local session. The gateway handles wire transport and auth transpar
 **Dispatcher entry point** (new conversation):
 
 ```
-@ember/skynet
+@ember/receptionist
 ```
 
 **Direct session** (follow-up to an existing worker):
 
 ```
-@ember/skynet:abc123
+@ember/receptionist:abc123
 ```
 
 Use the dispatcher entry point to start a conversation. Use the direct session key
@@ -53,7 +53,7 @@ for follow-up turns.
 
 ```json
 {
-  "sessionKey": "@ember/skynet",
+  "sessionKey": "@ember/receptionist",
   "message": "What is the deploy status?"
 }
 ```
@@ -67,7 +67,7 @@ your session as a new message when it completes (your turn ends, resumes later).
 
 ```json
 {
-  "sessionKey": "@ember/skynet",
+  "sessionKey": "@ember/receptionist",
   "message": "Analyze Q1 revenue data in detail",
   "async": true
 }
@@ -88,18 +88,18 @@ as a new message to resume your turn.
 ### Multi-Turn (follow-up)
 
 After a sync call returns, the response includes a remote `sessionKey`
-(e.g. `skynet:abc123`). Prefix it with `@gateway/` to send follow-up messages to the
+(e.g. `receptionist:abc123`). Prefix it with `@gateway/` to send follow-up messages to the
 same worker session:
 
 ```json
 {
-  "sessionKey": "@ember/skynet:abc123",
+  "sessionKey": "@ember/receptionist:abc123",
   "message": "What about the previous release?"
 }
 ```
 
 The worker session is kept alive for a short TTL after each exchange.
-If it has expired, send a new request to `@ember/skynet` to start a fresh session.
+If it has expired, send a new request to `@ember/receptionist` to start a fresh session.
 
 ## First Response
 
@@ -108,12 +108,12 @@ The sync response always includes a `sessionKey` for the spawned worker:
 ```json
 {
   "ok": true,
-  "sessionKey": "skynet:abc123",
+  "sessionKey": "receptionist:abc123",
   "reply": "Deploy is at 80%, ETA 10 minutes."
 }
 ```
 
-Store `skynet:abc123` and prefix it with `@ember/` for direct follow-up turns.
+Store `receptionist:abc123` and prefix it with `@ember/` for direct follow-up turns.
 
 ## Security
 
@@ -125,7 +125,7 @@ Configure peers with HTTPS URLs for security.
 
 ```json
 {
-  "sessionKey": "@ember/skynet",
+  "sessionKey": "@ember/receptionist",
   "message": "Summarize the latest build logs for the c2-warehouse project."
 }
 ```
@@ -134,7 +134,7 @@ Response:
 
 ```json
 {
-  "sessionKey": "skynet:f3a9c2",
+  "sessionKey": "receptionist:f3a9c2",
   "reply": "The latest build completed at 14:32 UTC with 0 errors..."
 }
 ```
@@ -143,17 +143,17 @@ Follow-up:
 
 ```json
 {
-  "sessionKey": "@ember/skynet:f3a9c2",
+  "sessionKey": "@ember/receptionist:f3a9c2",
   "message": "Which models took the longest?"
 }
 ```
 
 ## Error Reference
 
-| Status    | Meaning                                    |
-|-----------|--------------------------------------------|
-| `error`   | Gateway unreachable, unknown peer, no token|
-| `forbidden` | Session not exposed or expired           |
-| `timeout` | Remote gateway did not reply in time       |
+| Status      | Meaning                                     |
+| ----------- | ------------------------------------------- |
+| `error`     | Gateway unreachable, unknown peer, no token |
+| `forbidden` | Session not exposed or expired              |
+| `timeout`   | Remote gateway did not reply in time        |
 
-On `forbidden`, send a fresh request to `@gateway/skynet` to start a new session.
+On `forbidden`, send a fresh request to `@gateway/receptionist` to start a new session.
