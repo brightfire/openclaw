@@ -200,12 +200,22 @@ changelog/fragments/
 .openclaw-config-doc-cache/
 openclaw-path-alias-*/
 /.pi/
-/C:\\openclaw/
+/C:\openclaw/
 *.log
 *.tmp
 *.heapsnapshot
 *.cpuprofile
 *.prof
+
+# Build artifacts and generated files that should never be committed
+*.tgz
+*-rev-*.md
+*-review-*.md
+xgw-rev-*.md
+xgw-review-*.md
+*-PLAN.md
+build-learnings.html
+dream-diary-preview*.html
 test/fixtures/openclaw-vitest-unit-report.json
 analysis/
 .artifacts/qa-e2e/
