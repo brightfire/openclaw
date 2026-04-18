@@ -20,11 +20,26 @@ Each active patch has a **canonical branch** (`brightfire/<name>`) that contains
 |---|---|---|
 | context-estimate-compaction | `brightfire/context-estimate-compaction` | `8929fa251a` |
 | xgw-cross-gateway | `brightfire/xgw` | `4fdd06fcca` |
-| slack-mrkdwn-formatting-fix | `brightfire/slack-mrkdwn` | (see below) |
-| trusted-proxy-loopback-password-fallback | `brightfire/trusted-proxy-loopback` | (see below) |
-| control-ui-configurable-title | `brightfire/control-ui-title` | (see below) |
+| slack-mrkdwn-formatting-fix | `brightfire/slack-mrkdwn` | `f3adf06a84` |
+| trusted-proxy-loopback-password-fallback | `brightfire/trusted-proxy-loopback` | `58f1404caf` |
+| control-ui-configurable-title | `brightfire/control-ui-title` | `c87162eba5` |
 
-> **Note:** Canonical branches for slack-mrkdwn, trusted-proxy-loopback, and control-ui-title still need to be created. Currently these exist only in the squashed `stable/v2026.4.15` history.
+## Versioning
+
+Brightfire releases use a `-bf<N>` suffix appended to the upstream version:
+
+```
+2026.4.15-bf1   ← first Brightfire release on top of upstream 2026.4.15
+2026.4.15-bf2   ← second Brightfire release
+2026.4.16-bf1   ← first Brightfire release on top of upstream 2026.4.16
+```
+
+The version lives in `package.json`. Before each build+release:
+1. Bump the `-bf<N>` counter on a `chore/bump-bf<N>` branch
+2. PR + merge to `stable/*`
+3. Build → tarball will be `openclaw-2026.4.15-bf<N>.tgz`
+
+When pulling a new upstream release, reset the counter to `-bf1`.
 
 ## Branch hygiene rules
 
@@ -119,8 +134,8 @@ Drop when upstream OpenClaw ships cross-gateway messaging natively.
 - **Status:** active
 - **Reapply:** yes
 - **Stable branch first merged into:** `stable/v2026.4.15`
-- **Canonical branch:** `brightfire/trusted-proxy-loopback` (to be created)
-- **Primary commit in stable:** `03031eb723`
+- **Canonical branch:** `brightfire/trusted-proxy-loopback`
+- **Squashed commit:** `58f1404caf`
 
 ### Rationale
 
@@ -150,8 +165,8 @@ Drop when upstream restores a local auth fallback for trusted-proxy mode.
 - **Status:** active
 - **Reapply:** yes
 - **Stable branch first merged into:** `stable/v2026.4.15`
-- **Canonical branch:** `brightfire/slack-mrkdwn` (to be created)
-- **Primary commit in stable:** `81e405249a`
+- **Canonical branch:** `brightfire/slack-mrkdwn`
+- **Squashed commit:** `f3adf06a84`
 
 ### Rationale
 
@@ -178,8 +193,8 @@ Drop when upstream fixes the mrkdwn double-conversion.
 - **Status:** active
 - **Reapply:** yes
 - **Stable branch first merged into:** `stable/v2026.4.15`
-- **Canonical branch:** `brightfire/control-ui-title` (to be created)
-- **Primary commits in stable:** `15ea179faf` (config option) + `9c59279895` (stable placeholder + client-side fix)
+- **Canonical branch:** `brightfire/control-ui-title`
+- **Squashed commit:** `c87162eba5`
 
 ### Rationale
 
