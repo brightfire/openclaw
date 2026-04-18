@@ -112,6 +112,8 @@ export type GatewayControlUiConfig = {
   allowInsecureAuth?: boolean;
   /** DANGEROUS: Disable device identity checks for the Control UI (default: false). */
   dangerouslyDisableDeviceAuth?: boolean;
+  /** Custom HTML page title. Defaults to the assistant name, then 'OpenClaw Control'. */
+  title?: string;
 };
 
 export type GatewayAuthMode = "none" | "token" | "password" | "trusted-proxy";

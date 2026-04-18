@@ -156,8 +156,8 @@ Drop when upstream fixes the mrkdwn double-conversion. Check whether `inboundFor
 
 ## cli-health-probe-fallback
 
-- **Status:** active
-- **Reapply:** yes
+- **Status:** superseded
+- **Reapply:** no
 - **Stable branch first merged into:** `stable/v2026.4.15`
 - **Source PR:** (part of #6 branch)
 - **Feature branch:** `feature/slack-mrkdwn-formatting-fix`
@@ -187,7 +187,7 @@ Drop when upstream either:
 - Fixes the WS probe to work in trusted-proxy mode, OR
 - Adds an HTTP health fallback natively
 
-Note: this is a symptom-level fix. The root cause (loopback rejection in trusted-proxy) is addressed by the `trusted-proxy-loopback-password-fallback` patch below. If that patch is upstreamed, the WS probe may start working again, but this HTTP fallback is still useful as defense-in-depth.
+Superseded by `trusted-proxy-loopback-password-fallback` which fixes the root cause — loopback password auth fallback in trusted-proxy mode. With that patch, the WS probe authenticates normally and this HTTP fallback is unnecessary.
 
 ---
 
@@ -195,7 +195,7 @@ Note: this is a symptom-level fix. The root cause (loopback rejection in trusted
 
 - **Status:** active
 - **Reapply:** yes
-- **Stable branch first merged into:** (pending merge into `stable/v2026.4.15`)
+- **Stable branch first merged into:** `stable/v2026.4.15`
 - **Source PR:** #7
 - **Feature branch:** `fix/trusted-proxy-loopback-password-fallback`
 - **Primary commit:** `03031eb723`
@@ -234,3 +234,39 @@ pnpm test -- "src/gateway/auth.test.ts"
 ### Drop when
 
 Drop when upstream restores a local auth fallback for trusted-proxy mode. This is a clear upstream bug — loopback connections have no auth path in trusted-proxy mode. Likely to be fixed upstream once reported.
+
+---
+
+## control-ui-configurable-title
+
+- **Status:** active
+- **Reapply:** yes
+- **Stable branch first merged into:** (pending merge into `stable/v2026.4.15`)
+- **Feature branch:** `feature/control-ui-configurable-title`
+- **Primary commit:** (pending)
+
+### Rationale
+
+The Control UI HTML title is hardcoded to "OpenClaw Control" in `ui/index.html`. For branded deployments (e.g. "Aster"), the title should be configurable.
+
+Adds `gateway.controlUi.title` config option. The title resolution priority is:
+1. `gateway.controlUi.title` (explicit config)
+2. Assistant identity name (from `ui.assistant.name` or agent IDENTITY.md)
+3. "OpenClaw Control" (default)
+
+The gateway replaces the `<title>` tag when serving `index.html`. Also exposes the title in the bootstrap config JSON for client-side use.
+
+### Files touched
+
+- `src/gateway/control-ui.ts` (title resolution + HTML replacement)
+- `src/gateway/control-ui-contract.ts` (ControlUiBootstrapConfig type)
+- `src/config/types.gateway.ts` (GatewayControlUiConfig type)
+- `src/config/schema.base.generated.ts` (config schema + metadata)
+
+### Upgrade guidance
+
+Cherry-pick the commit. Unlikely to conflict unless the `controlUi` config schema or `serveResolvedIndexHtml` function has changed.
+
+### Drop when
+
+Drop when upstream adds a configurable Control UI title.
