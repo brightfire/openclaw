@@ -2,7 +2,7 @@
  * Cross-Gateway (XGW) shared types for OpenClaw.
  *
  * Implements the design from ~/.openclaw/projects/cross-gateway-xgw/DESIGN.md
- * and the proven implementation in ~/.openclaw/extensions/skynet/index.ts.
+ * and the proven implementation in ~/.openclaw/extensions/receptionist/index.ts.
  */
 
 import type { FleetConfig } from "../../config/types.gateway.js";
@@ -14,7 +14,7 @@ export interface XgwConfig extends NonNullable<FleetConfig["crossGateway"]> {
   enabled?: boolean;
   /** This gateway's name (e.g. "aster", "ember"). */
   gatewayName?: string;
-  /** Agent ID to use for cross-gateway worker sessions (default: "skynet"). */
+  /** Agent ID to use for cross-gateway worker sessions (default: gateway default agent). */
   agentId?: string;
   /** Max simultaneous XGW sessions per gateway. */
   maxConcurrent?: number;
@@ -134,6 +134,6 @@ export const XGW_CALLBACK_PATH = "/xgateway/callback";
 
 /**
  * Configured XGW session key for agents to use as a cross-gateway entry point.
- * e.g. "@ember/skynet" -> gateway=ember, sessionKey=skynet
+ * e.g. "@ember/receptionist" -> gateway=ember, sessionKey=receptionist
  */
-export const XGW_DISPATCHER_KEY = "skynet";
+export const XGW_DISPATCHER_KEY = "receptionist";

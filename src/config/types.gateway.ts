@@ -469,7 +469,7 @@ export type XgwConfig = {
   enabled?: boolean;
   /** This gateway's short name (e.g. "aster", "ember"). */
   gatewayName?: string;
-  /** Agent ID to use for cross-gateway worker sessions (default: "skynet"). */
+  /** Agent ID to use for cross-gateway worker sessions (default: gateway default agent). */
   agentId?: string;
   /** Max simultaneous XGW worker sessions (default: 10). */
   maxConcurrent?: number;

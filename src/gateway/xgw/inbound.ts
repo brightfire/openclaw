@@ -5,7 +5,7 @@
  * POST /xgateway/callback — Deliver an async callback result.
  *
  * This module contains the core logic previously distributed across the Skynet
- * plugin (~/.openclaw/extensions/skynet/) and fleet-upgrade hot-patches.
+ * plugin (~/.openclaw/extensions/receptionist/) and fleet-upgrade hot-patches.
  */
 
 import { randomUUID, timingSafeEqual } from "node:crypto";
@@ -118,7 +118,7 @@ async function spawnWorker(
   peer: string,
   cfg: XgwConfig,
 ): Promise<XgwInboundResponse> {
-  const agentId = cfg.agentId ?? "skynet";
+  const agentId = cfg.agentId ?? undefined;
   const subagent = getSubagent();
   if (!subagent) {
     return { ok: false, status: "error", error: "internal error" };
@@ -420,8 +420,8 @@ export async function handleXgwHook(req: IncomingMessage, res: ServerResponse): 
     return true;
   }
 
-  // === Dispatcher path: sessionKey === "skynet" ===
-  if (sessionKey === "skynet") {
+  // === Dispatcher path: sessionKey === "receptionist" ===
+  if (sessionKey === "receptionist") {
     // Spawn new worker
     const result = await spawnWorker(
       correlationId,

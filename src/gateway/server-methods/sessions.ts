@@ -446,7 +446,7 @@ async function handleSessionSend(params: {
   // ── Cross-gateway dispatch: key starts with "@" ──
   // Check before schema validation so callers can include provenance fields
   // (callerSessionKey, callerChannel) that aren't in SessionsSendParamsSchema.
-  // E.g. "@ember/skynet" or "@ember/xgw:abc123"
+  // E.g. "@ember/receptionist" or "@ember/xgw:abc123"
   const rawKeyEarly = (params.params as { key?: unknown }).key;
   if (typeof rawKeyEarly === "string" && rawKeyEarly.startsWith("@")) {
     await handleCrossGatewayDispatch({
