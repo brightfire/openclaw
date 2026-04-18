@@ -1,8 +1,8 @@
 /**
  * Inbound XGW endpoint handler.
  *
- * POST /hooks/xgw — Dispatch a cross-gateway message into a session.
- * POST /hooks/xgw/callback — Deliver an async callback result.
+ * POST /xgateway — Dispatch a cross-gateway message into a session.
+ * POST /xgateway/callback — Deliver an async callback result.
  *
  * This module contains the core logic previously distributed across the Skynet
  * plugin (~/.openclaw/extensions/skynet/) and fleet-upgrade hot-patches.
@@ -314,7 +314,7 @@ function readJsonBody(
   });
 }
 
-// ── Main handler: POST /hooks/xgw ───────────────────────────────────
+// ── Main handler: POST /xgateway ───────────────────────────────────
 
 export async function handleXgwHook(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
   if (req.method !== "POST") {
@@ -514,7 +514,7 @@ export async function handleXgwHook(req: IncomingMessage, res: ServerResponse): 
  * Fire-and-forget outbound async callback delivery (receiver side).
  *
  * Waits for the local worker session to complete, extracts its reply, then
- * POSTs the callback result back to the calling gateway at /hooks/xgw/callback
+ * POSTs the callback result back to the calling gateway at /xgateway/callback
  * with exponential-backoff retry.  The receiver does NOT own a pendingCallback
  * record — the caller (Gateway A) created that record locally before dispatching.
  */
@@ -592,7 +592,7 @@ async function handleAsyncCallbackOutbound(
   }
 }
 
-// ── Callback handler: POST /hooks/xgw/callback ─────────────────────
+// ── Callback handler: POST /xgateway/callback ─────────────────────
 
 export async function handleXgwCallback(
   req: IncomingMessage,
