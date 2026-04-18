@@ -85,7 +85,12 @@ describe("handleCrossGatewayDispatch", () => {
     });
 
     await handleCrossGatewayDispatch({
-      params: { key: "@ember/skynet", message: "ping", timeoutMs: 9500, idempotencyKey: "idem-1" },
+      params: {
+        key: "@ember/receptionist",
+        message: "ping",
+        timeoutMs: 9500,
+        idempotencyKey: "idem-1",
+      },
       respond,
       context: {} as never,
     });
@@ -93,7 +98,7 @@ describe("handleCrossGatewayDispatch", () => {
     // Without an explicit callerSessionKey, falls back to resolveMainSessionKey
     expect(mockXgwOutboundDispatch).toHaveBeenCalledWith(
       "ember",
-      "skynet",
+      "receptionist",
       "ping",
       expect.any(Object),
       {
@@ -108,7 +113,7 @@ describe("handleCrossGatewayDispatch", () => {
       {
         runId: "corr-1",
         status: "ok",
-        sessionKey: "@ember/skynet",
+        sessionKey: "@ember/receptionist",
         remoteSessionKey: "xgw:abc123",
         reply: "remote pong",
       },
@@ -127,7 +132,7 @@ describe("handleCrossGatewayDispatch", () => {
 
     await handleCrossGatewayDispatch({
       params: {
-        key: "@ember/skynet",
+        key: "@ember/receptionist",
         message: "hi",
         callerSessionKey: "agent:main:subagent:abc",
         callerChannel: "slack",
@@ -138,7 +143,7 @@ describe("handleCrossGatewayDispatch", () => {
 
     expect(mockXgwOutboundDispatch).toHaveBeenCalledWith(
       "ember",
-      "skynet",
+      "receptionist",
       "hi",
       expect.any(Object),
       {
@@ -162,7 +167,7 @@ describe("handleCrossGatewayDispatch", () => {
 
     await handleCrossGatewayDispatch({
       params: {
-        key: "@ember/skynet",
+        key: "@ember/receptionist",
         message: "test",
         idempotencyKey: "local-idem-key",
       },
@@ -188,7 +193,7 @@ describe("handleCrossGatewayDispatch", () => {
     });
 
     await handleCrossGatewayDispatch({
-      params: { key: "@ember/skynet", message: "seq test" },
+      params: { key: "@ember/receptionist", message: "seq test" },
       respond,
       context: {} as never,
     });
@@ -210,7 +215,7 @@ describe("handleCrossGatewayDispatch", () => {
     });
 
     await handleCrossGatewayDispatch({
-      params: { key: "@ember/skynet", message: "no seq" },
+      params: { key: "@ember/receptionist", message: "no seq" },
       respond,
       context: {} as never,
     });
@@ -229,7 +234,7 @@ describe("handleCrossGatewayDispatch", () => {
     });
 
     await handleCrossGatewayDispatch({
-      params: { key: "@ember/skynet", message: "ping" },
+      params: { key: "@ember/receptionist", message: "ping" },
       respond,
       context: {} as never,
     });
@@ -255,7 +260,7 @@ describe("handleCrossGatewayDispatch", () => {
 
     await handleCrossGatewayDispatch({
       params: {
-        key: "@ember/skynet",
+        key: "@ember/receptionist",
         message: "async task",
         async: true,
         callbackTimeoutMs: 120_000,
@@ -280,7 +285,7 @@ describe("handleCrossGatewayDispatch", () => {
     // outbound dispatch must include async=true
     expect(mockXgwOutboundDispatch).toHaveBeenCalledWith(
       "ember",
-      "skynet",
+      "receptionist",
       "async task",
       expect.any(Object),
       expect.objectContaining({
@@ -295,7 +300,7 @@ describe("handleCrossGatewayDispatch", () => {
       expect.objectContaining({
         status: "accepted",
         reply: null,
-        sessionKey: "@ember/skynet",
+        sessionKey: "@ember/receptionist",
       }),
       undefined,
     );
@@ -318,7 +323,7 @@ describe("handleCrossGatewayDispatch", () => {
 
     await handleCrossGatewayDispatch({
       params: {
-        key: "@ember/skynet",
+        key: "@ember/receptionist",
         message: "deliver test",
         async: true,
         callerSessionKey: "agent:main:slack:channel:abc123",
@@ -346,7 +351,7 @@ describe("handleCrossGatewayDispatch", () => {
     });
 
     await handleCrossGatewayDispatch({
-      params: { key: "@ember/skynet", message: "overflow", async: true },
+      params: { key: "@ember/receptionist", message: "overflow", async: true },
       respond,
       context: {} as never,
     });
@@ -388,7 +393,7 @@ describe("handleCrossGatewayDispatch", () => {
     try {
       await realDispatch(
         "ember",
-        "skynet",
+        "receptionist",
         "ping",
         {
           fleet: {
@@ -413,7 +418,7 @@ describe("handleCrossGatewayDispatch", () => {
     mockGetXgwConfig.mockReturnValue({ enabled: false, peers: {} });
 
     await handleCrossGatewayDispatch({
-      params: { key: "@ember/skynet", message: "ping" },
+      params: { key: "@ember/receptionist", message: "ping" },
       respond,
       context: {} as never,
     });
@@ -440,7 +445,7 @@ describe("handleCrossGatewayDispatch", () => {
     });
 
     await handleCrossGatewayDispatch({
-      params: { key: "@ember/skynet", message: "ping" },
+      params: { key: "@ember/receptionist", message: "ping" },
       respond,
       context: {} as never,
     });
@@ -459,7 +464,7 @@ describe("handleCrossGatewayDispatch", () => {
     const respond = vi.fn();
 
     await handleCrossGatewayDispatch({
-      params: { key: "@ember/skynet", message: "ping", multiTurn: true, async: true },
+      params: { key: "@ember/receptionist", message: "ping", multiTurn: true, async: true },
       respond,
       context: {} as never,
     });
@@ -506,7 +511,7 @@ describe("handleCrossGatewayDispatch", () => {
     mockRunAgentStep.mockResolvedValue("local reply");
 
     await handleCrossGatewayDispatch({
-      params: { key: "@ember/skynet", message: "start", multiTurn: true },
+      params: { key: "@ember/receptionist", message: "start", multiTurn: true },
       respond,
       context: {} as never,
     });
@@ -549,7 +554,7 @@ describe("handleCrossGatewayDispatch", () => {
     mockRunAgentStep.mockResolvedValueOnce("local reply 1").mockResolvedValueOnce("REPLY_SKIP"); // stop on turn 2
 
     await handleCrossGatewayDispatch({
-      params: { key: "@ember/skynet", message: "start", multiTurn: true },
+      params: { key: "@ember/receptionist", message: "start", multiTurn: true },
       respond,
       context: {} as never,
     });
@@ -580,7 +585,7 @@ describe("handleCrossGatewayDispatch", () => {
     mockRunAgentStep.mockResolvedValue("local reply");
 
     await handleCrossGatewayDispatch({
-      params: { key: "@ember/skynet", message: "start", multiTurn: true },
+      params: { key: "@ember/receptionist", message: "start", multiTurn: true },
       respond,
       context: {} as never,
     });
@@ -605,7 +610,7 @@ describe("handleCrossGatewayDispatch", () => {
     mockRunAgentStep.mockResolvedValue("local reply");
 
     await handleCrossGatewayDispatch({
-      params: { key: "@ember/skynet", message: "start", multiTurn: true },
+      params: { key: "@ember/receptionist", message: "start", multiTurn: true },
       respond,
       context: {} as never,
     });
@@ -635,7 +640,7 @@ describe("handleCrossGatewayDispatch", () => {
     mockRunAgentStep.mockResolvedValue("local reply");
 
     await handleCrossGatewayDispatch({
-      params: { key: "@ember/skynet", message: "start", multiTurn: true },
+      params: { key: "@ember/receptionist", message: "start", multiTurn: true },
       respond,
       context: {} as never,
     });
@@ -660,7 +665,7 @@ describe("handleCrossGatewayDispatch", () => {
     mockRunAgentStep.mockResolvedValue(undefined); // timeout/undefined
 
     await handleCrossGatewayDispatch({
-      params: { key: "@ember/skynet", message: "start", multiTurn: true },
+      params: { key: "@ember/receptionist", message: "start", multiTurn: true },
       respond,
       context: {} as never,
     });
@@ -685,7 +690,7 @@ describe("handleCrossGatewayDispatch", () => {
     mockRunAgentStep.mockResolvedValue("local reply");
 
     await handleCrossGatewayDispatch({
-      params: { key: "@ember/skynet", message: "start", multiTurn: true },
+      params: { key: "@ember/receptionist", message: "start", multiTurn: true },
       respond,
       context: {} as never,
     });
@@ -715,7 +720,7 @@ describe("handleCrossGatewayDispatch", () => {
     mockRunAgentStep.mockResolvedValue("local reply");
 
     await handleCrossGatewayDispatch({
-      params: { key: "@ember/skynet", message: "start", multiTurn: true },
+      params: { key: "@ember/receptionist", message: "start", multiTurn: true },
       respond,
       context: {} as never,
     });
@@ -727,7 +732,7 @@ describe("handleCrossGatewayDispatch", () => {
     expect(mockXgwOutboundDispatch).toHaveBeenNthCalledWith(
       2,
       "ember",
-      "xgw:worker-abc", // not "skynet"
+      "xgw:worker-abc", // not "receptionist"
       "local reply",
       expect.any(Object),
       expect.any(Object),

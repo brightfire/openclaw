@@ -132,7 +132,7 @@ describe("gateway XGW HTTP routes", () => {
               path: "/xgateway",
               authorization: "Bearer peer-secret",
               body: {
-                sessionKey: "skynet",
+                sessionKey: "receptionist",
                 message: "ping from peer",
                 sourceSessionKey: "agent:main",
                 sourceChannel: "gateway_rpc",
@@ -449,7 +449,7 @@ describe("gateway XGW HTTP routes", () => {
               path: "/xgateway",
               authorization: "Bearer peer-secret",
               body: {
-                sessionKey: "skynet",
+                sessionKey: "receptionist",
                 message: "ping async",
                 sourceSessionKey: "agent:main",
                 sourceChannel: "gateway_rpc",
@@ -530,7 +530,7 @@ describe("gateway XGW HTTP routes", () => {
               path: "/xgateway",
               authorization: "Bearer peer-secret",
               body: {
-                sessionKey: "skynet",
+                sessionKey: "receptionist",
                 message: "ping async",
                 sourceSessionKey: "agent:main",
                 correlationId: "corr-fail",
@@ -613,7 +613,7 @@ describe("gateway XGW HTTP routes", () => {
               path: "/xgateway",
               authorization: "Bearer peer-secret",
               body: {
-                sessionKey: "skynet",
+                sessionKey: "receptionist",
                 message: "hello from myself",
                 sourceSessionKey: "agent:main",
                 nonce: "nonce-self-send-abc123",
@@ -764,7 +764,10 @@ describe("gateway XGW HTTP routes", () => {
         req.headers = { host: "localhost:18789", "content-type": "application/json" };
         req.socket = { remoteAddress: "127.0.0.1" } as IncomingMessage["socket"];
         setImmediate(() => {
-          req.emit("data", Buffer.from(JSON.stringify({ sessionKey: "skynet", message: "ping" })));
+          req.emit(
+            "data",
+            Buffer.from(JSON.stringify({ sessionKey: "receptionist", message: "ping" })),
+          );
           req.emit("end");
         });
 
@@ -790,7 +793,7 @@ describe("gateway XGW HTTP routes", () => {
           path: "/xgateway",
           authorization: "Bearer wrong-token",
           body: {
-            sessionKey: "skynet",
+            sessionKey: "receptionist",
             message: "ping",
             nonce: "nonce-badbearer-zzz",
             timestamp: Math.floor(Date.now() / 1000),
@@ -880,7 +883,7 @@ describe("gateway XGW HTTP routes", () => {
           path: "/xgateway",
           authorization: "Bearer peer-secret",
           body: {
-            sessionKey: "skynet",
+            sessionKey: "receptionist",
             message: "hello",
             // correlationId intentionally omitted
             nonce: "nonce-missing-corrid",
@@ -910,7 +913,7 @@ describe("gateway XGW HTTP routes", () => {
           path: "/xgateway",
           authorization: "Bearer peer-secret",
           body: {
-            sessionKey: "skynet",
+            sessionKey: "receptionist",
             message: "hello",
             correlationId: "corr-missing-nonce-test",
             // nonce intentionally omitted
@@ -1031,7 +1034,7 @@ describe("gateway XGW HTTP routes", () => {
           path: "/xgateway",
           authorization: "Bearer peer-secret",
           body: {
-            sessionKey: "skynet",
+            sessionKey: "receptionist",
             message: "ping",
             sourceSessionKey: "agent:main",
             correlationId: "corr-overflow",
@@ -1116,7 +1119,7 @@ describe("gateway XGW HTTP routes", () => {
           path: "/xgateway",
           authorization: "Bearer peer-secret",
           body: {
-            sessionKey: "skynet",
+            sessionKey: "receptionist",
             message: "ping",
             correlationId: "corr-stale-timestamp",
             nonce: "nonce-stale-timestamp-qqqrrr",
