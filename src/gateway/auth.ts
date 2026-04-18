@@ -551,6 +551,33 @@ async function authorizeGatewayConnectCore(
       }
       return { ok: true, method: "trusted-proxy", user: result.user };
     }
+
+    // Fallback: allow password auth for loopback connections (CLI, sub-agents)
+    // when trusted-proxy rejects them because they lack proxy identity headers.
+    if (
+      result.reason === "trusted_proxy_loopback_source" &&
+      auth.password &&
+      connectAuth?.password
+    ) {
+      if (limiter) {
+        const rlCheck: RateLimitCheckResult = limiter.check(ip, rateLimitScope);
+        if (!rlCheck.allowed) {
+          return {
+            ok: false,
+            reason: "rate_limited",
+            rateLimited: true,
+            retryAfterMs: rlCheck.retryAfterMs,
+          };
+        }
+      }
+      if (safeEqualSecret(connectAuth.password, auth.password)) {
+        limiter?.reset(ip, rateLimitScope);
+        return { ok: true, method: "password" };
+      }
+      limiter?.recordFailure(ip, rateLimitScope);
+      return { ok: false, reason: "password_mismatch" };
+    }
+
     return { ok: false, reason: result.reason };
   }
 
