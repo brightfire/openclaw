@@ -118,7 +118,7 @@ async function spawnWorker(
   peer: string,
   cfg: XgwConfig,
 ): Promise<XgwInboundResponse> {
-  const agentId = cfg.agentId ?? "receptionist";
+  const agentId = cfg.agentId ?? undefined;
   const subagent = getSubagent();
   if (!subagent) {
     return { ok: false, status: "error", error: "internal error" };

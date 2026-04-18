@@ -14,7 +14,7 @@ export interface XgwConfig extends NonNullable<FleetConfig["crossGateway"]> {
   enabled?: boolean;
   /** This gateway's name (e.g. "aster", "ember"). */
   gatewayName?: string;
-  /** Agent ID to use for cross-gateway worker sessions (default: "receptionist"). */
+  /** Agent ID to use for cross-gateway worker sessions (default: gateway default agent). */
   agentId?: string;
   /** Max simultaneous XGW sessions per gateway. */
   maxConcurrent?: number;
