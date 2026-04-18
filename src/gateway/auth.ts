@@ -552,8 +552,18 @@ async function authorizeGatewayConnectCore(
       return { ok: true, method: "trusted-proxy", user: result.user };
     }
 
-    // Fallback: allow password auth for loopback connections (CLI, sub-agents)
-    // when trusted-proxy rejects them because they lack proxy identity headers.
+    // Policy: loopback password fallback for trusted-proxy mode.
+    //
+    // In trusted-proxy mode, loopback connections (CLI, sub-agents) are rejected
+    // by authorizeTrustedProxy because they lack proxy identity headers. If
+    // auth.password is configured, allow those connections to authenticate with
+    // the gateway password instead. This is intentional: auth.password acts as
+    // a break-glass/local credential for CLI tooling in trusted-proxy deployments.
+    //
+    // This is a deliberate policy decision, not an oversight:
+    // - External (non-loopback) connections still require valid proxy headers.
+    // - auth.token remains banned in trusted-proxy mode (see validateGatewayAuthConfig).
+    // - auth.password is the explicit opt-in to allow local tooling access.
     if (
       result.reason === "trusted_proxy_loopback_source" &&
       auth.password &&
