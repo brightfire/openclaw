@@ -175,7 +175,11 @@ export function printDaemonStatus(status: DaemonStatus, opts: { json: boolean })
     );
   }
   if (rpc) {
-    if (rpc.ok) {
+    if (rpc.ok && rpc.httpFallback) {
+      defaultRuntime.log(
+        `${label("RPC probe:")} ${warnText("ok (health-check only — WS auth unavailable on loopback)")}`,
+      );
+    } else if (rpc.ok) {
       defaultRuntime.log(`${label("RPC probe:")} ${okText("ok")}`);
     } else {
       defaultRuntime.error(`${label("RPC probe:")} ${errorText("failed")}`);
