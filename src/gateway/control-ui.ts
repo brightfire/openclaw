@@ -456,8 +456,34 @@ function serveResolvedFile(res: ServerResponse, filePath: string, body: Buffer) 
   res.end(body);
 }
 
-function serveResolvedIndexHtml(res: ServerResponse, body: string) {
-  const hashes = computeInlineScriptHashes(body);
+const CONTROL_UI_DEFAULT_TITLE = "OpenClaw Control";
+const CONTROL_UI_TITLE_PLACEHOLDER = "__OPENCLAW_CONTROL_TITLE__";
+
+function escapeHtmlText(text: string): string {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+/**
+ * Resolve the HTML `<title>` for the Control UI.
+ * Priority: gateway.controlUi.title > assistant identity name > default.
+ */
+function resolveControlUiTitle(config?: OpenClawConfig, agentId?: string): string {
+  const explicitTitle = config?.gateway?.controlUi?.title;
+  if (typeof explicitTitle === "string" && explicitTitle.trim()) {
+    return explicitTitle.trim();
+  }
+  if (config) {
+    const identity = resolveAssistantIdentity({ cfg: config, agentId });
+    if (identity.name && identity.name !== DEFAULT_ASSISTANT_IDENTITY.name) {
+      return identity.name;
+    }
+  }
+  return CONTROL_UI_DEFAULT_TITLE;
+}
+
+function serveResolvedIndexHtml(res: ServerResponse, body: string, title: string) {
+  const html = body.replace(CONTROL_UI_TITLE_PLACEHOLDER, escapeHtmlText(title));
+  const hashes = computeInlineScriptHashes(html);
   if (hashes.length > 0) {
     res.setHeader(
       "Content-Security-Policy",
@@ -466,7 +492,7 @@ function serveResolvedIndexHtml(res: ServerResponse, body: string) {
   }
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.setHeader("Cache-Control", "no-cache");
-  res.end(body);
+  res.end(html);
 }
 
 function isExpectedSafePathError(error: unknown): boolean {
@@ -539,6 +565,7 @@ export function handleControlUiHttpRequest(
   }
   const url = new URL(urlRaw, "http://localhost");
   const basePath = normalizeControlUiBasePath(opts?.basePath);
+  const htmlTitle = resolveControlUiTitle(opts?.config, opts?.agentId);
   const pathname = url.pathname;
   const route = classifyControlUiRequest({
     basePath,
@@ -598,6 +625,7 @@ export function handleControlUiHttpRequest(
             ? "strict"
             : "scripts",
       allowExternalEmbedUrls: config?.gateway?.controlUi?.allowExternalEmbedUrls === true,
+      title: htmlTitle !== CONTROL_UI_DEFAULT_TITLE ? htmlTitle : undefined,
     } satisfies ControlUiBootstrapConfig);
     return true;
   }
@@ -681,7 +709,7 @@ export function handleControlUiHttpRequest(
         return true;
       }
       if (path.basename(safeFile.path) === "index.html") {
-        serveResolvedIndexHtml(res, fs.readFileSync(safeFile.fd, "utf8"));
+        serveResolvedIndexHtml(res, fs.readFileSync(safeFile.fd, "utf8"), htmlTitle);
         return true;
       }
       serveResolvedFile(res, safeFile.path, fs.readFileSync(safeFile.fd));
@@ -709,7 +737,7 @@ export function handleControlUiHttpRequest(
       if (respondHeadForFile(req, res, safeIndex.path)) {
         return true;
       }
-      serveResolvedIndexHtml(res, fs.readFileSync(safeIndex.fd, "utf8"));
+      serveResolvedIndexHtml(res, fs.readFileSync(safeIndex.fd, "utf8"), htmlTitle);
       return true;
     } finally {
       fs.closeSync(safeIndex.fd);

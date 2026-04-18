@@ -22136,6 +22136,69 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
         title: "Memory",
         description: "Memory backend configuration (global).",
       },
+      fleet: {
+        type: "object",
+        properties: {
+          crossGateway: {
+            type: "object",
+            properties: {
+              enabled: {
+                type: "boolean",
+              },
+              gatewayName: {
+                type: "string",
+              },
+              agentId: {
+                type: "string",
+              },
+              maxConcurrent: {
+                type: "integer",
+                minimum: -9007199254740991,
+                maximum: 9007199254740991,
+              },
+              maxPendingAsync: {
+                type: "integer",
+                minimum: -9007199254740991,
+                maximum: 9007199254740991,
+              },
+              exposureTtlSeconds: {
+                type: "integer",
+                minimum: -9007199254740991,
+                maximum: 9007199254740991,
+              },
+              acceptedTokens: {
+                type: "object",
+                propertyNames: {
+                  type: "string",
+                },
+                additionalProperties: {
+                  type: "string",
+                },
+              },
+              peers: {
+                type: "object",
+                propertyNames: {
+                  type: "string",
+                },
+                additionalProperties: {
+                  type: "object",
+                  properties: {
+                    url: {
+                      type: "string",
+                    },
+                    token: {
+                      type: "string",
+                    },
+                  },
+                  additionalProperties: false,
+                },
+              },
+            },
+            additionalProperties: false,
+          },
+        },
+        additionalProperties: false,
+      },
       mcp: {
         type: "object",
         properties: {

@@ -59,6 +59,9 @@ export async function loadControlUiBootstrapConfig(state: ControlUiBootstrapStat
           ? "strict"
           : "scripts";
     state.allowExternalEmbedUrls = parsed.allowExternalEmbedUrls === true;
+    if (typeof parsed.title === "string" && parsed.title.trim()) {
+      document.title = parsed.title.trim();
+    }
   } catch {
     // Ignore bootstrap failures; UI will update identity after connecting.
   }

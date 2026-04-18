@@ -112,6 +112,8 @@ export type GatewayControlUiConfig = {
   allowInsecureAuth?: boolean;
   /** DANGEROUS: Disable device identity checks for the Control UI (default: false). */
   dangerouslyDisableDeviceAuth?: boolean;
+  /** Custom HTML page title. Defaults to the assistant name, then 'OpenClaw Control'. */
+  title?: string;
 };
 
 export type GatewayAuthMode = "none" | "token" | "password" | "trusted-proxy";
@@ -451,4 +453,37 @@ export type GatewayConfig = {
    * the rolling window expires. Default: 10.
    */
   channelMaxRestartsPerHour?: number;
+};
+
+// ── Cross-Gateway (XGW) Fleet Config ────────────────────────────────
+
+export type XgwPeerConfig = {
+  /** Peer gateway URL (e.g. "http://10.18.32.20:18789"). */
+  url?: string;
+  /** Token to authenticate outbound requests to this peer. */
+  token?: string;
+};
+
+export type XgwConfig = {
+  /** Enable cross-gateway messaging (default: false). */
+  enabled?: boolean;
+  /** This gateway's short name (e.g. "aster", "ember"). */
+  gatewayName?: string;
+  /** Agent ID to use for cross-gateway worker sessions (default: "skynet"). */
+  agentId?: string;
+  /** Max simultaneous XGW worker sessions (default: 10). */
+  maxConcurrent?: number;
+  /** Max pending async callbacks (default: 20). */
+  maxPendingAsync?: number;
+  /** Exposure TTL in seconds for remotely addressable worker sessions (default: 300). */
+  exposureTtlSeconds?: number;
+  /** Inbound tokens mapped to peer identities. Key = peer name, value = auth token. */
+  acceptedTokens?: Record<string, string>;
+  /** Peer gateway configurations. Key = peer name. */
+  peers?: Record<string, XgwPeerConfig>;
+};
+
+export type FleetConfig = {
+  /** Cross-gateway (XGW/Skynet) configuration. */
+  crossGateway?: XgwConfig;
 };
