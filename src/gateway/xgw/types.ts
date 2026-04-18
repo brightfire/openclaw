@@ -125,12 +125,12 @@ export const XGW_SESSION_PREFIX = "xgw:";
 /**
  * HTTP path for the inbound XGW endpoint.
  */
-export const XGW_HOOK_PATH = "/hooks/xgw";
+export const XGW_HOOK_PATH = "/xgateway";
 
 /**
  * HTTP path for XGW callback delivery.
  */
-export const XGW_CALLBACK_PATH = "/hooks/xgw/callback";
+export const XGW_CALLBACK_PATH = "/xgateway/callback";
 
 /**
  * Configured XGW session key for agents to use as a cross-gateway entry point.

@@ -2,7 +2,7 @@
  * XGW outbound dispatch helper.
  *
  * Called from the modified sessions.send flow when a sessionKey starts with `@`.
- * Posts an HTTP request to the target gateway's /hooks/xgw endpoint.
+ * Posts an HTTP request to the target gateway's /xgateway endpoint.
  */
 
 import { randomUUID } from "node:crypto";
@@ -22,7 +22,7 @@ export interface CallbackPostResult {
 }
 
 /**
- * POST a callback result to the calling gateway at /hooks/xgw/callback.
+ * POST a callback result to the calling gateway at /xgateway/callback.
  * Retries up to 3 times with exponential backoff: 5s, 15s, 45s.
  *
  * @param peerUrl - Base URL of the calling gateway peer
@@ -35,7 +35,7 @@ export async function postCallbackWithRetry(
   outboundToken: string,
   payload: Record<string, unknown>,
 ): Promise<CallbackPostResult> {
-  const callbackUrl = `${peerUrl.replace(/\/+$/, "")}/hooks/xgw/callback`;
+  const callbackUrl = `${peerUrl.replace(/\/+$/, "")}/xgateway/callback`;
   const MAX_ATTEMPTS = 3;
   // Delays: 5s, 15s, 45s (5 * 3^(n-1))
   const RETRY_DELAYS_MS = [5_000, 15_000, 45_000];
@@ -174,7 +174,7 @@ export async function xgwOutboundDispatch(
     const ctrl = new AbortController();
     timer = setTimeout(() => ctrl.abort(), Math.min(timeoutSec * 1000 + 5000, 125000));
 
-    const res = await fetch(`${baseUrl}/hooks/xgw`, {
+    const res = await fetch(`${baseUrl}/xgateway`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${resolveEnvValue(token)}`,

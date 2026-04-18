@@ -106,7 +106,7 @@ describe("gateway XGW HTTP routes", () => {
     fs.rmSync(tempHomeDir, { recursive: true, force: true });
   });
 
-  it("serves POST /hooks/xgw through the core gateway server", async () => {
+  it("serves POST /xgateway through the core gateway server", async () => {
     const subagent = createSubagentRuntime();
     setGatewaySubagentRuntime(subagent);
 
@@ -129,7 +129,7 @@ describe("gateway XGW HTTP routes", () => {
           resolvedAuth: AUTH_NONE,
           run: async (server) => {
             const req = createStreamingRequest({
-              path: "/hooks/xgw",
+              path: "/xgateway",
               authorization: "Bearer peer-secret",
               body: {
                 sessionKey: "skynet",
@@ -171,7 +171,7 @@ describe("gateway XGW HTTP routes", () => {
     });
   });
 
-  it("serves POST /hooks/xgw/callback through the core gateway server", async () => {
+  it("serves POST /xgateway/callback through the core gateway server", async () => {
     const subagent = createSubagentRuntime();
     setGatewaySubagentRuntime(subagent);
 
@@ -202,7 +202,7 @@ describe("gateway XGW HTTP routes", () => {
           resolvedAuth: AUTH_NONE,
           run: async (server) => {
             const req = createStreamingRequest({
-              path: "/hooks/xgw/callback",
+              path: "/xgateway/callback",
               authorization: "Bearer peer-secret",
               body: {
                 correlationId: "corr-2",
@@ -270,7 +270,7 @@ describe("gateway XGW HTTP routes", () => {
           resolvedAuth: AUTH_NONE,
           run: async (server) => {
             const req = createStreamingRequest({
-              path: "/hooks/xgw",
+              path: "/xgateway",
               authorization: "Bearer peer-secret",
               body: {
                 sessionKey: "xgw:corr-direct",
@@ -339,7 +339,7 @@ describe("gateway XGW HTTP routes", () => {
           resolvedAuth: AUTH_NONE,
           run: async (server) => {
             const req = createStreamingRequest({
-              path: "/hooks/xgw",
+              path: "/xgateway",
               authorization: "Bearer other-secret",
               body: {
                 sessionKey: "xgw:corr-private",
@@ -389,7 +389,7 @@ describe("gateway XGW HTTP routes", () => {
           resolvedAuth: AUTH_NONE,
           run: async (server) => {
             const req = createStreamingRequest({
-              path: "/hooks/xgw",
+              path: "/xgateway",
               authorization: "Bearer peer-secret",
               body: {
                 sessionKey: "xgw:does-not-exist",
@@ -419,7 +419,7 @@ describe("gateway XGW HTTP routes", () => {
   it("accepts async requests and POSTs callback to the calling peer (receiver-side, no local state)", async () => {
     // In the new ownership model, the RECEIVER (Gateway B) does NOT create a
     // pendingCallback record. It just runs the worker and POSTs the result back
-    // to the caller via /hooks/xgw/callback.
+    // to the caller via /xgateway/callback.
     const subagent = createSubagentRuntime();
     setGatewaySubagentRuntime(subagent);
     mockFetch.mockResolvedValue({ ok: true, status: 200, text: vi.fn(async () => "") });
@@ -446,7 +446,7 @@ describe("gateway XGW HTTP routes", () => {
           resolvedAuth: AUTH_NONE,
           run: async (server) => {
             const req = createStreamingRequest({
-              path: "/hooks/xgw",
+              path: "/xgateway",
               authorization: "Bearer peer-secret",
               body: {
                 sessionKey: "skynet",
@@ -484,7 +484,7 @@ describe("gateway XGW HTTP routes", () => {
 
         // Receiver SHOULD have POSTed the callback back to the calling peer.
         expect(mockFetch).toHaveBeenCalledWith(
-          "http://ember.local/hooks/xgw/callback",
+          "http://ember.local/xgateway/callback",
           expect.objectContaining({
             method: "POST",
             body: expect.stringContaining("corr-async"),
@@ -527,7 +527,7 @@ describe("gateway XGW HTTP routes", () => {
           resolvedAuth: AUTH_NONE,
           run: async (server) => {
             const req = createStreamingRequest({
-              path: "/hooks/xgw",
+              path: "/xgateway",
               authorization: "Bearer peer-secret",
               body: {
                 sessionKey: "skynet",
@@ -563,7 +563,7 @@ describe("gateway XGW HTTP routes", () => {
 
         // At least the first callback attempt was made to the caller's URL
         expect(mockFetch).toHaveBeenCalledWith(
-          "http://ember.local/hooks/xgw/callback",
+          "http://ember.local/xgateway/callback",
           expect.objectContaining({ method: "POST" }),
         );
 
@@ -610,7 +610,7 @@ describe("gateway XGW HTTP routes", () => {
           resolvedAuth: AUTH_NONE,
           run: async (server) => {
             const req = createStreamingRequest({
-              path: "/hooks/xgw",
+              path: "/xgateway",
               authorization: "Bearer peer-secret",
               body: {
                 sessionKey: "skynet",
@@ -659,7 +659,7 @@ describe("gateway XGW HTTP routes", () => {
           resolvedAuth: AUTH_NONE,
           run: async (server) => {
             const req = createStreamingRequest({
-              path: "/hooks/xgw",
+              path: "/xgateway",
               authorization: "Bearer peer-secret",
               body: {
                 sessionKey: "xgw:test",
@@ -721,7 +721,7 @@ describe("gateway XGW HTTP routes", () => {
           resolvedAuth: AUTH_NONE,
           run: async (server) => {
             const req = createStreamingRequest({
-              path: "/hooks/xgw",
+              path: "/xgateway",
               authorization: "Bearer peer-secret",
               body: {
                 sessionKey: "xgw:corr-expired",
@@ -760,7 +760,7 @@ describe("gateway XGW HTTP routes", () => {
       run: async (server) => {
         const req = new EventEmitter() as IncomingMessage;
         req.method = "POST";
-        req.url = "/hooks/xgw";
+        req.url = "/xgateway";
         req.headers = { host: "localhost:18789", "content-type": "application/json" };
         req.socket = { remoteAddress: "127.0.0.1" } as IncomingMessage["socket"];
         setImmediate(() => {
@@ -787,7 +787,7 @@ describe("gateway XGW HTTP routes", () => {
       resolvedAuth: AUTH_NONE,
       run: async (server) => {
         const req = createStreamingRequest({
-          path: "/hooks/xgw",
+          path: "/xgateway",
           authorization: "Bearer wrong-token",
           body: {
             sessionKey: "skynet",
@@ -819,7 +819,7 @@ describe("gateway XGW HTTP routes", () => {
       run: async (server) => {
         const req = new EventEmitter() as IncomingMessage;
         req.method = "POST";
-        req.url = "/hooks/xgw";
+        req.url = "/xgateway";
         req.headers = {
           host: "localhost:18789",
           authorization: "Bearer peer-secret",
@@ -847,7 +847,7 @@ describe("gateway XGW HTTP routes", () => {
       resolvedAuth: AUTH_NONE,
       run: async (server) => {
         const req = createStreamingRequest({
-          path: "/hooks/xgw",
+          path: "/xgateway",
           authorization: "Bearer peer-secret",
           body: {
             // sessionKey intentionally omitted
@@ -877,7 +877,7 @@ describe("gateway XGW HTTP routes", () => {
       resolvedAuth: AUTH_NONE,
       run: async (server) => {
         const req = createStreamingRequest({
-          path: "/hooks/xgw",
+          path: "/xgateway",
           authorization: "Bearer peer-secret",
           body: {
             sessionKey: "skynet",
@@ -907,7 +907,7 @@ describe("gateway XGW HTTP routes", () => {
       resolvedAuth: AUTH_NONE,
       run: async (server) => {
         const req = createStreamingRequest({
-          path: "/hooks/xgw",
+          path: "/xgateway",
           authorization: "Bearer peer-secret",
           body: {
             sessionKey: "skynet",
@@ -938,7 +938,7 @@ describe("gateway XGW HTTP routes", () => {
       run: async (server) => {
         const req = new EventEmitter() as IncomingMessage;
         req.method = "POST";
-        req.url = "/hooks/xgw";
+        req.url = "/xgateway";
         req.headers = {
           host: "localhost:18789",
           authorization: "Bearer peer-secret",
@@ -975,9 +975,9 @@ describe("gateway XGW HTTP routes", () => {
       prefix: "xgw-disabled-enforcement",
       resolvedAuth: AUTH_NONE,
       run: async (server) => {
-        // /hooks/xgw should return 503
+        // /xgateway should return 503
         const req1 = createStreamingRequest({
-          path: "/hooks/xgw",
+          path: "/xgateway",
           authorization: "Bearer peer-secret",
           body: {},
         });
@@ -985,9 +985,9 @@ describe("gateway XGW HTTP routes", () => {
         await dispatchRequest(server, req1, resp1.res);
         expect(resp1.res.statusCode).toBe(503);
 
-        // /hooks/xgw/callback should also return 503
+        // /xgateway/callback should also return 503
         const req2 = createStreamingRequest({
-          path: "/hooks/xgw/callback",
+          path: "/xgateway/callback",
           authorization: "Bearer peer-secret",
           body: {},
         });
@@ -1028,7 +1028,7 @@ describe("gateway XGW HTTP routes", () => {
       resolvedAuth: AUTH_NONE,
       run: async (server) => {
         const req = createStreamingRequest({
-          path: "/hooks/xgw",
+          path: "/xgateway",
           authorization: "Bearer peer-secret",
           body: {
             sessionKey: "skynet",
@@ -1067,7 +1067,7 @@ describe("gateway XGW HTTP routes", () => {
 
         // First request: nonce is fresh; session doesn't exist → 403 (nonce is recorded)
         const req1 = createStreamingRequest({
-          path: "/hooks/xgw",
+          path: "/xgateway",
           authorization: "Bearer peer-secret",
           body: {
             sessionKey: "xgw:replay-test-nonexistent",
@@ -1084,7 +1084,7 @@ describe("gateway XGW HTTP routes", () => {
 
         // Second request with same nonce → 409 duplicate nonce
         const req2 = createStreamingRequest({
-          path: "/hooks/xgw",
+          path: "/xgateway",
           authorization: "Bearer peer-secret",
           body: {
             sessionKey: "xgw:replay-test-nonexistent",
@@ -1113,7 +1113,7 @@ describe("gateway XGW HTTP routes", () => {
       resolvedAuth: AUTH_NONE,
       run: async (server) => {
         const req = createStreamingRequest({
-          path: "/hooks/xgw",
+          path: "/xgateway",
           authorization: "Bearer peer-secret",
           body: {
             sessionKey: "skynet",
@@ -1155,7 +1155,7 @@ describe("gateway XGW HTTP routes", () => {
       run: async (server) => {
         // Post callback using "other" peer token (other-secret), not "ember"
         const req = createStreamingRequest({
-          path: "/hooks/xgw/callback",
+          path: "/xgateway/callback",
           authorization: "Bearer other-secret",
           body: {
             correlationId: "corr-wrong-cb-peer",
@@ -1192,7 +1192,7 @@ describe("gateway XGW HTTP routes", () => {
       resolvedAuth: AUTH_NONE,
       run: async (server) => {
         const req = createStreamingRequest({
-          path: "/hooks/xgw/callback",
+          path: "/xgateway/callback",
           authorization: "Bearer peer-secret",
           body: {
             correlationId: "corr-double-deliver",
@@ -1227,7 +1227,7 @@ describe("gateway XGW HTTP routes", () => {
       resolvedAuth: AUTH_NONE,
       run: async (server) => {
         const req = createStreamingRequest({
-          path: "/hooks/xgw/callback",
+          path: "/xgateway/callback",
           authorization: "Bearer peer-secret",
           body: {
             correlationId: "corr-cb-past-expiry",

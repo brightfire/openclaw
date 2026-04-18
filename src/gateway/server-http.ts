@@ -225,7 +225,7 @@ function isManagedOutgoingImagePath(pathname: string): boolean {
 }
 
 function isXgwPath(pathname: string): boolean {
-  return pathname === "/hooks/xgw" || pathname === "/hooks/xgw/callback";
+  return pathname === "/xgateway" || pathname === "/xgateway/callback";
 }
 
 function isSessionKillPath(pathname: string): boolean {
@@ -639,10 +639,10 @@ export function createGatewayHttpServer(opts: {
           name: "xgw",
           run: async () => {
             const xgw = await getXgwHttpModule();
-            if (scopedRequestPath === "/hooks/xgw") {
+            if (scopedRequestPath === "/xgateway") {
               return xgw.handleXgwHook(req, res);
             }
-            if (scopedRequestPath === "/hooks/xgw/callback") {
+            if (scopedRequestPath === "/xgateway/callback") {
               return xgw.handleXgwCallback(req, res);
             }
             return false;
