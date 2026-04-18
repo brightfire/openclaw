@@ -457,6 +457,7 @@ function serveResolvedFile(res: ServerResponse, filePath: string, body: Buffer) 
 }
 
 const CONTROL_UI_DEFAULT_TITLE = "OpenClaw Control";
+const CONTROL_UI_TITLE_PLACEHOLDER = "__OPENCLAW_CONTROL_TITLE__";
 
 function escapeHtmlText(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -480,14 +481,8 @@ function resolveControlUiTitle(config?: OpenClawConfig, agentId?: string): strin
   return CONTROL_UI_DEFAULT_TITLE;
 }
 
-function serveResolvedIndexHtml(res: ServerResponse, body: string, title?: string) {
-  let html = body;
-  if (title && title !== CONTROL_UI_DEFAULT_TITLE) {
-    html = html.replace(
-      `<title>${CONTROL_UI_DEFAULT_TITLE}</title>`,
-      `<title>${escapeHtmlText(title)}</title>`,
-    );
-  }
+function serveResolvedIndexHtml(res: ServerResponse, body: string, title: string) {
+  const html = body.replace(CONTROL_UI_TITLE_PLACEHOLDER, escapeHtmlText(title));
   const hashes = computeInlineScriptHashes(html);
   if (hashes.length > 0) {
     res.setHeader(
