@@ -19,7 +19,7 @@ Each active patch has a **canonical branch** (`brightfire/<name>`) that contains
 | Patch | Canonical branch | Squashed commit |
 |---|---|---|
 | context-estimate-compaction | `brightfire/context-estimate-compaction` | `8929fa251a` |
-| xgw-cross-gateway | `brightfire/xgw` | `4fdd06fcca` |
+| xgw-cross-gateway | `brightfire/xgw` | `caabb461f2` |
 | slack-mrkdwn-formatting-fix | `brightfire/slack-mrkdwn` | `f3adf06a84` |
 | trusted-proxy-loopback-password-fallback | `brightfire/trusted-proxy-loopback` | `58f1404caf` |
 | control-ui-configurable-title | `brightfire/control-ui-title` | `c87162eba5` |
@@ -63,7 +63,7 @@ When pulling a new upstream release, reset the counter to `-bf1`.
 - **Reapply:** yes
 - **Stable branch first merged into:** `stable/v2026.4.15`
 - **Canonical branch:** `brightfire/xgw`
-- **Squashed commit:** `4fdd06fcca`
+- **Squashed commit:** `caabb461f2` (updated 2026-04-18: squashed post-PR#19)
 
 ### What this includes
 
@@ -76,6 +76,9 @@ This includes:
 - `sessions_send` routing for `@gateway/` keys
 - Built-in `skills/cross-gateway/SKILL.md`
 - Updated `describeSessionsSendTool()` with `@<gateway>/session` hint
+- Session routing rename: skynet → receptionist (PR #18)
+- Default worker agent uses gateway default instead of hardcoded receptionist
+- `sessions_send` XGW reply fix (PR #20): captures `status`/`reply` from `startAgentRun`, short-circuits `waitForAgentRun` for sync XGW dispatches, dynamic API timeout
 
 ### Config shape
 
@@ -113,7 +116,7 @@ This includes:
 
 ```bash
 git checkout -b brightfire/xgw-vNEXT stable/vNEXT
-git cherry-pick 4fdd06fcca
+git cherry-pick caabb461f2
 ```
 
 If cherry-pick conflicts, most likely conflict points are `server-http.ts` (route registration) and `schema.base.generated.ts` (regenerate from the updated `zod-schema.ts` instead of cherry-picking the generated file directly).
