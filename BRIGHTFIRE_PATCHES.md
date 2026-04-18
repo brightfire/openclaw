@@ -8,68 +8,37 @@ When creating a new stable branch from an upstream release tag:
 
 1. Start from the new upstream stable tag.
 2. Review all entries below with `Status: active` and `Reapply: yes`.
-3. Cherry-pick the listed commit(s), or recreate the patch if the code has drifted.
-4. Open PRs from `feature/*` branches back into the new `stable/*` branch.
+3. For each active patch, use its **canonical branch** (`brightfire/<name>`) as the source for cherry-picking or rebasing.
+4. Open PRs from `brightfire/<name>` branches back into the new `stable/*` branch — do NOT cherry-pick from messy intermediate branches.
 5. When upstream includes an equivalent fix, mark the patch `upstreamed` and stop reapplying it.
+
+## Canonical branches
+
+Each active patch has a **canonical branch** (`brightfire/<name>`) that contains a single squashed commit with the complete change set. These branches are the authoritative source for upstream replay.
+
+| Patch | Canonical branch | Squashed commit |
+|---|---|---|
+| context-estimate-compaction | `brightfire/context-estimate-compaction` | `8929fa251a` |
+| xgw-cross-gateway | `brightfire/xgw` | `4fdd06fcca` |
+| slack-mrkdwn-formatting-fix | `brightfire/slack-mrkdwn` | (see below) |
+| trusted-proxy-loopback-password-fallback | `brightfire/trusted-proxy-loopback` | (see below) |
+| control-ui-configurable-title | `brightfire/control-ui-title` | (see below) |
+
+> **Note:** Canonical branches for slack-mrkdwn, trusted-proxy-loopback, and control-ui-title still need to be created. Currently these exist only in the squashed `stable/v2026.4.15` history.
+
+## Branch hygiene rules
+
+- **One canonical branch per atomic feature/fix.** If a fix requires changes to multiple files (e.g. Zod schema + generated schema + feature code), those ALL belong in the same branch and the same squashed commit.
+- **Never create separate fix/* branches for issues discovered during a feature.** The schema fix for XGW is part of XGW — it lives in `brightfire/xgw`, not in `fix/xgw-schema-*`.
+- **Canonical branches live on the upstream base.** Each `brightfire/<name>` branch is based on the upstream tag commit, not on `stable/*`. This lets them be cleanly cherry-picked onto any future stable.
+- **Do not push directly to `stable/*`.** All changes go through PRs from feature/fix branches.
 
 ## Status meanings
 
-- `active` — still needed in Brightfire fork
+- `active` — still needed in Brightfire fork, must be replayed on future stable branches
 - `upstreamed` — equivalent fix exists upstream, do not reapply
 - `superseded` — replaced by a different Brightfire patch
 - `obsolete` — no longer needed
-
----
-
-## context-estimate-compaction
-
-- **Status:** active
-- **Reapply:** yes
-- **Stable branch first merged into:** `stable/v2026.4.14`
-- **Source PR:** #3
-- **Feature branch:** `feature/context-estimate-compaction`
-- **Primary commit:** `8929fa251a`
-- **Previous equivalent commit:** `b42bad6b24`
-
-### Rationale
-
-This patch preserves useful context and allows compaction to happen before overflow handling trims or rejects requests.
-
-It combines two changes:
-
-1. **Tool-result estimate fix**
-   - changes `TOOL_RESULT_CHARS_PER_TOKEN_ESTIMATE` from `2` to `4`
-   - removes an effective 2x multiplier applied to tool result text in context estimation
-
-2. **Preflight compaction fix**
-   - removes the early return in `runPreflightCompactionIfNeeded` when `totalTokensFresh === true`
-   - allows proactive compaction to trigger even when token counts are fresh
-
-### Files touched
-
-- `src/agents/pi-embedded-runner/tool-result-char-estimator.ts`
-- `src/auto-reply/reply/agent-runner-memory.ts`
-
-### Upgrade guidance
-
-When creating a future stable branch:
-
-```bash
-git checkout -b feature/context-estimate-compaction-vNEXT stable/vNEXT
-git cherry-pick 8929fa251a
-```
-
-If the cherry-pick conflicts:
-- resolve manually
-- verify that upstream has not already fixed one or both behaviors
-- if upstream has equivalent behavior, update this entry to `upstreamed` or narrow the remaining delta
-
-### Drop when
-
-Drop this patch once upstream includes both of these behaviors in a stable release:
-
-- no 2x special-case tool-result inflation relative to normal text estimation
-- preflight compaction still runs when token counts are fresh
 
 ---
 
@@ -78,39 +47,63 @@ Drop this patch once upstream includes both of these behaviors in a stable relea
 - **Status:** active
 - **Reapply:** yes
 - **Stable branch first merged into:** `stable/v2026.4.15`
-- **Source PR:** #5
-- **Feature branch:** `feature/xgw-cross-gateway-full`
-- **Primary commits:** `629998cc32` through `cc20d225ff` (17 commits)
-- **Squash-friendly commit:** `ee06966773` ("All the Brightfire custom changes" on stable)
+- **Canonical branch:** `brightfire/xgw`
+- **Squashed commit:** `4fdd06fcca`
 
-### Rationale
+### What this includes
 
-Cross-gateway messaging (XGW) enables OpenClaw instances to communicate across a fleet. Agents on one gateway can dispatch tasks to agents on another gateway via `sessions_send` with `@gateway/session` addressing. Supports sync, async, and multi-turn modes.
+Cross-gateway messaging (XGW) enables OpenClaw instances to communicate across a fleet. Agents on one gateway can dispatch tasks to agents on another gateway via `sessions_send` with `@<gateway>/session` addressing. Supports sync, async, and multi-turn modes.
 
-This is a Brightfire feature not present in upstream OpenClaw.
+This includes:
+- XGW implementation (inbound HTTP, outbound dispatch, state machine, types)
+- Config types (`XgwPeerConfig`, `XgwConfig`, `FleetConfig`)
+- Zod schema and regenerated JSON schema for `fleet.crossGateway`
+- `sessions_send` routing for `@gateway/` keys
+- Built-in `skills/cross-gateway/SKILL.md`
+- Updated `describeSessionsSendTool()` with `@<gateway>/session` hint
+
+### Config shape
+
+```json
+{
+  "fleet": {
+    "crossGateway": {
+      "enabled": true,
+      "gatewayName": "aster",
+      "acceptedTokens": { "ember": "<inbound-token>" },
+      "peers": {
+        "ember": { "url": "https://ember.example.com", "token": "<outbound-token>" }
+      }
+    }
+  }
+}
+```
 
 ### Files touched
 
-- `src/gateway/xgw/` (new directory: `inbound.ts`, `outbound.ts`, `state.ts`, `types.ts`, `utils.ts`)
-- `src/gateway/xgw/inbound-http.test.ts` (26 tests)
-- `src/gateway/server-methods/sessions-xgw.ts` (new)
-- `src/gateway/server-methods/sessions-xgw.test.ts` (22 tests)
-- `src/gateway/server-methods/sessions.ts` (modified — XGW session key handling)
-- `src/gateway/server-runtime-state.ts` (modified — XGW state field)
-- `src/gateway/inbound-http.ts` (modified — XGW routes)
-- `src/gateway/server.impl.ts` (modified — XGW initialization)
+- `src/gateway/xgw/` — new directory (inbound.ts, outbound.ts, state.ts, types.ts, utils.ts)
+- `src/gateway/xgw/inbound-http.test.ts`
+- `src/gateway/server-methods/sessions-xgw.ts` + `.test.ts`
+- `src/gateway/server-methods/sessions.ts`
+- `src/gateway/server-runtime-state.ts`
+- `src/gateway/server-http.ts`
+- `src/gateway/server-close.ts`
+- `src/gateway/protocol/schema/error-codes.ts`
+- `src/config/types.gateway.ts` + `types.openclaw.ts`
+- `src/config/zod-schema.ts` + `schema.base.generated.ts`
+- `src/agents/tool-description-presets.ts`
+- `skills/cross-gateway/SKILL.md`
 
 ### Upgrade guidance
 
-This is a large feature patch. On future stable branches:
-
 ```bash
-git checkout -b feature/xgw-cross-gateway-vNEXT stable/vNEXT
-git cherry-pick 629998cc32^..cc20d225ff
+git checkout -b brightfire/xgw-vNEXT stable/vNEXT
+git cherry-pick 4fdd06fcca
 ```
 
-If cherry-pick conflicts, resolve against the new `inbound-http.ts` and `server.impl.ts` (most likely conflict points). Run the 48 XGW tests to verify:
+If cherry-pick conflicts, most likely conflict points are `server-http.ts` (route registration) and `schema.base.generated.ts` (regenerate from the updated `zod-schema.ts` instead of cherry-picking the generated file directly).
 
+Run tests to verify:
 ```bash
 pnpm test -- "src/gateway/xgw/inbound-http.test.ts" "src/gateway/server-methods/sessions-xgw.test.ts"
 ```
@@ -121,101 +114,24 @@ Drop when upstream OpenClaw ships cross-gateway messaging natively.
 
 ---
 
-## slack-mrkdwn-formatting-fix
-
-- **Status:** active
-- **Reapply:** yes
-- **Stable branch first merged into:** `stable/v2026.4.15`
-- **Source PR:** #6
-- **Feature branch:** `feature/slack-mrkdwn-formatting-fix`
-- **Primary commit:** `81e405249a`
-
-### Rationale
-
-The Slack extension's `inboundFormattingHints()` told models to write Slack mrkdwn directly (`text_markup: "slack_mrkdwn"`), but the output pipeline runs `markdownToSlackMrkdwn()` which converts standard Markdown to mrkdwn. This caused double-conversion: bold `*text*` became italic `_text_`, links broke, etc.
-
-Fix: changed `text_markup` from `"slack_mrkdwn"` to `"markdown"` and updated the formatting rules to instruct standard Markdown.
-
-### Files touched
-
-- `extensions/slack/src/shared.ts` (1 file, 9 lines changed)
-
-### Upgrade guidance
-
-```bash
-git cherry-pick 81e405249a
-```
-
-Unlikely to conflict — the change is a string literal and a few rule lines in `inboundFormattingHints()`.
-
-### Drop when
-
-Drop when upstream fixes the mrkdwn double-conversion. Check whether `inboundFormattingHints()` returns `"markdown"` (not `"slack_mrkdwn"`) in the upstream release.
-
----
-
-## cli-health-probe-fallback
-
-- **Status:** superseded
-- **Reapply:** no
-- **Stable branch first merged into:** `stable/v2026.4.15`
-- **Source PR:** (part of #6 branch)
-- **Feature branch:** `feature/slack-mrkdwn-formatting-fix`
-- **Primary commit:** `e232a46374`
-
-### Rationale
-
-`openclaw status` sends a WebSocket probe to check gateway health. In trusted-proxy mode, loopback WS connections are rejected (`trusted_proxy_loopback_source`). This made `openclaw status` always report the gateway as unreachable.
-
-Fix: added an HTTP health endpoint fallback in the CLI probe. When the WS probe fails, it tries an HTTP GET to the gateway's health endpoint instead.
-
-### Files touched
-
-- `src/cli/daemon-cli/probe.ts` (new fallback logic)
-- `src/cli/daemon-cli/status.gather.ts` (1 line)
-- `src/cli/daemon-cli/status.print.ts` (6 lines)
-
-### Upgrade guidance
-
-```bash
-git cherry-pick e232a46374
-```
-
-### Drop when
-
-Drop when upstream either:
-- Fixes the WS probe to work in trusted-proxy mode, OR
-- Adds an HTTP health fallback natively
-
-Superseded by `trusted-proxy-loopback-password-fallback` which fixes the root cause — loopback password auth fallback in trusted-proxy mode. With that patch, the WS probe authenticates normally and this HTTP fallback is unnecessary.
-
----
-
 ## trusted-proxy-loopback-password-fallback
 
 - **Status:** active
 - **Reapply:** yes
 - **Stable branch first merged into:** `stable/v2026.4.15`
-- **Source PR:** #7
-- **Feature branch:** `fix/trusted-proxy-loopback-password-fallback`
-- **Primary commit:** `03031eb723`
+- **Canonical branch:** `brightfire/trusted-proxy-loopback` (to be created)
+- **Primary commit in stable:** `03031eb723`
 
 ### Rationale
 
-Upstream PR #58371 (Mar 31) removed the local-direct token auth fallback from trusted-proxy mode and made `auth.token` mutually exclusive with trusted-proxy. This left no auth path for loopback connections — CLI tools and sub-agents connect via `127.0.0.1` with password auth, but:
+Upstream PR #58371 (Mar 31) removed the local-direct token auth fallback from trusted-proxy mode. This left no auth path for loopback connections (CLI, sub-agents), breaking all sub-agent spawns on trusted-proxy deployments.
 
-1. `authorizeTrustedProxy()` rejects loopback with `trusted_proxy_loopback_source`
-2. The trusted-proxy code path returns `{ ok: false }` immediately with no fallback
-3. `auth.token` is banned in trusted-proxy mode
-
-This breaks all sub-agent spawns on instances using `gateway.auth.mode: trusted-proxy`.
-
-Fix: when `authorizeTrustedProxy` returns `trusted_proxy_loopback_source`, fall back to password auth if `auth.password` is configured and the client provided a matching password. Includes rate limiting and failure recording.
+Fix: when `authorizeTrustedProxy` returns `trusted_proxy_loopback_source`, fall back to password auth if `auth.password` is configured.
 
 ### Files touched
 
-- `src/gateway/auth.ts` (27 lines added)
-- `src/gateway/auth.test.ts` (62 lines added — 3 new tests, 61 total passing)
+- `src/gateway/auth.ts` (27 lines)
+- `src/gateway/auth.test.ts` (62 lines — 3 new tests)
 
 ### Upgrade guidance
 
@@ -223,17 +139,37 @@ Fix: when `authorizeTrustedProxy` returns `trusted_proxy_loopback_source`, fall 
 git cherry-pick 03031eb723
 ```
 
-If the `authorizeGatewayConnectCore` function has changed, apply the patch manually — it inserts a password fallback block between the `authorizeTrustedProxy` success path and the final `return { ok: false }` in the `auth.mode === "trusted-proxy"` branch.
+### Drop when
 
-Run auth tests to verify:
+Drop when upstream restores a local auth fallback for trusted-proxy mode.
+
+---
+
+## slack-mrkdwn-formatting-fix
+
+- **Status:** active
+- **Reapply:** yes
+- **Stable branch first merged into:** `stable/v2026.4.15`
+- **Canonical branch:** `brightfire/slack-mrkdwn` (to be created)
+- **Primary commit in stable:** `81e405249a`
+
+### Rationale
+
+`inboundFormattingHints()` in the Slack extension told models to write Slack mrkdwn (`text_markup: "slack_mrkdwn"`), but the output pipeline runs `markdownToSlackMrkdwn()` causing double-conversion. Fix: use `text_markup: "markdown"` and instruct standard Markdown.
+
+### Files touched
+
+- `extensions/slack/src/shared.ts` (9 lines)
+
+### Upgrade guidance
 
 ```bash
-pnpm test -- "src/gateway/auth.test.ts"
+git cherry-pick 81e405249a
 ```
 
 ### Drop when
 
-Drop when upstream restores a local auth fallback for trusted-proxy mode. This is a clear upstream bug — loopback connections have no auth path in trusted-proxy mode. Likely to be fixed upstream once reported.
+Drop when upstream fixes the mrkdwn double-conversion.
 
 ---
 
@@ -241,32 +177,80 @@ Drop when upstream restores a local auth fallback for trusted-proxy mode. This i
 
 - **Status:** active
 - **Reapply:** yes
-- **Stable branch first merged into:** (pending merge into `stable/v2026.4.15`)
-- **Feature branch:** `feature/control-ui-configurable-title`
-- **Primary commit:** (pending)
+- **Stable branch first merged into:** `stable/v2026.4.15`
+- **Canonical branch:** `brightfire/control-ui-title` (to be created)
+- **Primary commits in stable:** `15ea179faf` (config option) + `9c59279895` (stable placeholder + client-side fix)
 
 ### Rationale
 
-The Control UI HTML title is hardcoded to "OpenClaw Control" in `ui/index.html`. For branded deployments (e.g. "Aster"), the title should be configurable.
-
 Adds `gateway.controlUi.title` config option. The title resolution priority is:
 1. `gateway.controlUi.title` (explicit config)
-2. Assistant identity name (from `ui.assistant.name` or agent IDENTITY.md)
+2. Assistant identity name (from `ui.assistant.name`)
 3. "OpenClaw Control" (default)
 
-The gateway replaces the `<title>` tag when serving `index.html`. Also exposes the title in the bootstrap config JSON for client-side use.
+The fix uses a stable placeholder (`__OPENCLAW_CONTROL_TITLE__`) in `ui/index.html` instead of brittle string matching, and also sets `document.title` client-side from the bootstrap config JSON.
 
 ### Files touched
 
-- `src/gateway/control-ui.ts` (title resolution + HTML replacement)
-- `src/gateway/control-ui-contract.ts` (ControlUiBootstrapConfig type)
-- `src/config/types.gateway.ts` (GatewayControlUiConfig type)
-- `src/config/schema.base.generated.ts` (config schema + metadata)
+- `src/gateway/control-ui.ts`
+- `src/gateway/control-ui-contract.ts`
+- `src/config/types.gateway.ts`
+- `src/config/schema.base.generated.ts`
+- `ui/index.html`
+- `ui/src/ui/controllers/control-ui-bootstrap.ts`
 
 ### Upgrade guidance
 
-Cherry-pick the commit. Unlikely to conflict unless the `controlUi` config schema or `serveResolvedIndexHtml` function has changed.
+Cherry-pick both commits in order:
+```bash
+git cherry-pick 15ea179faf
+git cherry-pick 9c59279895
+```
+
+Note: `schema.base.generated.ts` is auto-generated. If there are conflicts, run `pnpm config:schema:gen` instead of manually resolving.
 
 ### Drop when
 
 Drop when upstream adds a configurable Control UI title.
+
+---
+
+## context-estimate-compaction
+
+- **Status:** active
+- **Reapply:** yes
+- **Stable branch first merged into:** `stable/v2026.4.14`
+- **Canonical branch:** `brightfire/context-estimate-compaction`
+- **Squashed commit:** `8929fa251a`
+
+### Rationale
+
+Two fixes to context estimation and compaction:
+1. `TOOL_RESULT_CHARS_PER_TOKEN_ESTIMATE` changed from `2` to `4` (removes effective 2x multiplier)
+2. `runPreflightCompactionIfNeeded` no longer returns early when `totalTokensFresh === true` (allows proactive compaction)
+
+### Files touched
+
+- `src/agents/pi-embedded-runner/tool-result-char-estimator.ts`
+- `src/auto-reply/reply/agent-runner-memory.ts`
+
+### Upgrade guidance
+
+```bash
+git cherry-pick 8929fa251a
+```
+
+### Drop when
+
+Drop when upstream fixes both behaviors.
+
+---
+
+## cli-health-probe-fallback
+
+- **Status:** superseded
+- **Reapply:** no
+- **Superseded by:** `trusted-proxy-loopback-password-fallback`
+- **Primary commit:** `e232a46374`
+
+HTTP fallback in the CLI health probe for trusted-proxy loopback rejection. Superseded by the auth fix which restores WS probe auth.
