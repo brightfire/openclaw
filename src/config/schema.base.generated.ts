@@ -20833,6 +20833,12 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
                 description:
                   "Disables Control UI device identity checks and relies on token/password only. Use only for short-lived debugging on trusted networks, then turn it off immediately.",
               },
+              title: {
+                type: "string",
+                title: "Control UI Page Title",
+                description:
+                  "Custom HTML page title for the Control UI. Defaults to the assistant name if configured, otherwise 'OpenClaw Control'.",
+              },
             },
             additionalProperties: false,
             title: "Control UI",
@@ -24388,6 +24394,11 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
       label: "Dangerously Disable Control UI Device Auth",
       help: "Disables Control UI device identity checks and relies on token/password only. Use only for short-lived debugging on trusted networks, then turn it off immediately.",
       tags: ["security", "access", "network", "advanced"],
+    },
+    "gateway.controlUi.title": {
+      label: "Control UI Page Title",
+      help: "Custom HTML page title for the Control UI. Defaults to the assistant name if configured, otherwise 'OpenClaw Control'.",
+      tags: ["ui"],
     },
     "gateway.push": {
       label: "Gateway Push Delivery",
