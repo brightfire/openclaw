@@ -20833,12 +20833,6 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
                 description:
                   "Disables Control UI device identity checks and relies on token/password only. Use only for short-lived debugging on trusted networks, then turn it off immediately.",
               },
-              title: {
-                type: "string",
-                title: "Control UI Page Title",
-                description:
-                  "Custom HTML page title for the Control UI. Defaults to the assistant name if configured, otherwise 'OpenClaw Control'.",
-              },
             },
             additionalProperties: false,
             title: "Control UI",
@@ -22142,6 +22136,69 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
         title: "Memory",
         description: "Memory backend configuration (global).",
       },
+      fleet: {
+        type: "object",
+        properties: {
+          crossGateway: {
+            type: "object",
+            properties: {
+              enabled: {
+                type: "boolean",
+              },
+              gatewayName: {
+                type: "string",
+              },
+              agentId: {
+                type: "string",
+              },
+              maxConcurrent: {
+                type: "integer",
+                minimum: -9007199254740991,
+                maximum: 9007199254740991,
+              },
+              maxPendingAsync: {
+                type: "integer",
+                minimum: -9007199254740991,
+                maximum: 9007199254740991,
+              },
+              exposureTtlSeconds: {
+                type: "integer",
+                minimum: -9007199254740991,
+                maximum: 9007199254740991,
+              },
+              acceptedTokens: {
+                type: "object",
+                propertyNames: {
+                  type: "string",
+                },
+                additionalProperties: {
+                  type: "string",
+                },
+              },
+              peers: {
+                type: "object",
+                propertyNames: {
+                  type: "string",
+                },
+                additionalProperties: {
+                  type: "object",
+                  properties: {
+                    url: {
+                      type: "string",
+                    },
+                    token: {
+                      type: "string",
+                    },
+                  },
+                  additionalProperties: false,
+                },
+              },
+            },
+            additionalProperties: false,
+          },
+        },
+        additionalProperties: false,
+      },
       mcp: {
         type: "object",
         properties: {
@@ -22717,43 +22774,6 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
         title: "Plugins",
         description:
           "Plugin system controls for enabling extensions, constraining load scope, configuring entries, and tracking installs. Keep plugin policy explicit and least-privilege in production environments.",
-      },
-      fleet: {
-        type: "object",
-        properties: {
-          crossGateway: {
-            type: "object",
-            properties: {
-              enabled: { type: "boolean" },
-              gatewayName: { type: "string" },
-              agentId: { type: "string" },
-              maxConcurrent: { type: "integer" },
-              maxPendingAsync: { type: "integer" },
-              exposureTtlSeconds: { type: "integer" },
-              acceptedTokens: {
-                type: "object",
-                additionalProperties: { type: "string" },
-              },
-              peers: {
-                type: "object",
-                additionalProperties: {
-                  type: "object",
-                  properties: {
-                    url: { type: "string" },
-                    token: { type: "string" },
-                  },
-                  additionalProperties: false,
-                },
-              },
-            },
-            additionalProperties: false,
-            title: "Cross-Gateway (XGW) Configuration",
-            description: "Cross-gateway messaging configuration. Enables dispatching sessions_send calls to remote OpenClaw instances.",
-          },
-        },
-        additionalProperties: false,
-        title: "Fleet",
-        description: "Fleet configuration for multi-gateway deployments.",
       },
     },
     required: ["commands"],
@@ -24431,11 +24451,6 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
       label: "Dangerously Disable Control UI Device Auth",
       help: "Disables Control UI device identity checks and relies on token/password only. Use only for short-lived debugging on trusted networks, then turn it off immediately.",
       tags: ["security", "access", "network", "advanced"],
-    },
-    "gateway.controlUi.title": {
-      label: "Control UI Page Title",
-      help: "Custom HTML page title for the Control UI. Defaults to the assistant name if configured, otherwise 'OpenClaw Control'.",
-      tags: ["ui"],
     },
     "gateway.push": {
       label: "Gateway Push Delivery",
