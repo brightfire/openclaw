@@ -481,6 +481,17 @@ export type XgwConfig = {
   acceptedTokens?: Record<string, string>;
   /** Peer gateway configurations. Key = peer name. */
   peers?: Record<string, XgwPeerConfig>;
+  /**
+   * Authentication mode for inbound requests (default: "token-only").
+   * - "token-only": Only bearer token auth (backward compatible default)
+   * - "dual": Accept both Ed25519 signatures and bearer tokens
+   * - "signature-only": Only accept Ed25519 signatures
+   */
+  authMode?: "token-only" | "dual" | "signature-only";
+  /** This gateway's Ed25519 private key for signing outbound requests (base64 PKCS8 DER). */
+  privateKey?: string;
+  /** Trusted peer public keys for verifying inbound signatures. Key = peer name, value = base64 SPKI DER. */
+  trustedKeys?: Record<string, string>;
 };
 
 export type FleetConfig = {

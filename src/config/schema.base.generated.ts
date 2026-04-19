@@ -22193,6 +22193,34 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
                   additionalProperties: false,
                 },
               },
+              authMode: {
+                anyOf: [
+                  {
+                    type: "string",
+                    const: "token-only",
+                  },
+                  {
+                    type: "string",
+                    const: "dual",
+                  },
+                  {
+                    type: "string",
+                    const: "signature-only",
+                  },
+                ],
+              },
+              privateKey: {
+                type: "string",
+              },
+              trustedKeys: {
+                type: "object",
+                propertyNames: {
+                  type: "string",
+                },
+                additionalProperties: {
+                  type: "string",
+                },
+              },
             },
             additionalProperties: false,
           },
@@ -27527,6 +27555,6 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
       tags: ["advanced", "url-secret"],
     },
   },
-  version: "2026.4.15",
+  version: "2026.4.15-bf3",
   generatedAt: "2026-03-22T21:17:33.302Z",
 };
