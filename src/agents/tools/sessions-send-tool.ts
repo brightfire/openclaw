@@ -38,6 +38,7 @@ const SessionsSendToolSchema = Type.Object({
   agentId: Type.Optional(Type.String({ minLength: 1, maxLength: 64 })),
   message: Type.String(),
   timeoutSeconds: Type.Optional(Type.Number({ minimum: 0 })),
+  async: Type.Optional(Type.Boolean({ description: "Fire-and-forget for cross-gateway (@gateway/) requests. The remote agent works independently and the result is pushed back to your session when complete. Only valid with cross-gateway session keys." })),
 });
 
 type GatewayCaller = typeof callGateway;
@@ -49,9 +50,9 @@ async function startAgentRun(params: {
   sendParams: Record<string, unknown>;
   sessionKey: string;
   timeoutSeconds: number;
-}): Promise<{ ok: true; runId: string; status?: string; reply?: string | null } | { ok: false; result: ReturnType<typeof jsonResult> }> {
+}): Promise<{ ok: true; runId: string; status?: string; reply?: string | null; correlationId?: string } | { ok: false; result: ReturnType<typeof jsonResult> }> {
   try {
-    const response = await params.callGateway<{ runId: string; status?: string; reply?: string | null }>({
+    const response = await params.callGateway<{ runId: string; status?: string; reply?: string | null; correlationId?: string }>({
       method: "agent",
       params: params.sendParams,
       timeoutMs: params.timeoutSeconds * 1000 + 2000,
@@ -61,6 +62,7 @@ async function startAgentRun(params: {
       runId: typeof response?.runId === "string" && response.runId ? response.runId : params.runId,
       status: response?.status,
       reply: response?.reply,
+      correlationId: response?.correlationId,
     };
   } catch (err) {
     const messageText =
@@ -268,6 +270,18 @@ export function createSessionsSendTool(opts?: {
               callGateway: gatewayCall,
             });
 
+      const isXgw = typeof resolvedKey === "string" && resolvedKey.startsWith("@");
+      const asyncParam = params.async === true;
+
+      // Fix 1: async mode is only valid for cross-gateway (@gateway/) session keys.
+      if (asyncParam && !isXgw) {
+        return jsonResult({
+          runId: crypto.randomUUID(),
+          status: "error",
+          error: "async is only supported for cross-gateway (@gateway/) session keys",
+        });
+      }
+
       const agentMessageContext = buildAgentToAgentMessageContext({
         requesterSessionKey: opts?.agentSessionKey,
         requesterChannel: opts?.agentChannel,
@@ -287,6 +301,15 @@ export function createSessionsSendTool(opts?: {
           sourceChannel: opts?.agentChannel,
           sourceTool: "sessions_send",
         },
+        ...(isXgw && asyncParam ? { async: true } : {}),
+        // Fix 5: Propagate the actual calling session key so async XGW callbacks
+        // route back to the sub-agent that initiated the request, not the main session.
+        ...(isXgw
+          ? {
+              callerSessionKey: opts?.agentSessionKey,
+              callerChannel: opts?.agentChannel,
+            }
+          : {}),
       };
       const requesterSessionKey = opts?.agentSessionKey;
       const requesterChannel = opts?.agentChannel;
@@ -338,6 +361,18 @@ export function createSessionsSendTool(opts?: {
         return start.result;
       }
       runId = start.runId;
+
+      if (isXgw && asyncParam && start.status === "accepted") {
+        const correlationId = start.correlationId ?? "unknown";
+        return jsonResult({
+          runId,
+          status: "accepted",
+          // Fix 7: Wording must not imply yield behavior — the tool does not yield.
+          reply: `Async request accepted (correlation: ${correlationId}). Results will be delivered to your session when the remote agent finishes.`,
+          sessionKey: displayKey,
+          delivery,
+        });
+      }
 
       if (start.status === "ok" && typeof start.reply === "string") {
         startA2AFlow(start.reply);
