@@ -38,7 +38,7 @@ const SessionsSendToolSchema = Type.Object({
   agentId: Type.Optional(Type.String({ minLength: 1, maxLength: 64 })),
   message: Type.String(),
   timeoutSeconds: Type.Optional(Type.Number({ minimum: 0 })),
-  async: Type.Optional(Type.Boolean()),
+  async: Type.Optional(Type.Boolean({ description: "Fire-and-forget for cross-gateway (@gateway/) requests. The remote agent works independently and the result is pushed back to your session when complete. Only valid with cross-gateway session keys." })),
 });
 
 type GatewayCaller = typeof callGateway;
