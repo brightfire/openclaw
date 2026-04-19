@@ -38,7 +38,7 @@ import {
   validateTimestamp,
 } from "./state.js";
 import type { XgwConfig, XgwInboundResponse } from "./types.js";
-import { XGW_SESSION_PREFIX } from "./types.js";
+import { XGW_DISPATCHER_KEY, XGW_SESSION_PREFIX } from "./types.js";
 import { resolveEnvValue } from "./utils.js";
 
 // ── Default security prompt for cross-gateway workers ───────────────
@@ -224,6 +224,14 @@ async function dispatchDirect(
     ? sourceIdentity
     : `${DEFAULT_XGW_SECURITY_PROMPT}\n\n${sourceIdentity}`;
 
+  // Fix 3: inputProvenance for dispatchDirect — mirrors spawnWorker but marks as follow-up.
+  const inputProv: InputProvenance = {
+    kind: "inter_session",
+    sourceSessionKey: `${peer}:follow-up`,
+    sourceChannel: "xgw",
+    sourceTool: "sessions_send",
+  };
+
   try {
     const { runId } = await subagent.run({
       message,
@@ -233,6 +241,9 @@ async function dispatchDirect(
       channel: "internal",
       lane: "nested",
       extraSystemPrompt,
+      // Fix 3: Pass agentId (matching spawnWorker pattern) and inputProvenance.
+      agentId,
+      inputProvenance: inputProv,
     });
 
     await subagent.waitForRun({ runId, timeoutMs: timeoutSeconds * 1000 });
@@ -376,6 +387,10 @@ export async function handleXgwHook(req: IncomingMessage, res: ServerResponse): 
   const cfg = getXgwConfig();
 
   // Circular self-send detection: reject if the authenticated peer is ourselves.
+  // NOTE: This intentionally blocks ALL self-sends (not just sync multi-turn as
+  // DESIGN.md §11 specifies) as a conservative security measure. Async callbacks
+  // from a gateway that shares our name would also be blocked — but a correctly
+  // configured fleet assigns unique names to each gateway, making this a safe default.
   const selfName = cfg.gatewayName;
   if (selfName && peer === selfName) {
     sendJson(res, 400, { ok: false, status: "error", error: "circular send: cannot send to self" });
@@ -449,8 +464,8 @@ export async function handleXgwHook(req: IncomingMessage, res: ServerResponse): 
     return true;
   }
 
-  // === Dispatcher path: sessionKey === "receptionist" ===
-  if (sessionKey === "receptionist") {
+  // === Dispatcher path: sessionKey === XGW_DISPATCHER_KEY ("receptionist") ===
+  if (sessionKey === XGW_DISPATCHER_KEY) {
     // Spawn new worker
     const result = await spawnWorker(
       correlationId,
@@ -669,7 +684,8 @@ export async function handleXgwCallback(
   const errorMsg = typeof p.error === "string" ? p.error : "";
   const sessionKey = typeof p.sessionKey === "string" ? p.sessionKey : "";
   const nonce = typeof p.nonce === "string" ? p.nonce : "";
-  const timestamp = p.timestamp as number | undefined;
+  // Fix 4: timestamp is required — a missing or zero timestamp bypasses replay protection.
+  const timestamp = typeof p.timestamp === "number" ? p.timestamp : 0;
 
   if (!correlationId) {
     sendJson(res, 400, { ok: false, error: "missing correlationId" });
@@ -682,7 +698,12 @@ export async function handleXgwCallback(
     return true;
   }
 
-  if (timestamp !== undefined && !validateTimestamp(timestamp)) {
+  // Fix 4: Reject missing, zero, or falsy timestamp with 400; expired with 410.
+  if (!timestamp) {
+    sendJson(res, 400, { ok: false, error: "missing required field: timestamp" });
+    return true;
+  }
+  if (!validateTimestamp(timestamp)) {
     sendJson(res, 410, { ok: false, error: "request expired" });
     return true;
   }
@@ -795,6 +816,10 @@ async function notifyExpiredCallbacks(): Promise<void> {
     if (entry.status === "pending" && entry.expiresAt < now) {
       // Mark expired first so we don't retry on the next cycle
       markCallbackExpired(correlationId);
+      // Fix 6: saveState inside the loop for crash safety — each mutation is
+      // persisted immediately so a crash mid-loop doesn't leave stale pending
+      // entries that would be re-processed on the next cycle.
+      saveState();
       try {
         await subagent.run({
           message: "[Cross-gateway callback timed out]",
@@ -808,7 +833,6 @@ async function notifyExpiredCallbacks(): Promise<void> {
       }
     }
   }
-  saveState();
 }
 
 // ── Initialization ──────────────────────────────────────────────────

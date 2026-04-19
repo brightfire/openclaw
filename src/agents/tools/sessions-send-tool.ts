@@ -272,6 +272,16 @@ export function createSessionsSendTool(opts?: {
 
       const isXgw = typeof resolvedKey === "string" && resolvedKey.startsWith("@");
       const asyncParam = params.async === true;
+
+      // Fix 1: async mode is only valid for cross-gateway (@gateway/) session keys.
+      if (asyncParam && !isXgw) {
+        return jsonResult({
+          runId: crypto.randomUUID(),
+          status: "error",
+          error: "async is only supported for cross-gateway (@gateway/) session keys",
+        });
+      }
+
       const agentMessageContext = buildAgentToAgentMessageContext({
         requesterSessionKey: opts?.agentSessionKey,
         requesterChannel: opts?.agentChannel,
@@ -292,6 +302,14 @@ export function createSessionsSendTool(opts?: {
           sourceTool: "sessions_send",
         },
         ...(isXgw && asyncParam ? { async: true } : {}),
+        // Fix 5: Propagate the actual calling session key so async XGW callbacks
+        // route back to the sub-agent that initiated the request, not the main session.
+        ...(isXgw
+          ? {
+              callerSessionKey: opts?.agentSessionKey,
+              callerChannel: opts?.agentChannel,
+            }
+          : {}),
       };
       const requesterSessionKey = opts?.agentSessionKey;
       const requesterChannel = opts?.agentChannel;
@@ -345,10 +363,12 @@ export function createSessionsSendTool(opts?: {
       runId = start.runId;
 
       if (isXgw && asyncParam && start.status === "accepted") {
+        const correlationId = start.correlationId ?? "unknown";
         return jsonResult({
           runId,
           status: "accepted",
-          reply: `Async request accepted by gateway (correlation: ${start.correlationId ?? "unknown"}). Results will arrive when the remote agent finishes.`,
+          // Fix 7: Wording must not imply yield behavior — the tool does not yield.
+          reply: `Async request accepted (correlation: ${correlationId}). Results will be delivered to your session when the remote agent finishes.`,
           sessionKey: displayKey,
           delivery,
         });
