@@ -379,23 +379,43 @@ function authenticateRequest(
     const tsHeader = req.headers["x-xgw-timestamp"] as string | undefined;
     const nonceHeader = req.headers["x-xgw-nonce"] as string | undefined;
 
-    if (signer && signature && tsHeader && nonceHeader) {
+    const hasSignatureHeaders = !!(signer && signature && tsHeader && nonceHeader);
+
+    if (hasSignatureHeaders) {
+      // Minor 3 / Fix 5: Strict integer validation — reject non-numeric timestamps
+      // before they can propagate as "NaN" into the canonical payload string.
+      if (!/^\d+$/.test(tsHeader!)) {
+        return null;
+      }
+      const ts = parseInt(tsHeader!, 10);
       const trustedKeys = cfg.trustedKeys ?? {};
       const result = verifyXgwSignature(
-        signer,
-        signature,
+        signer!,
+        signature!,
         method,
         path,
-        parseInt(tsHeader, 10),
-        nonceHeader,
+        ts,
+        nonceHeader!,
         rawBytes,
         trustedKeys,
       );
-      if (result) return result;
+      // Fix 1: Downgrade attack prevention — if signature headers were present
+      // but verification failed, REJECT immediately. Do NOT fall back to bearer
+      // token auth. An attacker with a stolen bearer token could otherwise bypass
+      // signature enforcement by sending invalid signature headers alongside
+      // a valid bearer token.
+      return result;
     }
+
+    // No signature headers present
+    if (authMode === "signature-only") {
+      // signature-only mode requires signature headers; no bearer fallback
+      return null;
+    }
+    // dual mode with no signature headers — fall through to bearer token auth
   }
 
-  // Try bearer token auth (when not signature-only)
+  // Bearer token auth (token-only mode, or dual mode with no signature headers)
   if (authMode !== "signature-only") {
     const authHeader = req.headers["authorization"];
     if (authHeader?.startsWith("Bearer ")) {
@@ -412,8 +432,11 @@ export async function handleXgwHook(req: IncomingMessage, res: ServerResponse): 
     return false;
   }
 
+  // Minor 1: cache config — avoid calling getXgwConfig() twice
+  const cfg = getXgwConfig();
+
   // Check enabled
-  if (getXgwConfig().enabled !== true) {
+  if (cfg.enabled !== true) {
     sendJson(res, 503, {
       ok: false,
       status: "error",
@@ -422,26 +445,57 @@ export async function handleXgwHook(req: IncomingMessage, res: ServerResponse): 
     return true;
   }
 
-  const cfg = getXgwConfig();
+  const authMode = cfg.authMode ?? "token-only";
 
-  // Read body first (need raw bytes for signature verification)
-  const body = await readJsonBody(req, 1048576);
-  if (!body.ok) {
-    const st =
-      body.error === "payload too large" ? 413 : body.error === "request body timeout" ? 408 : 400;
-    sendJson(res, st, {
-      ok: false,
-      status: "error",
-      error: st === 413 ? "payload too large" : body.error,
-    });
-    return true;
-  }
+  // Fix 3: In token-only mode, authenticate BEFORE reading the body.
+  // Signature modes must read body first (raw bytes required for Ed25519 verification).
+  // eslint-disable-next-line prefer-const
+  let peer!: string;
+  // eslint-disable-next-line prefer-const
+  let p!: Record<string, unknown>;
 
-  // Authenticate (signature or bearer token depending on authMode)
-  const peer = authenticateRequest(req, cfg, "POST", "/xgateway", body.rawBytes);
-  if (!peer) {
-    sendJson(res, 401, { ok: false, status: "error", error: "unauthorized" });
-    return true;
+  if (authMode === "token-only") {
+    const authHeader = req.headers["authorization"];
+    const bearerPeer = authHeader?.startsWith("Bearer ")
+      ? authenticateXgwToken(authHeader.slice(7).trim())
+      : null;
+    if (!bearerPeer) {
+      sendJson(res, 401, { ok: false, status: "error", error: "unauthorized" });
+      return true;
+    }
+    peer = bearerPeer;
+    const body = await readJsonBody(req, 1048576);
+    if (!body.ok) {
+      const st =
+        body.error === "payload too large" ? 413 : body.error === "request body timeout" ? 408 : 400;
+      sendJson(res, st, {
+        ok: false,
+        status: "error",
+        error: st === 413 ? "payload too large" : body.error,
+      });
+      return true;
+    }
+    p = body.value!;
+  } else {
+    // dual / signature-only: read body first (raw bytes needed for signature verification)
+    const body = await readJsonBody(req, 1048576);
+    if (!body.ok) {
+      const st =
+        body.error === "payload too large" ? 413 : body.error === "request body timeout" ? 408 : 400;
+      sendJson(res, st, {
+        ok: false,
+        status: "error",
+        error: st === 413 ? "payload too large" : body.error,
+      });
+      return true;
+    }
+    const sigPeer = authenticateRequest(req, cfg, "POST", "/xgateway", body.rawBytes);
+    if (!sigPeer) {
+      sendJson(res, 401, { ok: false, status: "error", error: "unauthorized" });
+      return true;
+    }
+    peer = sigPeer;
+    p = body.value!;
   }
 
   // Circular self-send detection: reject if the authenticated peer is ourselves.
@@ -450,8 +504,6 @@ export async function handleXgwHook(req: IncomingMessage, res: ServerResponse): 
     sendJson(res, 400, { ok: false, status: "error", error: "circular send: cannot send to self" });
     return true;
   }
-
-  const p = body.value as Record<string, unknown>;
 
   // Extract and validate fields
   const sessionKey = typeof p.sessionKey === "string" ? p.sessionKey.trim() : "";
@@ -649,6 +701,15 @@ async function handleAsyncCallbackOutbound(
   const outboundToken = peerCfg?.token ? resolveEnvValue(peerCfg.token) : "";
   const peerUrl = peerCfg?.url ?? "";
 
+  // Fix 4: Guard against missing peer URL — fail fast with a clear error message
+  // instead of silently attempting retries against an empty/relative URL.
+  if (!peerUrl) {
+    process.stderr.write(
+      `[xgw] cannot deliver callback for ${correlationId}: peer "${peer}" has no URL configured\n`,
+    );
+    return;
+  }
+
   const callbackPayload: Record<string, unknown> = {
     correlationId,
     sessionKey,
@@ -701,22 +762,49 @@ export async function handleXgwCallback(
     return true;
   }
 
-  // Read body first (need raw bytes for signature verification)
-  const body = await readJsonBody(req, 1048576);
-  if (!body.ok) {
-    const st = body.error === "payload too large" ? 413 : 400;
-    sendJson(res, st, { ok: false, error: st === 413 ? "payload too large" : body.error });
-    return true;
+  const cbAuthMode = cfg.authMode ?? "token-only";
+
+  // Fix 3: In token-only mode, authenticate before reading the body (DoS mitigation).
+  // eslint-disable-next-line prefer-const
+  let cbPeer!: string;
+  // eslint-disable-next-line prefer-const
+  let p!: Record<string, unknown>;
+
+  if (cbAuthMode === "token-only") {
+    const authHeader = req.headers["authorization"];
+    const bearerPeer = authHeader?.startsWith("Bearer ")
+      ? authenticateXgwToken(authHeader.slice(7).trim())
+      : null;
+    if (!bearerPeer) {
+      sendJson(res, 401, { ok: false, error: "unauthorized" });
+      return true;
+    }
+    cbPeer = bearerPeer;
+    const body = await readJsonBody(req, 1048576);
+    if (!body.ok) {
+      const st = body.error === "payload too large" ? 413 : 400;
+      sendJson(res, st, { ok: false, error: st === 413 ? "payload too large" : body.error });
+      return true;
+    }
+    p = body.value!;
+  } else {
+    // dual / signature-only: read body first for signature verification
+    const body = await readJsonBody(req, 1048576);
+    if (!body.ok) {
+      const st = body.error === "payload too large" ? 413 : 400;
+      sendJson(res, st, { ok: false, error: st === 413 ? "payload too large" : body.error });
+      return true;
+    }
+    const sigPeer = authenticateRequest(req, cfg, "POST", "/xgateway/callback", body.rawBytes);
+    if (!sigPeer) {
+      sendJson(res, 401, { ok: false, error: "unauthorized" });
+      return true;
+    }
+    cbPeer = sigPeer;
+    p = body.value!;
   }
 
-  // Auth (signature or bearer token depending on authMode)
-  const peer = authenticateRequest(req, cfg, "POST", "/xgateway/callback", body.rawBytes);
-  if (!peer) {
-    sendJson(res, 401, { ok: false, error: "unauthorized" });
-    return true;
-  }
-
-  const p = body.value as Record<string, unknown>;
+  const peer = cbPeer;
 
   const correlationId = typeof p.correlationId === "string" ? p.correlationId : "";
   const reply = typeof p.reply === "string" ? p.reply : "";

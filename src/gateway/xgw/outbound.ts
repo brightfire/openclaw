@@ -66,19 +66,37 @@ export async function postCallbackWithRetry(
       }
       // Add signature headers if private key is configured
       if (privateKeyB64) {
-        const bodyBytes = Buffer.from(bodyStr);
-        const sig = signXgwRequest(
-          privateKeyB64,
-          "POST",
-          "/xgateway/callback",
-          effectivePayload.timestamp as number,
-          effectivePayload.nonce as string,
-          bodyBytes,
-        );
-        headers["X-XGW-Signature"] = sig;
-        headers["X-XGW-Signer"] = signerName ?? "unknown";
-        headers["X-XGW-Timestamp"] = String(effectivePayload.timestamp);
-        headers["X-XGW-Nonce"] = effectivePayload.nonce as string;
+        // Fix 2: wrap signing in try/catch — a bad private key config should not
+        // silently drop the callback or crash the retry loop.
+        try {
+          const bodyBytes = Buffer.from(bodyStr);
+          const sig = signXgwRequest(
+            privateKeyB64,
+            "POST",
+            "/xgateway/callback",
+            effectivePayload.timestamp as number,
+            effectivePayload.nonce as string,
+            bodyBytes,
+          );
+          headers["X-XGW-Signature"] = sig;
+          headers["X-XGW-Signer"] = signerName ?? "unknown";
+          headers["X-XGW-Timestamp"] = String(effectivePayload.timestamp);
+          headers["X-XGW-Nonce"] = effectivePayload.nonce as string;
+        } catch (sigErr) {
+          const sigErrMsg = sigErr instanceof Error ? sigErr.message : String(sigErr);
+          if (outboundToken) {
+            // Dual mode: signing failed but bearer token available — continue bearer-only
+            process.stderr.write(
+              `[xgw] callback signing failed (falling back to bearer): ${sigErrMsg}\n`,
+            );
+          } else {
+            // No bearer fallback — cannot deliver callback
+            process.stderr.write(
+              `[xgw] callback signing failed and no bearer token available: ${sigErrMsg}\n`,
+            );
+            return { ok: false, error: `signing failed: ${sigErrMsg}` };
+          }
+        }
       }
       const resp = await fetch(callbackUrl, {
         method: "POST",
@@ -212,12 +230,37 @@ export async function xgwOutboundDispatch(
     // Add signature headers if private key is configured
     const privKey = xgwCfg.privateKey ? resolveEnvValue(xgwCfg.privateKey) : undefined;
     if (privKey) {
-      const bodyBytes = Buffer.from(bodyStr);
-      const sig = signXgwRequest(privKey, "POST", "/xgateway", ts, nonce, bodyBytes);
-      outHeaders["X-XGW-Signature"] = sig;
-      outHeaders["X-XGW-Signer"] = xgwCfg.gatewayName ?? "unknown";
-      outHeaders["X-XGW-Timestamp"] = String(ts);
-      outHeaders["X-XGW-Nonce"] = nonce;
+      // Minor 2: warn if gatewayName is not set — "unknown" signer will fail key lookup on peer
+      if (!xgwCfg.gatewayName) {
+        process.stderr.write(
+          `[xgw] outbound signing: gatewayName is not configured — X-XGW-Signer will be "unknown" and verification will fail on the peer\n`,
+        );
+      }
+      // Fix 2: wrap signing in try/catch — a bad private key config should not crash
+      // the entire dispatch. Fall back to bearer token (dual mode) or fail with an error.
+      try {
+        const bodyBytes = Buffer.from(bodyStr);
+        const sig = signXgwRequest(privKey, "POST", "/xgateway", ts, nonce, bodyBytes);
+        outHeaders["X-XGW-Signature"] = sig;
+        outHeaders["X-XGW-Signer"] = xgwCfg.gatewayName ?? "unknown";
+        outHeaders["X-XGW-Timestamp"] = String(ts);
+        outHeaders["X-XGW-Nonce"] = nonce;
+      } catch (sigErr) {
+        const sigErrMsg = sigErr instanceof Error ? sigErr.message : String(sigErr);
+        if (token) {
+          // Dual mode: signing failed but bearer token available — continue bearer-only
+          process.stderr.write(
+            `[xgw] outbound signing failed for ${gwName} (falling back to bearer): ${sigErrMsg}\n`,
+          );
+        } else {
+          // No bearer token available — cannot dispatch
+          return {
+            runId: corrId,
+            status: "error",
+            error: `XGW signing failed: ${sigErrMsg}`,
+          };
+        }
+      }
     }
 
     const res = await fetch(`${baseUrl}/xgateway`, {

@@ -3,7 +3,8 @@ import fs from "node:fs";
 import type { IncomingMessage } from "node:http";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { randomUUID } from "node:crypto";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockFetch = vi.fn();
 const { mockLoadConfig } = vi.hoisted(() => ({
@@ -36,6 +37,7 @@ import { withTempConfig } from "../test-temp-config.js";
 // against the `setImmediate` in `createStreamingRequest` that emits the
 // request body — causing `readJsonBody` to miss the data/end events.
 import "./inbound.js";
+import { generateXgwKeypair, signXgwRequest } from "./signing.js";
 
 function createStreamingRequest(params: {
   path: string;
@@ -1247,6 +1249,424 @@ describe("gateway XGW HTTP routes", () => {
         expect(res.statusCode).toBe(410);
         expect(JSON.parse(getBody())).toEqual({ ok: false, error: "callback expired" });
       },
+    });
+  });
+
+  // ─── Ed25519 signature auth ───────────────────────────────────────────────
+
+  describe("Ed25519 signature auth", () => {
+    let testKeypair: { publicKey: string; privateKey: string };
+
+    beforeAll(() => {
+      testKeypair = generateXgwKeypair();
+    });
+
+    /**
+     * Build a signed POST /xgateway request.
+     * Nonce and timestamp are generated here and embedded in BOTH the body
+     * (for business-logic replay/freshness checks) and the signature headers.
+     */
+    function buildSignedHookRequest(opts: {
+      body: Omit<Record<string, unknown>, "nonce" | "timestamp">;
+      privateKey: string;
+      signerName: string;
+      bearerToken?: string;
+    }): IncomingMessage {
+      const ts = Math.floor(Date.now() / 1000);
+      const nonce = `nonce-sig-${randomUUID()}`;
+      const fullBody = { ...opts.body, nonce, timestamp: ts };
+      const bodyStr = JSON.stringify(fullBody);
+      const bodyBytes = Buffer.from(bodyStr);
+      const sig = signXgwRequest(opts.privateKey, "POST", "/xgateway", ts, nonce, bodyBytes);
+
+      const req = new EventEmitter() as IncomingMessage;
+      req.method = "POST";
+      req.url = "/xgateway";
+      req.headers = {
+        host: "localhost:18789",
+        "content-type": "application/json",
+        ...(opts.bearerToken ? { authorization: `Bearer ${opts.bearerToken}` } : {}),
+        "x-xgw-signature": sig,
+        "x-xgw-signer": opts.signerName,
+        "x-xgw-timestamp": String(ts),
+        "x-xgw-nonce": nonce,
+      };
+      req.socket = { remoteAddress: "127.0.0.1" } as IncomingMessage["socket"];
+      setImmediate(() => {
+        req.emit("data", Buffer.from(bodyStr));
+        req.emit("end");
+      });
+      return req;
+    }
+
+    it("dual mode: accepts request with valid Ed25519 signature (no bearer token)", async () => {
+      const subagent = createSubagentRuntime();
+      setGatewaySubagentRuntime(subagent);
+
+      mockLoadConfig.mockReturnValue({
+        fleet: {
+          crossGateway: {
+            enabled: true,
+            authMode: "dual",
+            trustedKeys: { ember: testKeypair.publicKey },
+            acceptedTokens: { ember: "peer-secret" },
+            peers: { ember: { url: "http://ember.local", token: "peer-secret" } },
+            exposureTtlSeconds: 300,
+          },
+        },
+      });
+
+      await withTempConfig({
+        prefix: "xgw-dual-valid-sig",
+        cfg: {
+          gateway: { trustedProxies: [] },
+          fleet: {
+            crossGateway: {
+              enabled: true,
+              authMode: "dual",
+              trustedKeys: { ember: testKeypair.publicKey },
+              acceptedTokens: { ember: "peer-secret" },
+              peers: { ember: { url: "http://ember.local", token: "peer-secret" } },
+              exposureTtlSeconds: 300,
+            },
+          },
+        },
+        run: async () => {
+          await withGatewayServer({
+            prefix: "xgw-dual-valid-sig",
+            resolvedAuth: AUTH_NONE,
+            run: async (server) => {
+              const req = buildSignedHookRequest({
+                body: {
+                  sessionKey: "receptionist",
+                  message: "ping via signature",
+                  sourceSessionKey: "agent:main",
+                  correlationId: "corr-dual-valid-sig",
+                  timeoutSeconds: 1,
+                },
+                privateKey: testKeypair.privateKey,
+                signerName: "ember",
+                // No bearer token — signature only
+              });
+
+              const { res, getBody } = createResponse();
+              await dispatchRequest(server, req, res);
+
+              expect(res.statusCode).toBe(200);
+              expect(JSON.parse(getBody()).ok).toBe(true);
+              expect(subagent.run).toHaveBeenCalled();
+            },
+          });
+        },
+      });
+    });
+
+    it("dual mode: falls back to bearer token when no signature headers are present", async () => {
+      const subagent = createSubagentRuntime();
+      setGatewaySubagentRuntime(subagent);
+
+      mockLoadConfig.mockReturnValue({
+        fleet: {
+          crossGateway: {
+            enabled: true,
+            authMode: "dual",
+            trustedKeys: { ember: testKeypair.publicKey },
+            acceptedTokens: { ember: "peer-secret" },
+            peers: { ember: { url: "http://ember.local", token: "peer-secret" } },
+            exposureTtlSeconds: 300,
+          },
+        },
+      });
+
+      await withTempConfig({
+        prefix: "xgw-dual-bearer-fallback",
+        cfg: {
+          gateway: { trustedProxies: [] },
+          fleet: {
+            crossGateway: {
+              enabled: true,
+              authMode: "dual",
+              trustedKeys: { ember: testKeypair.publicKey },
+              acceptedTokens: { ember: "peer-secret" },
+              peers: { ember: { url: "http://ember.local", token: "peer-secret" } },
+              exposureTtlSeconds: 300,
+            },
+          },
+        },
+        run: async () => {
+          await withGatewayServer({
+            prefix: "xgw-dual-bearer-fallback",
+            resolvedAuth: AUTH_NONE,
+            run: async (server) => {
+              // Bearer token only — no signature headers
+              const req = createStreamingRequest({
+                path: "/xgateway",
+                authorization: "Bearer peer-secret",
+                body: {
+                  sessionKey: "receptionist",
+                  message: "ping via bearer",
+                  sourceSessionKey: "agent:main",
+                  correlationId: "corr-dual-bearer-fallback",
+                  nonce: `nonce-dual-bearer-fallback-${randomUUID()}`,
+                  timestamp: Math.floor(Date.now() / 1000),
+                  timeoutSeconds: 1,
+                },
+              });
+
+              const { res, getBody } = createResponse();
+              await dispatchRequest(server, req, res);
+
+              expect(res.statusCode).toBe(200);
+              expect(JSON.parse(getBody()).ok).toBe(true);
+              expect(subagent.run).toHaveBeenCalled();
+            },
+          });
+        },
+      });
+    });
+
+    it("dual mode: rejects when signature headers are present but invalid, even with a valid bearer token (downgrade prevention)", async () => {
+      const subagent = createSubagentRuntime();
+      setGatewaySubagentRuntime(subagent);
+
+      mockLoadConfig.mockReturnValue({
+        fleet: {
+          crossGateway: {
+            enabled: true,
+            authMode: "dual",
+            trustedKeys: { ember: testKeypair.publicKey },
+            acceptedTokens: { ember: "peer-secret" },
+            peers: { ember: { url: "http://ember.local", token: "peer-secret" } },
+            exposureTtlSeconds: 300,
+          },
+        },
+      });
+
+      await withTempConfig({
+        prefix: "xgw-dual-downgrade-prevention",
+        cfg: {
+          gateway: { trustedProxies: [] },
+          fleet: {
+            crossGateway: {
+              enabled: true,
+              authMode: "dual",
+              trustedKeys: { ember: testKeypair.publicKey },
+              acceptedTokens: { ember: "peer-secret" },
+              peers: { ember: { url: "http://ember.local", token: "peer-secret" } },
+              exposureTtlSeconds: 300,
+            },
+          },
+        },
+        run: async () => {
+          await withGatewayServer({
+            prefix: "xgw-dual-downgrade-prevention",
+            resolvedAuth: AUTH_NONE,
+            run: async (server) => {
+              const ts = Math.floor(Date.now() / 1000);
+              const nonce = `nonce-dual-downgrade-${randomUUID()}`;
+              const body = {
+                sessionKey: "receptionist",
+                message: "downgrade attack attempt",
+                sourceSessionKey: "agent:main",
+                correlationId: "corr-dual-downgrade",
+                nonce,
+                timestamp: ts,
+              };
+
+              // Build request with INVALID signature headers + valid bearer token.
+              // The signature is garbage — it won't verify against testKeypair.publicKey.
+              const req = new EventEmitter() as IncomingMessage;
+              req.method = "POST";
+              req.url = "/xgateway";
+              req.headers = {
+                host: "localhost:18789",
+                "content-type": "application/json",
+                authorization: "Bearer peer-secret", // valid bearer
+                "x-xgw-signature": "aGVsbG9oZWxsb2hlbGxvaGVsbG9oZWxsb2hlbGxvaGVsbG8=", // garbage sig
+                "x-xgw-signer": "ember",
+                "x-xgw-timestamp": String(ts),
+                "x-xgw-nonce": nonce,
+              };
+              req.socket = { remoteAddress: "127.0.0.1" } as IncomingMessage["socket"];
+              setImmediate(() => {
+                req.emit("data", Buffer.from(JSON.stringify(body)));
+                req.emit("end");
+              });
+
+              const { res, getBody } = createResponse();
+              await dispatchRequest(server, req, res);
+
+              // MUST be rejected — signature headers present but invalid means REJECT,
+              // do NOT fall back to bearer token (downgrade attack prevention).
+              expect(res.statusCode).toBe(401);
+              expect(JSON.parse(getBody())).toEqual({
+                ok: false,
+                status: "error",
+                error: "unauthorized",
+              });
+              expect(subagent.run).not.toHaveBeenCalled();
+            },
+          });
+        },
+      });
+    });
+
+    it("signature-only mode: rejects bearer token auth even when token is valid", async () => {
+      const subagent = createSubagentRuntime();
+      setGatewaySubagentRuntime(subagent);
+
+      mockLoadConfig.mockReturnValue({
+        fleet: {
+          crossGateway: {
+            enabled: true,
+            authMode: "signature-only",
+            trustedKeys: { ember: testKeypair.publicKey },
+            acceptedTokens: { ember: "peer-secret" },
+            peers: { ember: { url: "http://ember.local" } },
+            exposureTtlSeconds: 300,
+          },
+        },
+      });
+
+      await withTempConfig({
+        prefix: "xgw-sig-only-rejects-bearer",
+        cfg: {
+          gateway: { trustedProxies: [] },
+          fleet: {
+            crossGateway: {
+              enabled: true,
+              authMode: "signature-only",
+              trustedKeys: { ember: testKeypair.publicKey },
+              acceptedTokens: { ember: "peer-secret" },
+              peers: { ember: { url: "http://ember.local" } },
+              exposureTtlSeconds: 300,
+            },
+          },
+        },
+        run: async () => {
+          await withGatewayServer({
+            prefix: "xgw-sig-only-rejects-bearer",
+            resolvedAuth: AUTH_NONE,
+            run: async (server) => {
+              // Bearer token only — no signature headers
+              const req = createStreamingRequest({
+                path: "/xgateway",
+                authorization: "Bearer peer-secret",
+                body: {
+                  sessionKey: "receptionist",
+                  message: "should be rejected",
+                  sourceSessionKey: "agent:main",
+                  correlationId: "corr-sig-only-bearer",
+                  nonce: `nonce-sig-only-bearer-${randomUUID()}`,
+                  timestamp: Math.floor(Date.now() / 1000),
+                },
+              });
+
+              const { res, getBody } = createResponse();
+              await dispatchRequest(server, req, res);
+
+              expect(res.statusCode).toBe(401);
+              expect(JSON.parse(getBody())).toEqual({
+                ok: false,
+                status: "error",
+                error: "unauthorized",
+              });
+              expect(subagent.run).not.toHaveBeenCalled();
+            },
+          });
+        },
+      });
+    });
+
+    it("token-only mode: accepts bearer token and ignores any signature headers present", async () => {
+      const subagent = createSubagentRuntime();
+      setGatewaySubagentRuntime(subagent);
+
+      mockLoadConfig.mockReturnValue({
+        fleet: {
+          crossGateway: {
+            enabled: true,
+            // No authMode set — defaults to token-only
+            acceptedTokens: { ember: "peer-secret" },
+            peers: { ember: { url: "http://ember.local", token: "peer-secret" } },
+            exposureTtlSeconds: 300,
+          },
+        },
+      });
+
+      await withTempConfig({
+        prefix: "xgw-token-only-ignores-sig",
+        cfg: {
+          gateway: { trustedProxies: [] },
+          fleet: {
+            crossGateway: {
+              enabled: true,
+              acceptedTokens: { ember: "peer-secret" },
+              peers: { ember: { url: "http://ember.local", token: "peer-secret" } },
+              exposureTtlSeconds: 300,
+            },
+          },
+        },
+        run: async () => {
+          await withGatewayServer({
+            prefix: "xgw-token-only-ignores-sig",
+            resolvedAuth: AUTH_NONE,
+            run: async (server) => {
+              const ts = Math.floor(Date.now() / 1000);
+              const nonce = `nonce-token-only-sig-${randomUUID()}`;
+              const body = {
+                sessionKey: "receptionist",
+                message: "ping with extra sig headers",
+                sourceSessionKey: "agent:main",
+                correlationId: "corr-token-only-sig",
+                nonce,
+                timestamp: ts,
+                timeoutSeconds: 1,
+              };
+
+              // Include signature headers (even garbage ones) alongside a valid bearer token.
+              // In token-only mode, signature headers must be completely ignored.
+              const req = new EventEmitter() as IncomingMessage;
+              req.method = "POST";
+              req.url = "/xgateway";
+              req.headers = {
+                host: "localhost:18789",
+                "content-type": "application/json",
+                authorization: "Bearer peer-secret",
+                "x-xgw-signature": "garbage-signature-value",
+                "x-xgw-signer": "ember",
+                "x-xgw-timestamp": String(ts),
+                "x-xgw-nonce": nonce,
+              };
+              req.socket = { remoteAddress: "127.0.0.1" } as IncomingMessage["socket"];
+              setImmediate(() => {
+                req.emit("data", Buffer.from(JSON.stringify(body)));
+                req.emit("end");
+              });
+
+              const { res, getBody } = createResponse();
+              await dispatchRequest(server, req, res);
+
+              expect(res.statusCode).toBe(200);
+              expect(JSON.parse(getBody()).ok).toBe(true);
+              expect(subagent.run).toHaveBeenCalled();
+            },
+          });
+        },
+      });
+    });
+
+    it("signXgwRequest throws a clear error when given a malformed private key", () => {
+      expect(() =>
+        signXgwRequest(
+          "not-valid-base64-pkcs8-key!!!",
+          "POST",
+          "/xgateway",
+          Math.floor(Date.now() / 1000),
+          randomUUID(),
+          Buffer.alloc(0),
+        ),
+      ).toThrow();
     });
   });
 
