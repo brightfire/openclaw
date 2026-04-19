@@ -38,6 +38,7 @@ const SessionsSendToolSchema = Type.Object({
   agentId: Type.Optional(Type.String({ minLength: 1, maxLength: 64 })),
   message: Type.String(),
   timeoutSeconds: Type.Optional(Type.Number({ minimum: 0 })),
+  async: Type.Optional(Type.Boolean()),
 });
 
 type GatewayCaller = typeof callGateway;
@@ -49,9 +50,9 @@ async function startAgentRun(params: {
   sendParams: Record<string, unknown>;
   sessionKey: string;
   timeoutSeconds: number;
-}): Promise<{ ok: true; runId: string; status?: string; reply?: string | null } | { ok: false; result: ReturnType<typeof jsonResult> }> {
+}): Promise<{ ok: true; runId: string; status?: string; reply?: string | null; correlationId?: string } | { ok: false; result: ReturnType<typeof jsonResult> }> {
   try {
-    const response = await params.callGateway<{ runId: string; status?: string; reply?: string | null }>({
+    const response = await params.callGateway<{ runId: string; status?: string; reply?: string | null; correlationId?: string }>({
       method: "agent",
       params: params.sendParams,
       timeoutMs: params.timeoutSeconds * 1000 + 2000,
@@ -61,6 +62,7 @@ async function startAgentRun(params: {
       runId: typeof response?.runId === "string" && response.runId ? response.runId : params.runId,
       status: response?.status,
       reply: response?.reply,
+      correlationId: response?.correlationId,
     };
   } catch (err) {
     const messageText =
@@ -268,6 +270,8 @@ export function createSessionsSendTool(opts?: {
               callGateway: gatewayCall,
             });
 
+      const isXgw = typeof resolvedKey === "string" && resolvedKey.startsWith("@");
+      const asyncParam = params.async === true;
       const agentMessageContext = buildAgentToAgentMessageContext({
         requesterSessionKey: opts?.agentSessionKey,
         requesterChannel: opts?.agentChannel,
@@ -287,6 +291,7 @@ export function createSessionsSendTool(opts?: {
           sourceChannel: opts?.agentChannel,
           sourceTool: "sessions_send",
         },
+        ...(isXgw && asyncParam ? { async: true } : {}),
       };
       const requesterSessionKey = opts?.agentSessionKey;
       const requesterChannel = opts?.agentChannel;
@@ -338,6 +343,16 @@ export function createSessionsSendTool(opts?: {
         return start.result;
       }
       runId = start.runId;
+
+      if (isXgw && asyncParam && start.status === "accepted") {
+        return jsonResult({
+          runId,
+          status: "accepted",
+          reply: `Async request accepted by gateway (correlation: ${start.correlationId ?? "unknown"}). Results will arrive when the remote agent finishes.`,
+          sessionKey: displayKey,
+          delivery,
+        });
+      }
 
       if (start.status === "ok" && typeof start.reply === "string") {
         startA2AFlow(start.reply);
