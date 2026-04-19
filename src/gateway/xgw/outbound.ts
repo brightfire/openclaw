@@ -7,6 +7,7 @@
 
 import { randomUUID } from "node:crypto";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import { signXgwRequest } from "./signing.js";
 import type { XgwConfig, XgwOutboundResult } from "./types.js";
 import { resolveEnvValue } from "./utils.js";
 
@@ -34,6 +35,8 @@ export async function postCallbackWithRetry(
   peerUrl: string,
   outboundToken: string,
   payload: Record<string, unknown>,
+  privateKeyB64?: string,
+  signerName?: string,
 ): Promise<CallbackPostResult> {
   const callbackUrl = `${peerUrl.replace(/\/+$/, "")}/xgateway/callback`;
   const MAX_ATTEMPTS = 3;
@@ -53,13 +56,34 @@ export async function postCallbackWithRetry(
       timestamp: Math.floor(Date.now() / 1000),
     };
     try {
+      const bodyStr = JSON.stringify(effectivePayload);
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      // Add bearer token if available
+      if (outboundToken) {
+        headers["Authorization"] = `Bearer ${outboundToken}`;
+      }
+      // Add signature headers if private key is configured
+      if (privateKeyB64) {
+        const bodyBytes = Buffer.from(bodyStr);
+        const sig = signXgwRequest(
+          privateKeyB64,
+          "POST",
+          "/xgateway/callback",
+          effectivePayload.timestamp as number,
+          effectivePayload.nonce as string,
+          bodyBytes,
+        );
+        headers["X-XGW-Signature"] = sig;
+        headers["X-XGW-Signer"] = signerName ?? "unknown";
+        headers["X-XGW-Timestamp"] = String(effectivePayload.timestamp);
+        headers["X-XGW-Nonce"] = effectivePayload.nonce as string;
+      }
       const resp = await fetch(callbackUrl, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${outboundToken}`,
-        },
-        body: JSON.stringify(effectivePayload),
+        headers,
+        body: bodyStr,
       });
       if (resp.ok) {
         return { ok: true, status: resp.status };
@@ -124,11 +148,12 @@ export async function xgwOutboundDispatch(
   }
 
   const token = peer.token;
-  if (!token) {
+  const hasPrivateKey = !!xgwCfg.privateKey;
+  if (!token && !hasPrivateKey) {
     return {
       runId: randomUUID(),
       status: "error",
-      error: `no token configured for gateway: ${gwName}`,
+      error: `no token or private key configured for gateway: ${gwName}`,
     };
   }
 
@@ -174,15 +199,31 @@ export async function xgwOutboundDispatch(
     const ctrl = new AbortController();
     timer = setTimeout(() => ctrl.abort(), Math.min(timeoutSec * 1000 + 5000, 125000));
 
+    const bodyStr = JSON.stringify(reqBody);
+    const outHeaders: Record<string, string> = {
+      "Content-Type": "application/json",
+      "X-XGW-Correlation-Id": corrId,
+      "X-XGW-Source-Gateway": xgwCfg.gatewayName ?? "unknown",
+    };
+    // Add bearer token if available (backward compat in dual mode)
+    if (token) {
+      outHeaders["Authorization"] = `Bearer ${resolveEnvValue(token)}`;
+    }
+    // Add signature headers if private key is configured
+    const privKey = xgwCfg.privateKey ? resolveEnvValue(xgwCfg.privateKey) : undefined;
+    if (privKey) {
+      const bodyBytes = Buffer.from(bodyStr);
+      const sig = signXgwRequest(privKey, "POST", "/xgateway", ts, nonce, bodyBytes);
+      outHeaders["X-XGW-Signature"] = sig;
+      outHeaders["X-XGW-Signer"] = xgwCfg.gatewayName ?? "unknown";
+      outHeaders["X-XGW-Timestamp"] = String(ts);
+      outHeaders["X-XGW-Nonce"] = nonce;
+    }
+
     const res = await fetch(`${baseUrl}/xgateway`, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${resolveEnvValue(token)}`,
-        "Content-Type": "application/json",
-        "X-XGW-Correlation-Id": corrId,
-        "X-XGW-Source-Gateway": xgwCfg.gatewayName ?? "unknown",
-      },
-      body: JSON.stringify(reqBody),
+      headers: outHeaders,
+      body: bodyStr,
       signal: ctrl.signal,
     });
 
