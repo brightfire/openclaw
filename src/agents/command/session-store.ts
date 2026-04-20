@@ -117,6 +117,7 @@ export async function updateSessionStoreAfterAgentRun(params: {
           model: modelUsed,
           config: cfg,
         }),
+        cacheRetention: result.meta.agentMeta?.cacheRetention,
       }),
     );
     next.inputTokens = input;

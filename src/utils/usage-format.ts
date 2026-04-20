@@ -13,6 +13,7 @@ export type ModelCostConfig = {
   output: number;
   cacheRead: number;
   cacheWrite: number;
+  cacheWriteShort?: number;
 };
 
 export type UsageTotals = {
@@ -236,6 +237,7 @@ const toNumber = (value: number | undefined): number =>
 export function estimateUsageCost(params: {
   usage?: NormalizedUsage | UsageTotals | null;
   cost?: ModelCostConfig;
+  cacheRetention?: "short" | "long" | "none";
 }): number | undefined {
   const usage = params.usage;
   const cost = params.cost;
@@ -246,11 +248,15 @@ export function estimateUsageCost(params: {
   const output = toNumber(usage.output);
   const cacheRead = toNumber(usage.cacheRead);
   const cacheWrite = toNumber(usage.cacheWrite);
+  const cacheWriteRate =
+    params.cacheRetention === "short" && cost.cacheWriteShort != null
+      ? cost.cacheWriteShort
+      : cost.cacheWrite;
   const total =
     input * cost.input +
     output * cost.output +
     cacheRead * cost.cacheRead +
-    cacheWrite * cost.cacheWrite;
+    cacheWrite * cacheWriteRate;
   if (!Number.isFinite(total)) {
     return undefined;
   }
