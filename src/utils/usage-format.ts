@@ -192,6 +192,7 @@ function buildProviderCostIndex(
         output: cost.output,
         cacheRead: cost.cacheRead,
         cacheWrite: cost.cacheWrite,
+        ...(cost.cacheWriteShort != null ? { cacheWriteShort: cost.cacheWriteShort } : {}),
         ...(normalizedTiers ? { tieredPricing: normalizedTiers } : {}),
       };
       entries.set(modelKey(normalized.provider, normalized.model), costConfig);
@@ -382,6 +383,7 @@ function computeTieredCost(
   output: number,
   cacheRead: number,
   cacheWrite: number,
+  cacheWriteRateOverride?: number,
 ): number {
   const tier = selectPricingTier(tiers, input);
   if (!tier) {
@@ -392,7 +394,7 @@ function computeTieredCost(
     input * tier.input +
     output * tier.output +
     cacheRead * tier.cacheRead +
-    cacheWrite * tier.cacheWrite
+    cacheWrite * (cacheWriteRateOverride ?? tier.cacheWrite)
   );
 }
 
@@ -412,7 +414,17 @@ export function estimateUsageCost(params: {
 
   let total: number;
   if (cost.tieredPricing && cost.tieredPricing.length > 0) {
-    total = computeTieredCost(cost.tieredPricing, input, output, cacheRead, cacheWrite);
+    total = computeTieredCost(
+      cost.tieredPricing,
+      input,
+      output,
+      cacheRead,
+      cacheWrite,
+      // Override the tier's cacheWrite rate with the short-TTL flat rate when applicable
+      params.cacheRetention === "short" && cost.cacheWriteShort != null
+        ? cost.cacheWriteShort
+        : undefined,
+    );
   } else {
     total =
       input * cost.input +
