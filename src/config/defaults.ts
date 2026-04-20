@@ -60,7 +60,7 @@ function isPositiveNumber(value: unknown): value is number {
 function resolveModelCost(
   raw?: Partial<ModelDefinitionConfig["cost"]>,
 ): ModelDefinitionConfig["cost"] {
-  return {
+  const cost: ModelDefinitionConfig["cost"] = {
     input: typeof raw?.input === "number" ? raw.input : DEFAULT_MODEL_COST.input,
     output: typeof raw?.output === "number" ? raw.output : DEFAULT_MODEL_COST.output,
     cacheRead: typeof raw?.cacheRead === "number" ? raw.cacheRead : DEFAULT_MODEL_COST.cacheRead,
@@ -68,6 +68,12 @@ function resolveModelCost(
       typeof raw?.cacheWrite === "number" ? raw.cacheWrite : DEFAULT_MODEL_COST.cacheWrite,
     ...(raw?.tieredPricing ? { tieredPricing: raw.tieredPricing } : {}),
   };
+  // Preserve optional 5m cache write rate for accurate cost estimation.
+  // Without this, models.json normalization strips cacheWriteShort on every gateway restart.
+  if (typeof raw?.cacheWriteShort === "number") {
+    cost.cacheWriteShort = raw.cacheWriteShort;
+  }
+  return cost;
 }
 
 export function resolveNormalizedProviderModelMaxTokens(params: {
