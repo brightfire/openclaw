@@ -3562,6 +3562,7 @@ export async function runEmbeddedAttempt(
         toolMetas: toolMetasNormalized,
         lastAssistant,
         currentAttemptAssistant,
+        cacheRetention: effectivePromptCacheRetention,
         lastToolError: getLastToolError?.(),
         didSendViaMessagingTool: didSendViaMessagingTool(),
         messagingToolSentTexts: getMessagingToolSentTexts(),

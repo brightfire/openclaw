@@ -3072,6 +3072,9 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
                           cacheWrite: {
                             type: "number",
                           },
+                          cacheWriteShort: {
+                            type: "number",
+                          },
                           tieredPricing: {
                             type: "array",
                             items: {

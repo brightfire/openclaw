@@ -39,6 +39,7 @@ export type ModelCostConfig = {
   output: number;
   cacheRead: number;
   cacheWrite: number;
+  cacheWriteShort?: number;
   /** Optional tiered pricing tiers.  When present, `estimateUsageCost`
    *  uses them instead of the flat rates above.  The flat rates still
    *  serve as the "default / first-tier" fallback for callers that are
@@ -401,6 +402,7 @@ function computeTieredCost(
 export function estimateUsageCost(params: {
   usage?: NormalizedUsage | UsageTotals | null;
   cost?: ModelCostConfig;
+  cacheRetention?: "short" | "long" | "none";
 }): number | undefined {
   const usage = params.usage;
   const cost = params.cost;
@@ -411,6 +413,10 @@ export function estimateUsageCost(params: {
   const output = toNumber(usage.output);
   const cacheRead = toNumber(usage.cacheRead);
   const cacheWrite = toNumber(usage.cacheWrite);
+  const cacheWriteRate =
+    params.cacheRetention === "short" && cost.cacheWriteShort != null
+      ? cost.cacheWriteShort
+      : cost.cacheWrite;
 
   let total: number;
   if (cost.tieredPricing && cost.tieredPricing.length > 0) {
@@ -430,7 +436,7 @@ export function estimateUsageCost(params: {
       input * cost.input +
       output * cost.output +
       cacheRead * cost.cacheRead +
-      cacheWrite * cost.cacheWrite;
+      cacheWrite * cacheWriteRate;
   }
 
   if (!Number.isFinite(total)) {
