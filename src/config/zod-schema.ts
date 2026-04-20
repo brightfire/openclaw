@@ -917,6 +917,7 @@ export const OpenClawSchema = z
                 }),
               )
               .optional(),
+        securityPrompt: z.string().optional(),
             authMode: z
               .union([
                 z.literal("token-only"),

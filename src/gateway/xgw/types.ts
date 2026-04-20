@@ -35,6 +35,8 @@ export interface XgwConfig extends NonNullable<FleetConfig["crossGateway"]> {
   privateKey?: string;
   /** Trusted peer public keys for verifying inbound signatures. Key = peer name, value = base64 SPKI DER. */
   trustedKeys?: Record<string, string>;
+  /** Custom security prompt injected into XGW worker sessions. Falls back to DEFAULT_XGW_SECURITY_PROMPT. */
+  securityPrompt?: string;
 }
 
 export interface XgwPeerConfig {
