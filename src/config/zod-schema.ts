@@ -1019,6 +1019,41 @@ export const OpenClawSchema = z
       })
       .optional(),
     memory: MemorySchema,
+    fleet: z
+      .object({
+        crossGateway: z
+          .object({
+            enabled: z.boolean().optional(),
+            gatewayName: z.string().optional(),
+            agentId: z.string().optional(),
+            maxConcurrent: z.number().int().optional(),
+            maxPendingAsync: z.number().int().optional(),
+            exposureTtlSeconds: z.number().int().optional(),
+            acceptedTokens: z.record(z.string(), z.string()).optional(),
+            peers: z
+              .record(
+                z.string(),
+                z.object({
+                  url: z.string().optional(),
+                  token: z.string().optional(),
+                }),
+              )
+              .optional(),
+            securityPrompt: z.string().optional(),
+            authMode: z
+              .union([
+                z.literal("token-only"),
+                z.literal("dual"),
+                z.literal("signature-only"),
+              ])
+              .optional(),
+            privateKey: z.string().optional(),
+            trustedKeys: z.record(z.string(), z.string()).optional(),
+          })
+          .optional(),
+      })
+      .optional(),
+
     mcp: McpConfigSchema,
     skills: z
       .object({
