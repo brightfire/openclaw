@@ -121,7 +121,7 @@ import {
   shouldAllowProviderOwnedThinkingReplay,
 } from "../../transcript-policy.js";
 import { derivePromptTokens, normalizeUsage, type NormalizedUsage } from "../../usage.js";
-import { resolveModelCostConfig } from "../../../utils/usage-format.js";
+
 import { DEFAULT_BOOTSTRAP_FILENAME } from "../../workspace.js";
 import { isRunnerAbortError } from "../abort.js";
 import { isCacheTtlEligibleProvider, readLastCacheTtlTimestamp } from "../cache-ttl.js";
@@ -1368,6 +1368,25 @@ export async function runEmbeddedAttempt(
         activeSession.agent.streamFn,
       );
 
+      // When cacheRetention is "short" (5m TTL), Anthropic charges a lower cache-write
+      // rate (1.25x base vs 2x for 1h). The Pi library's calculateCost() reads
+      // model.cost.cacheWrite directly, so we swap in the 5m rate on a cloned model
+      // object before it reaches the stream. This ensures per-message costs in the
+      // session transcript are accurate without post-correction.
+      {
+        const modelCost = params.model.cost as { cacheWriteShort?: number; cacheWrite: number };
+        if (
+          effectivePromptCacheRetention === "short" &&
+          modelCost.cacheWriteShort != null &&
+          modelCost.cacheWriteShort !== modelCost.cacheWrite
+        ) {
+          const inner = activeSession.agent.streamFn;
+          const shortRate = modelCost.cacheWriteShort;
+          activeSession.agent.streamFn = (model, context, options) =>
+            inner({ ...model, cost: { ...model.cost, cacheWrite: shortRate } }, context, options);
+        }
+      }
+
       let idleTimeoutTrigger: ((error: Error) => void) | undefined;
 
       // Wrap stream with idle timeout detection
@@ -2240,31 +2259,6 @@ export async function runEmbeddedAttempt(
             })
           : null;
         const lastCallUsage = normalizeUsage(currentAttemptAssistant?.usage);
-
-        // Correct per-message cacheWrite cost for short-TTL sessions.
-        // The Pi library's calculateCost() uses a single model.cost.cacheWrite rate
-        // (the 1h rate) for all sessions. When cacheRetention is "short" (5m TTL),
-        // Anthropic charges a lower rate (1.25x base vs 2x base). We recalculate
-        // the cacheWrite cost here using the correct rate from our extended
-        // models.json config (cacheWriteShort field).
-        if (
-          effectivePromptCacheRetention === "short" &&
-          currentAttemptAssistant?.usage?.cost &&
-          currentAttemptAssistant.usage.cacheWrite > 0
-        ) {
-          const costConfig = resolveModelCostConfig({
-            provider: params.provider,
-            model: params.modelId,
-            config: params.config,
-          });
-          if (costConfig?.cacheWriteShort != null && costConfig.cacheWriteShort !== costConfig.cacheWrite) {
-            const cacheWriteTokens = currentAttemptAssistant.usage.cacheWrite;
-            const correctedCacheWriteCost = (costConfig.cacheWriteShort / 1_000_000) * cacheWriteTokens;
-            const oldCacheWriteCost = currentAttemptAssistant.usage.cost.cacheWrite ?? 0;
-            currentAttemptAssistant.usage.cost.cacheWrite = correctedCacheWriteCost;
-            currentAttemptAssistant.usage.cost.total += correctedCacheWriteCost - oldCacheWriteCost;
-          }
-        }
 
         const promptCacheObservation =
           cacheObservabilityEnabled &&
