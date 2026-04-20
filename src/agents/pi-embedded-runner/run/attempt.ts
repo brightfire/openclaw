@@ -2138,6 +2138,25 @@ export async function runEmbeddedAttempt(
         activeSession.agent.streamFn,
       );
 
+      // When cacheRetention is "short" (5m TTL), Anthropic charges a lower cache-write
+      // rate (1.25x base vs 2x for 1h). The Pi library's calculateCost() reads
+      // model.cost.cacheWrite directly, so we swap in the 5m rate on a cloned model
+      // object before it reaches the stream. This ensures per-message costs in the
+      // session transcript are accurate without post-correction.
+      {
+        const modelCost = params.model.cost as { cacheWriteShort?: number; cacheWrite: number };
+        if (
+          effectivePromptCacheRetention === "short" &&
+          modelCost.cacheWriteShort != null &&
+          modelCost.cacheWriteShort !== modelCost.cacheWrite
+        ) {
+          const inner = activeSession.agent.streamFn;
+          const shortRate = modelCost.cacheWriteShort;
+          activeSession.agent.streamFn = (model, context, options) =>
+            inner({ ...model, cost: { ...model.cost, cacheWrite: shortRate } }, context, options);
+        }
+      }
+
       let idleTimeoutTrigger: ((error: Error) => void) | undefined;
 
       // Wrap stream with idle timeout detection
