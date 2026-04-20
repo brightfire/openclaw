@@ -80,6 +80,7 @@ export type EmbeddedRunAttemptResult = {
   lastAssistant: AssistantMessage | undefined;
   currentAttemptAssistant?: AssistantMessage | undefined;
   lastToolError?: ToolErrorSummary;
+  cacheRetention?: "short" | "long" | "none";
   didSendViaMessagingTool: boolean;
   didSendDeterministicApprovalPrompt?: boolean;
   messagingToolSentTexts: string[];

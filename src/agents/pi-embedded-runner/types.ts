@@ -8,6 +8,7 @@ export type EmbeddedPiAgentMeta = {
   cliSessionBinding?: CliSessionBinding;
   compactionCount?: number;
   promptTokens?: number;
+  cacheRetention?: "short" | "long" | "none";
   usage?: {
     input?: number;
     output?: number;

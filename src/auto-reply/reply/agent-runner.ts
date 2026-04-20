@@ -1327,6 +1327,7 @@ export async function runReplyAgent(params: {
       modelUsed,
       providerUsed,
       contextTokensUsed,
+      cacheRetention: runResult.meta?.agentMeta?.cacheRetention,
       systemPromptReport: runResult.meta?.systemPromptReport,
       cliSessionId,
       cliSessionBinding,
@@ -1406,7 +1407,11 @@ export async function runReplyAgent(params: {
         model: modelUsed,
         config: cfg,
       });
-      const costUsd = estimateUsageCost({ usage, cost: costConfig });
+      const costUsd = estimateUsageCost({
+        usage,
+        cost: costConfig,
+        cacheRetention: runResult.meta?.agentMeta?.cacheRetention,
+      });
       emitDiagnosticEvent({
         type: "model.usage",
         sessionKey,
@@ -1450,6 +1455,7 @@ export async function runReplyAgent(params: {
         usage,
         showCost,
         costConfig,
+        cacheRetention: runResult.meta?.agentMeta?.cacheRetention,
       });
       if (formatted && responseUsageMode === "full" && sessionKey) {
         formatted = `${formatted} · session \`${sessionKey}\``;
