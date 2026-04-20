@@ -18,6 +18,7 @@ Each active patch has a **canonical branch** (`brightfire/<name>`) that contains
 
 | Patch | Canonical branch | Squashed commit |
 |---|---|---|
+| cache-write-ttl-cost | `brightfire/cache-write-ttl-cost` | `13bb2c6064` |
 | context-estimate-compaction | `brightfire/context-estimate-compaction` | `8929fa251a` |
 | xgw-cross-gateway | `brightfire/xgw` | `caabb461f2` |
 | slack-mrkdwn-formatting-fix | `brightfire/slack-mrkdwn` | `f3adf06a84` |
@@ -261,6 +262,52 @@ git cherry-pick 8929fa251a
 ### Drop when
 
 Drop when upstream fixes both behaviors.
+
+---
+
+## cache-write-ttl-cost
+
+- **Status:** active
+- **Reapply:** yes
+- **Stable branch first merged into:** `stable/v2026.4.15`
+- **Canonical branch:** `brightfire/cache-write-ttl-cost`
+- **Squashed commit:** `13bb2c6064`
+- **Source PR:** #24
+
+### Rationale
+
+Anthropic has two cache write pricing tiers: 5-minute TTL (1.25x base input) and 1-hour TTL (2x base input). OpenClaw's `models.json` had a single `cacheWrite` rate, and `estimateUsageCost()` used it regardless of which TTL was in effect. Worker/sub-agent sessions using `cacheRetention: "short"` (5m) were costed at the 1h rate, overstating cache write costs by ~60%.
+
+Fix: adds optional `cacheWriteShort` field to the model cost schema, threads `cacheRetention` through `estimateUsageCost()`, and updates all primary call sites.
+
+### Files touched
+
+- `src/utils/usage-format.ts` — `estimateUsageCost()` accepts `cacheRetention`, selects rate accordingly
+- `src/utils/usage-format.test.ts` — 4 new test cases
+- `src/config/types.models.ts` — `cacheWriteShort` optional field
+- `src/config/zod-schema.core.ts` — schema validation
+- `src/config/schema.base.generated.ts` — generated schema
+- `src/auto-reply/reply/agent-runner.ts` — passes `cacheRetention` to cost estimation
+- `src/auto-reply/reply/session-usage.ts` — passes `cacheRetention`
+- `src/auto-reply/reply/agent-runner-usage-line.ts` — passes `cacheRetention`
+- `src/agents/command/session-store.ts` — passes `cacheRetention`
+- `src/agents/pi-embedded-runner/run.ts` — passes `cacheRetention`
+- `src/agents/pi-embedded-runner/run/attempt.ts` — passes `cacheRetention`
+- `src/agents/pi-embedded-runner/run/types.ts` — type updated
+- `src/agents/pi-embedded-runner/types.ts` — type updated
+- `src/cron/isolated-agent/run.ts` — passes `cacheRetention`
+
+### Upgrade guidance
+
+```bash
+git cherry-pick 13bb2c6064
+```
+
+Likely conflict point: `schema.base.generated.ts` — regenerate with `pnpm config:schema:gen` instead of manual resolve.
+
+### Drop when
+
+Drop when upstream adds dual cache write pricing support (5m vs 1h TTL-aware cost estimation).
 
 ---
 
