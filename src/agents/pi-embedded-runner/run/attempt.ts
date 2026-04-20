@@ -121,6 +121,7 @@ import {
   shouldAllowProviderOwnedThinkingReplay,
 } from "../../transcript-policy.js";
 import { derivePromptTokens, normalizeUsage, type NormalizedUsage } from "../../usage.js";
+import { resolveModelCostConfig } from "../../../utils/usage-format.js";
 import { DEFAULT_BOOTSTRAP_FILENAME } from "../../workspace.js";
 import { isRunnerAbortError } from "../abort.js";
 import { isCacheTtlEligibleProvider, readLastCacheTtlTimestamp } from "../cache-ttl.js";
@@ -2239,6 +2240,32 @@ export async function runEmbeddedAttempt(
             })
           : null;
         const lastCallUsage = normalizeUsage(currentAttemptAssistant?.usage);
+
+        // Correct per-message cacheWrite cost for short-TTL sessions.
+        // The Pi library's calculateCost() uses a single model.cost.cacheWrite rate
+        // (the 1h rate) for all sessions. When cacheRetention is "short" (5m TTL),
+        // Anthropic charges a lower rate (1.25x base vs 2x base). We recalculate
+        // the cacheWrite cost here using the correct rate from our extended
+        // models.json config (cacheWriteShort field).
+        if (
+          effectivePromptCacheRetention === "short" &&
+          currentAttemptAssistant?.usage?.cost &&
+          currentAttemptAssistant.usage.cacheWrite > 0
+        ) {
+          const costConfig = resolveModelCostConfig({
+            provider: params.provider,
+            model: params.modelId,
+            config: params.config,
+          });
+          if (costConfig?.cacheWriteShort != null && costConfig.cacheWriteShort !== costConfig.cacheWrite) {
+            const cacheWriteTokens = currentAttemptAssistant.usage.cacheWrite;
+            const correctedCacheWriteCost = (costConfig.cacheWriteShort / 1_000_000) * cacheWriteTokens;
+            const oldCacheWriteCost = currentAttemptAssistant.usage.cost.cacheWrite ?? 0;
+            currentAttemptAssistant.usage.cost.cacheWrite = correctedCacheWriteCost;
+            currentAttemptAssistant.usage.cost.total += correctedCacheWriteCost - oldCacheWriteCost;
+          }
+        }
+
         const promptCacheObservation =
           cacheObservabilityEnabled &&
           (cacheBreak || promptCacheChangesForTurn || typeof attemptUsage?.cacheRead === "number")
