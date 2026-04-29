@@ -130,6 +130,7 @@ export function resolveEffectiveRuntimeModel(params: {
     modelContextTokens: readPiModelContextTokens(params.runtimeModel),
     modelContextWindow: params.runtimeModel.contextWindow,
     defaultTokens: DEFAULT_CONTEXT_TOKENS,
+    catalogContextWindow: params.runtimeModel.contextWindow,
   });
 
   // Apply contextTokens cap to model so pi-coding-agent's auto-compaction
