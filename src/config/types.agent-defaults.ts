@@ -195,6 +195,12 @@ export type AgentDefaultsConfig = {
   repoRoot?: string;
   /** Optional full system prompt replacement. Primarily for prompt debugging and controlled experiments. */
   systemPromptOverride?: string;
+  /**
+   * Custom greeting prompt injected on bare /new and /reset commands.
+   * Replaces the default session reset prompt. Must be a non-empty string.
+   * If unset, the built-in default prompt is used.
+   */
+  sessionResetPrompt?: string;
   /** Skip bootstrap (BOOTSTRAP.md creation, etc.) for pre-configured deployments. */
   skipBootstrap?: boolean;
   /**
