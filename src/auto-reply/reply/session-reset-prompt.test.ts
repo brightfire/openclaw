@@ -67,6 +67,27 @@ describe("buildBareSessionResetPrompt", () => {
     expect(prompt).toContain("Current time:");
   });
 
+  it("uses custom sessionResetPrompt when configured", () => {
+    const cfg = {
+      agents: { defaults: { sessionResetPrompt: "Custom greeting!" } },
+    } as OpenClawConfig;
+    const nowMs = Date.UTC(2026, 2, 3, 14, 0, 0);
+    const prompt = buildBareSessionResetPrompt(cfg, nowMs);
+    expect(prompt).toContain("Custom greeting!");
+    expect(prompt).not.toContain(
+      "If runtime-provided startup context is included for this first turn",
+    );
+  });
+
+  it("falls back to default prompt when sessionResetPrompt is not configured", () => {
+    const cfg = {
+      agents: { defaults: {} },
+    } as OpenClawConfig;
+    const nowMs = Date.UTC(2026, 2, 3, 14, 0, 0);
+    const prompt = buildBareSessionResetPrompt(cfg, nowMs);
+    expect(prompt).toContain("Execute your Session Startup sequence now");
+  });
+
   it("resolves shared bare reset prompt state from workspace bootstrap truth", async () => {
     const workspaceDir = await makeTempWorkspace("openclaw-reset-bootstrap-");
     await fs.writeFile(path.join(workspaceDir, "BOOTSTRAP.md"), "ritual", "utf8");
@@ -130,5 +151,26 @@ describe("buildBareSessionResetPrompt", () => {
     expect(pending.prompt).toContain("cannot safely complete the full BOOTSTRAP.md workflow here");
     expect(pending.prompt).toContain("while bootstrap is still pending for this workspace");
     expect(pending.prompt).not.toContain("Execute your Session Startup sequence now");
+  });
+
+  it("uses custom sessionResetPrompt when configured", () => {
+    const cfg = {
+      agents: { defaults: { sessionResetPrompt: "Custom greeting!" } },
+    } as OpenClawConfig;
+    const nowMs = Date.UTC(2026, 2, 3, 14, 0, 0);
+    const prompt = buildBareSessionResetPrompt(cfg, nowMs);
+    expect(prompt).toContain("Custom greeting!");
+    expect(prompt).not.toContain(
+      "If runtime-provided startup context is included for this first turn",
+    );
+  });
+
+  it("falls back to default prompt when sessionResetPrompt is not configured", () => {
+    const cfg = {
+      agents: { defaults: {} },
+    } as OpenClawConfig;
+    const nowMs = Date.UTC(2026, 2, 3, 14, 0, 0);
+    const prompt = buildBareSessionResetPrompt(cfg, nowMs);
+    expect(prompt).toContain("Execute your Session Startup sequence now");
   });
 });
