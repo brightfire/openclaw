@@ -26,6 +26,7 @@ function resolveContextWindowTokens(params: {
     modelContextTokens: params.model?.contextTokens,
     modelContextWindow: params.model?.contextWindow,
     defaultTokens: DEFAULT_CONTEXT_TOKENS,
+    catalogContextWindow: params.model?.contextWindow,
   }).tokens;
 }
 
@@ -95,6 +96,7 @@ export function buildEmbeddedExtensionFactories(params: {
       modelContextTokens: params.model?.contextTokens,
       modelContextWindow: params.model?.contextWindow,
       defaultTokens: DEFAULT_CONTEXT_TOKENS,
+      catalogContextWindow: params.model?.contextWindow,
     });
     setCompactionSafeguardRuntime(params.sessionManager, {
       maxHistoryShare: compactionCfg?.maxHistoryShare,
