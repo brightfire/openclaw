@@ -319,3 +319,51 @@ Drop when upstream adds dual cache write pricing support (5m vs 1h TTL-aware cos
 - **Primary commit:** `e232a46374`
 
 HTTP fallback in the CLI health probe for trusted-proxy loopback rejection. Superseded by the auth fix which restores WS probe auth.
+
+---
+
+## sessions-history-archived
+
+- **Status:** active
+- **Reapply:** yes
+- **Source PR:** #32
+- **Feature branch:** `feature/sessions-history-archived`
+- **Primary commit:** `013bd1f982`
+- **Stable branch first merged into:** `stable/v2026.4.15`
+
+### Rationale
+
+When a session is reset or deleted, the transcript file is renamed to
+`{sessionId}.jsonl.reset.{timestamp}` / `{sessionId}.jsonl.deleted.{timestamp}`.
+Previously the history lookup layer only found active files, causing `sessions_history`
+to return 404 (HTTP) or empty messages (WS/tool) for archived sessions.
+
+This patch adds a directory-scan fallback (`resolveArchivedTranscriptPaths`) at three
+layers: the core `readSessionMessages()` helper, the HTTP history endpoint, and the
+`chat.history` WebSocket handler used by the agent tool. Results include `archived: true`
+so callers know the source was an archived transcript.
+
+### Files touched
+
+- `src/gateway/session-transcript-files.fs.ts` — new `resolveArchivedTranscriptPaths()`
+- `src/gateway/session-utils.fs.ts` — `readSessionMessages()` fallback + re-export
+- `src/gateway/session-utils.ts` — re-export `resolveArchivedTranscriptPaths`
+- `src/gateway/sessions-history-http.ts` — HTTP fallback + `archived: true` response
+- `src/gateway/server-methods/chat.ts` — WS `chat.history` fallback + `archived: true`
+- `src/agents/tools/sessions-history-tool.ts` — pass through `archived` flag
+- `src/agents/tool-description-presets.ts` — updated description
+
+### Upgrade guidance
+
+```bash
+git cherry-pick 013bd1f982
+```
+
+Likely conflict point: `server-methods/chat.ts` — large file with frequent upstream churn;
+check the `chat.history` handler block and the imports. Re-apply the archive-fallback logic
+manually if the cherry-pick conflicts.
+
+### Drop when
+
+Drop when upstream adds native archive-fallback support in `readSessionMessages()` and the
+`chat.history` handler.
