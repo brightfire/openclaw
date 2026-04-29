@@ -994,6 +994,8 @@ export const FIELD_HELP: Record<string, string> = {
     "Maximum characters retained from each loaded daily memory file in the startup prelude (default: 1200).",
   "agents.defaults.startupContext.maxTotalChars":
     "Maximum total characters retained across all loaded daily memory files in the startup prelude (default: 2800). Additional files are truncated from the prelude once this cap is reached.",
+  "agents.defaults.sessionResetPrompt":
+    "Custom greeting prompt injected on bare /new and /reset commands. Replaces the built-in default session reset prompt. Must be a non-empty string. If unset, OpenClaw uses the default prompt that instructs the agent to greet the user in their configured persona.",
   "agents.defaults.repoRoot":
     "Optional repository root shown in the system prompt runtime line (overrides auto-detect).",
   "agents.defaults.promptOverlays":
