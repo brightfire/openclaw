@@ -83,6 +83,7 @@ export async function compactEmbeddedPiSession(
       modelContextTokens: readPiModelContextTokens(ceModel),
       modelContextWindow: ceRuntimeModel?.contextWindow,
       defaultTokens: DEFAULT_CONTEXT_TOKENS,
+      catalogContextWindow: ceRuntimeModel?.contextWindow,
     }).tokens;
   }
   const contextEngineRuntimeContext = buildCompactionContextEngineRuntimeContext({
