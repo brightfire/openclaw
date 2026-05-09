@@ -3,6 +3,7 @@
 This file is the source of truth for all Brightfire-specific changes that must be replayed onto future upstream stable releases.
 
 For each patch:
+
 1. **Status**: `active`, `deferred`, `upstreamed`, or `superseded`
 2. **Canonical branch**: `brightfire/<name>` — single squashed commit for clean cherry-pick
 3. **Upgrade guidance**: exact `git cherry-pick` command for applying to a new stable branch
@@ -14,8 +15,9 @@ For each patch:
 - **Status:** active
 - **Reapply:** yes
 - **Stable branch first merged into:** `stable/v2026.5.3`
+- **Commit on stable/v2026.5.7:** `454393ed35`
 - **Canonical branch:** `brightfire/slack-mrkdwn`
-- **Squashed commit:** `8b472f2555`
+- **Squashed commit (source):** `8b472f2555`
 - **Source PR:** —
 
 ### Rationale
@@ -41,13 +43,15 @@ git cherry-pick 8b472f2555
 - **Status:** active
 - **Reapply:** yes
 - **Stable branch first merged into:** `stable/v2026.5.3`
+- **Commit on stable/v2026.5.7:** `fdb7f2f660`
 - **Canonical branch:** `brightfire/xgw`
-- **Squashed commit:** `ee129e4c2a`
+- **Squashed commit (source):** `ee129e4c2a`
 - **Source PR:** #19, #20, #21 (v2026.4.15); ported to v2026.5.3 as single commit
 
 ### Rationale
 
 Cross-gateway (XGW) communication layer that allows OpenClaw instances to route sessions across gateway boundaries. Includes:
+
 - Session routing: `sessions_send` tool dispatches to remote peers via `POST /xgateway`
 - Async callback injection: remote agents can post results back via `POST /xgateway/callback`
 - Fleet config: `fleet.crossGateway` section in OpenClaw config with peer registry
@@ -81,7 +85,10 @@ Cross-gateway (XGW) communication layer that allows OpenClaw instances to route 
 git cherry-pick ee129e4c2a
 ```
 
-**Conflicts:** `src/config/types.gateway.ts` and `src/gateway/server-methods/agent.ts` — both have frequent upstream churn. Check the `OpenClawConfig` type and `startAgentRun` signature. The XGW files (`src/gateway/xgw/`) are all new, so conflicts there are unlikely.
+**Conflicts on v2026.5.7:** `server-http.ts` and `server.impl.ts`.
+
+- `server-http.ts`: upstream added `isManagedOutgoingImagePath()` in the same area as our `isXgwPath()`. Include both; XGW handler goes AFTER upstream's `isManagedOutgoingImagePath` in the function declarations.
+- `server.impl.ts`: upstream added `else` branch after `scheduleGatewayPostReadyMaintenance`. Our `initXgw()` goes inside the `if (!minimalTestGateway)` block; preserve upstream's `else` branch.
 
 **Note:** On v2026.4.15 this was three separate canonical branches (`brightfire/xgw`, `brightfire/xgw-async`, `brightfire/xgw-sessions-send-reply`). For v2026.5.3 all three were ported together as one squashed commit since they are tightly coupled and there is no reason to apply them independently.
 
@@ -92,8 +99,9 @@ git cherry-pick ee129e4c2a
 - **Status:** active
 - **Reapply:** yes
 - **Stable branch first merged into:** `stable/v2026.5.3`
+- **Commit on stable/v2026.5.7:** `64bbc7a1cc`
 - **Canonical branch:** `brightfire/xgw-security-prompt`
-- **Squashed commit:** `139a6d1b6d`
+- **Squashed commit (source):** `139a6d1b6d`
 - **Source PR:** #29
 
 ### Rationale
@@ -113,7 +121,7 @@ Makes the XGW inbound security prompt (the context injected before cross-gateway
 git cherry-pick 139a6d1b6d
 ```
 
-**Conflicts:** `schema.base.generated.ts` — regenerate with `pnpm config:schema:gen` instead of manual resolve.
+**Conflicts:** `schema.base.generated.ts` — regenerate with `npm run config:schema:gen` instead of manual resolve.
 
 ---
 
@@ -122,8 +130,9 @@ git cherry-pick 139a6d1b6d
 - **Status:** active
 - **Reapply:** yes
 - **Stable branch first merged into:** `stable/v2026.5.3`
+- **Commit on stable/v2026.5.7:** `9dbe61e5ac`
 - **Canonical branch:** `brightfire/preserve-cache-write-short-normalization`
-- **Squashed commit:** `611b72053c`
+- **Squashed commit (source):** `611b72053c`
 - **Source PR:** — (ported from stable/v2026.4.15 canonical commit `d7d8bcc73e`)
 
 ### Rationale
@@ -148,8 +157,9 @@ git cherry-pick 611b72053c
 - **Status:** active
 - **Reapply:** yes
 - **Stable branch first merged into:** `stable/v2026.5.3`
+- **Commit on stable/v2026.5.7:** `5c9ae8fa78`
 - **Canonical branch:** `brightfire/cache-write-ttl-cost`
-- **Squashed commit:** `f7aa4fdc7b`
+- **Squashed commit (source):** `f7aa4fdc7b`
 - **Source PR:** #24
 
 ### Rationale
@@ -175,7 +185,7 @@ Worker/sub-agent sessions use 5-minute cache TTL (not 1-hour), but the cost esti
 git cherry-pick f7aa4fdc7b
 ```
 
-**Conflicts:** `schema.base.generated.ts` — regenerate with `pnpm config:schema:gen`.
+**Conflicts:** `schema.base.generated.ts` — regenerate with `npm run config:schema:gen`.
 
 ---
 
@@ -184,8 +194,9 @@ git cherry-pick f7aa4fdc7b
 - **Status:** active
 - **Reapply:** yes
 - **Stable branch first merged into:** `stable/v2026.5.3`
+- **Commit on stable/v2026.5.7:** `ae690ac173`
 - **Canonical branch:** `brightfire/per-message-cache-write-cost`
-- **Squashed commit:** `7813559395`
+- **Squashed commit (source):** `7813559395`
 - **Source PR:** #26, #28
 
 ### Rationale
@@ -211,8 +222,9 @@ git cherry-pick 7813559395
 - **Status:** active
 - **Reapply:** yes
 - **Stable branch first merged into:** `stable/v2026.5.3`
+- **Commit on stable/v2026.5.7:** `a999c64722`
 - **Canonical branch:** `brightfire/context-estimate-compaction`
-- **Squashed commit:** `6029b5eb06`
+- **Squashed commit (source):** `6029b5eb06`
 - **Source PR:** — (production patches applied via fleet-upgrade post-install scripts)
 
 ### Rationale
@@ -222,6 +234,8 @@ Two production patches integrated into source to avoid re-patching after every u
 1. **Tool-result token estimate:** `TOOL_RESULT_CHARS_PER_TOKEN_ESTIMATE` was `2`, causing the context guard to trim tool output at ~40% of the configured window instead of ~75%. Set to `4` to match the real token density of tool output.
 
 2. **Preflight compaction early return:** Removed `totalTokensFresh` early return in `runPreflightCompactionIfNeeded()` that was preventing preflight compaction from firing when token counts happened to be fresh. Compaction now evaluates properly regardless of freshness.
+
+**Note:** Semantic review flagged for this patch — verify the agent-runner-memory.ts compaction logic still behaves correctly after upstream changes in v2026.5.7.
 
 ### Files touched
 
@@ -241,8 +255,9 @@ git cherry-pick 6029b5eb06
 - **Status:** active
 - **Reapply:** yes
 - **Stable branch first merged into:** `stable/v2026.5.3`
+- **Commit on stable/v2026.5.7:** `487a39b79d`
 - **Canonical branch:** `brightfire/context-window-min-cap`
-- **Squashed commit:** `02cf7b6a4f`
+- **Squashed commit (source):** `02cf7b6a4f`
 - **Source PR:** #31
 
 ### Rationale
@@ -271,8 +286,9 @@ git cherry-pick 02cf7b6a4f
 - **Status:** active
 - **Reapply:** yes
 - **Stable branch first merged into:** `stable/v2026.5.3`
+- **Commit on stable/v2026.5.7:** `3867e5612e`
 - **Canonical branch:** `brightfire/session-reset-prompt`
-- **Squashed commit:** `a59fb22abc`
+- **Squashed commit (source):** `a59fb22abc`
 - **Source PR:** #30
 
 ### Rationale
@@ -294,7 +310,7 @@ Makes the bare `/new` and `/reset` session greeting customizable via `agents.def
 git cherry-pick a59fb22abc
 ```
 
-**Conflicts:** `schema.base.generated.ts` — regenerate with `pnpm config:schema:gen` instead of manual resolve. The test file may also conflict if upstream changes the default reset prompt text again — update the expected string in the test.
+**Conflicts:** `schema.base.generated.ts` — regenerate with `npm run config:schema:gen` instead of manual resolve. The test file may also conflict if upstream changes the default reset prompt text again — update the expected string in the test.
 
 ---
 
@@ -303,8 +319,9 @@ git cherry-pick a59fb22abc
 - **Status:** active
 - **Reapply:** yes
 - **Stable branch first merged into:** `stable/v2026.5.3`
+- **Commit on stable/v2026.5.7:** `0da0611131`
 - **Canonical branch:** `brightfire/control-ui-title`
-- **Squashed commit:** `030d2bbc0c`
+- **Squashed commit (source):** `030d2bbc0c`
 - **Source PR:** —
 
 ### Rationale
@@ -334,8 +351,9 @@ git cherry-pick 030d2bbc0c
 - **Status:** active
 - **Reapply:** yes
 - **Stable branch first merged into:** `stable/v2026.5.3`
+- **Commit on stable/v2026.5.7:** `569efbafcc`
 - **Canonical branch:** `brightfire/xgw-inbound-auth`
-- **Squashed commit:** `2ffebbbc23`
+- **Squashed commit (source):** `2ffebbbc23`
 - **Source PR:** — (new patch for v2026.5.3)
 
 ### Rationale
@@ -366,10 +384,10 @@ git cherry-pick 2ffebbbc23
 ## Sessions History Archived
 
 - **Status:** deferred
-- **Reapply:** no (intentionally excluded from v2026.5.3 upgrade; may return in a future release)
+- **Reapply:** no (intentionally excluded from v2026.5.7 upgrade; may return in a future release)
 - **Stable branch first merged into:** `stable/v2026.4.15`
 - **Canonical branch:** `brightfire/sessions-history-archived`
-- **Squashed commit:** `566dee3c99` (on stable/v2026.4.15; not ported to v2026.5.3)
+- **Squashed commit:** `566dee3c99` (on stable/v2026.4.15; not ported to v2026.5.7)
 - **Source PR:** #32
 
 ### Rationale
@@ -391,6 +409,7 @@ git cherry-pick 2ffebbbc23
 ### Upgrade guidance
 
 When re-enabling for a future stable branch:
+
 ```
 git cherry-pick 566dee3c99
 ```
@@ -401,17 +420,17 @@ git cherry-pick 566dee3c99
 
 ## Patch Registry Table
 
-| Patch | Canonical branch | Squashed commit | Status |
-|---|---|---|---|
-| slack-mrkdwn | `brightfire/slack-mrkdwn` | `8b472f2555` | active |
-| xgw-cross-gateway | `brightfire/xgw` | `ee129e4c2a` | active |
-| xgw-security-prompt | `brightfire/xgw-security-prompt` | `139a6d1b6d` | active |
-| preserve-cache-write-short-normalization | `brightfire/preserve-cache-write-short-normalization` | `611b72053c` | active |
-| cache-write-ttl-cost | `brightfire/cache-write-ttl-cost` | `f7aa4fdc7b` | active |
-| per-message-cache-write-cost | `brightfire/per-message-cache-write-cost` | `7813559395` | active |
-| context-estimate-compaction | `brightfire/context-estimate-compaction` | `6029b5eb06` | active |
-| context-window-min-cap | `brightfire/context-window-min-cap` | `02cf7b6a4f` | active |
-| session-reset-prompt | `brightfire/session-reset-prompt` | `a59fb22abc` | active |
-| control-ui-title | `brightfire/control-ui-title` | `030d2bbc0c` | active |
-| xgw-inbound-auth | `brightfire/xgw-inbound-auth` | `2ffebbbc23` | active |
-| sessions-history-archived | `brightfire/sessions-history-archived` | `566dee3c99` (v2026.4.15) | deferred |
+| Patch                                    | Canonical branch                                      | Squashed commit (source)  | Commit on v2026.5.7 | Status   |
+| ---------------------------------------- | ----------------------------------------------------- | ------------------------- | ------------------- | -------- |
+| slack-mrkdwn                             | `brightfire/slack-mrkdwn`                             | `8b472f2555`              | `454393ed35`        | active   |
+| xgw-cross-gateway                        | `brightfire/xgw`                                      | `ee129e4c2a`              | `fdb7f2f660`        | active   |
+| xgw-security-prompt                      | `brightfire/xgw-security-prompt`                      | `139a6d1b6d`              | `64bbc7a1cc`        | active   |
+| preserve-cache-write-short-normalization | `brightfire/preserve-cache-write-short-normalization` | `611b72053c`              | `9dbe61e5ac`        | active   |
+| cache-write-ttl-cost                     | `brightfire/cache-write-ttl-cost`                     | `f7aa4fdc7b`              | `5c9ae8fa78`        | active   |
+| per-message-cache-write-cost             | `brightfire/per-message-cache-write-cost`             | `7813559395`              | `ae690ac173`        | active   |
+| context-estimate-compaction              | `brightfire/context-estimate-compaction`              | `6029b5eb06`              | `a999c64722`        | active   |
+| context-window-min-cap                   | `brightfire/context-window-min-cap`                   | `02cf7b6a4f`              | `487a39b79d`        | active   |
+| session-reset-prompt                     | `brightfire/session-reset-prompt`                     | `a59fb22abc`              | `3867e5612e`        | active   |
+| control-ui-title                         | `brightfire/control-ui-title`                         | `030d2bbc0c`              | `0da0611131`        | active   |
+| xgw-inbound-auth                         | `brightfire/xgw-inbound-auth`                         | `2ffebbbc23`              | `569efbafcc`        | active   |
+| sessions-history-archived                | `brightfire/sessions-history-archived`                | `566dee3c99` (v2026.4.15) | — (deferred)        | deferred |
