@@ -802,6 +802,7 @@ export const OpenClawSchema = z
             dangerouslyAllowHostHeaderOriginFallback: z.boolean().optional(),
             allowInsecureAuth: z.boolean().optional(),
             dangerouslyDisableDeviceAuth: z.boolean().optional(),
+            title: z.string().optional(),
           })
           .strict()
           .optional(),
@@ -1041,11 +1042,7 @@ export const OpenClawSchema = z
               .optional(),
             securityPrompt: z.string().optional(),
             authMode: z
-              .union([
-                z.literal("token-only"),
-                z.literal("dual"),
-                z.literal("signature-only"),
-              ])
+              .union([z.literal("token-only"), z.literal("dual"), z.literal("signature-only")])
               .optional(),
             privateKey: z.string().optional(),
             trustedKeys: z.record(z.string(), z.string()).optional(),

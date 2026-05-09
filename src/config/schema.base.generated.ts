@@ -22414,6 +22414,9 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
                 description:
                   "Disables Control UI device identity checks and relies on token/password only. Use only for short-lived debugging on trusted networks, then turn it off immediately.",
               },
+              title: {
+                type: "string",
+              },
             },
             additionalProperties: false,
             title: "Control UI",
@@ -29529,6 +29532,6 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
       tags: ["advanced", "url-secret"],
     },
   },
-  version: "2026.5.7",
+  version: "2026.5.7-bf1",
   generatedAt: "2026-03-22T21:17:33.302Z",
 };

@@ -319,7 +319,7 @@ git cherry-pick a59fb22abc
 - **Status:** active
 - **Reapply:** yes
 - **Stable branch first merged into:** `stable/v2026.5.3`
-- **Commit on stable/v2026.5.7:** `0da0611131`
+- **Commit on stable/v2026.5.7:** `0da0611131`, `63aa018e31` (Zod schema fix)
 - **Canonical branch:** `brightfire/control-ui-title`
 - **Squashed commit (source):** `030d2bbc0c`
 - **Source PR:** —
@@ -331,6 +331,7 @@ Adds `gateway.controlUi.title` config option to customize the HTML `<title>` of 
 ### Files touched
 
 - `src/config/types.gateway.ts` (new `controlUi.title` field)
+- `src/config/zod-schema.ts` (Zod validation for `controlUi.title` — strict mode requires this)
 - `src/gateway/control-ui-contract.ts` (title in bootstrap contract)
 - `src/gateway/control-ui.ts` (placeholder injection + resolution logic)
 - `ui/index.html` (placeholder in `<title>`)
