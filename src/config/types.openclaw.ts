@@ -17,6 +17,7 @@ import type { CronConfig } from "./types.cron.js";
 import type {
   CanvasHostConfig,
   DiscoveryConfig,
+  FleetConfig,
   GatewayConfig,
   TalkConfig,
 } from "./types.gateway.js";
@@ -138,6 +139,7 @@ export type OpenClawConfig = {
   canvasHost?: CanvasHostConfig;
   talk?: TalkConfig;
   gateway?: GatewayConfig;
+  fleet?: FleetConfig;
   memory?: MemoryConfig;
   mcp?: McpConfig;
   /** Network-level SSRF protection via an operator-managed forward proxy. */

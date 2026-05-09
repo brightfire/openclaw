@@ -81,16 +81,28 @@ async function startAgentRun(params: {
   runId: string;
   sendParams: Record<string, unknown>;
   sessionKey: string;
-}): Promise<{ ok: true; runId: string } | { ok: false; result: ReturnType<typeof jsonResult> }> {
+  timeoutSeconds: number;
+}): Promise<
+  | { ok: true; runId: string; status?: string; reply?: string | null; correlationId?: string }
+  | { ok: false; result: ReturnType<typeof jsonResult> }
+> {
   try {
-    const response = await params.callGateway<{ runId: string }>({
+    const response = await params.callGateway<{
+      runId: string;
+      status?: string;
+      reply?: string | null;
+      correlationId?: string;
+    }>({
       method: "agent",
       params: params.sendParams,
-      timeoutMs: 10_000,
+      timeoutMs: params.timeoutSeconds * 1000 + 2000,
     });
     return {
       ok: true,
       runId: typeof response?.runId === "string" && response.runId ? response.runId : params.runId,
+      status: response?.status,
+      reply: response?.reply,
+      correlationId: response?.correlationId,
     };
   } catch (err) {
     const messageText =
@@ -307,6 +319,18 @@ export function createSessionsSendTool(opts?: {
               callGateway: gatewayCall,
             });
 
+      const isXgw = typeof resolvedKey === "string" && resolvedKey.startsWith("@");
+      const asyncParam = params.async === true;
+
+      // Fix 1: async mode is only valid for cross-gateway (@gateway/) session keys.
+      if (asyncParam && !isXgw) {
+        return jsonResult({
+          runId: crypto.randomUUID(),
+          status: "error",
+          error: "async is only supported for cross-gateway (@gateway/) session keys",
+        });
+      }
+
       const agentMessageContext = buildAgentToAgentMessageContext({
         requesterSessionKey: opts?.agentSessionKey,
         requesterChannel: opts?.agentChannel,
@@ -326,7 +350,21 @@ export function createSessionsSendTool(opts?: {
         channel: INTERNAL_MESSAGE_CHANNEL,
         lane: resolveNestedAgentLaneForSession(resolvedKey),
         extraSystemPrompt: agentMessageContext,
-        inputProvenance,
+        inputProvenance: {
+          kind: "inter_session",
+          sourceSessionKey: opts?.agentSessionKey,
+          sourceChannel: opts?.agentChannel,
+          sourceTool: "sessions_send",
+        },
+        ...(isXgw && asyncParam ? { async: true } : {}),
+        // Fix 5: Propagate the actual calling session key so async XGW callbacks
+        // route back to the sub-agent that initiated the request, not the main session.
+        ...(isXgw
+          ? {
+              callerSessionKey: opts?.agentSessionKey,
+              callerChannel: opts?.agentChannel,
+            }
+          : {}),
       };
       const requesterSessionKey = opts?.agentSessionKey;
       const requesterChannel = opts?.agentChannel;
@@ -393,12 +431,13 @@ export function createSessionsSendTool(opts?: {
           runId,
           sendParams,
           sessionKey: displayKey,
+          timeoutSeconds: 0,
         });
         if (!start.ok) {
           return start.result;
         }
         runId = start.runId;
-        startA2AFlow(undefined, runId);
+        startA2AFlow(start.reply ?? undefined, runId);
         return jsonResult({
           runId,
           status: "accepted",
@@ -412,11 +451,45 @@ export function createSessionsSendTool(opts?: {
         runId,
         sendParams,
         sessionKey: displayKey,
+        timeoutSeconds,
       });
       if (!start.ok) {
         return start.result;
       }
       runId = start.runId;
+
+      if (isXgw && asyncParam && start.status === "accepted") {
+        const correlationId = start.correlationId ?? "unknown";
+        return jsonResult({
+          runId,
+          status: "accepted",
+          // Fix 7: Wording must not imply yield behavior — the tool does not yield.
+          reply: `Async request accepted (correlation: ${correlationId}). Results will be delivered to your session when the remote agent finishes.`,
+          sessionKey: displayKey,
+          delivery,
+        });
+      }
+
+      if (start.status === "ok" && typeof start.reply === "string") {
+        startA2AFlow(start.reply);
+        return jsonResult({
+          runId,
+          status: "ok",
+          reply: start.reply,
+          sessionKey: displayKey,
+          delivery,
+        });
+      }
+      if (start.status === "accepted") {
+        startA2AFlow(start.reply ?? undefined, runId);
+        return jsonResult({
+          runId,
+          status: "accepted",
+          sessionKey: displayKey,
+          delivery,
+        });
+      }
+
       const result = await waitForAgentRunAndReadUpdatedAssistantReply({
         runId,
         sessionKey: resolvedKey,
