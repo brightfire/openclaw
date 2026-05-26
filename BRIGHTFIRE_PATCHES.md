@@ -424,9 +424,9 @@ git cherry-pick 566dee3c99
 - **Status:** active
 - **Reapply:** yes
 - **Stable branch first merged into:** `stable/v2026.5.7`
-- **Commit on stable/v2026.5.7:** `ce1b2aded0`
+- **Commit on stable/v2026.5.7:** `75fe3ef1f1`
 - **Canonical branch:** `brightfire/sessions-list-archived`
-- **Squashed commit (source):** `b4b2829e3c`
+- **Squashed commit (source):** `21956af81b`
 - **Source PR:** `#35` (brightfire/sessions-list-archived)
 
 ### Rationale
@@ -448,7 +448,7 @@ Agents cannot discover archived/reset session IDs through any tool. This adds `i
 ### Upgrade guidance
 
 ```
-git cherry-pick b4b2829e3c
+git cherry-pick 21956af81b
 ```
 
 **Conflicts:** Likely conflicts in `session-utils.ts` if upstream changes `listSessionsFromStoreAsync()`. Re-run `pnpm protocol:gen && pnpm protocol:gen:swift` and regenerate prompt snapshots after cherry-pick.
@@ -473,4 +473,4 @@ git cherry-pick b4b2829e3c
 | control-ui-title                         | `brightfire/control-ui-title`                         | `030d2bbc0c`              | `0da0611131`        | active   |
 | xgw-inbound-auth                         | `brightfire/xgw-inbound-auth`                         | `2ffebbbc23`              | `569efbafcc`        | active   |
 | sessions-history-archived                | `brightfire/sessions-history-archived`                | `566dee3c99` (v2026.4.15) | — (deferred)        | deferred |
-| sessions-list-archived                   | `brightfire/sessions-list-archived`                   | `b4b2829e3c`              | `ce1b2aded0`        | active   |
+| sessions-list-archived                   | `brightfire/sessions-list-archived`                   | `21956af81b`              | `75fe3ef1f1`        | active   |
