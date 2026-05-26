@@ -419,6 +419,44 @@ git cherry-pick 566dee3c99
 
 ---
 
+## Sessions List Archived
+
+- **Status:** active
+- **Reapply:** yes
+- **Stable branch first merged into:** `stable/v2026.5.7`
+- **Commit on stable/v2026.5.7:** `ce1b2aded0`
+- **Canonical branch:** `brightfire/sessions-list-archived`
+- **Squashed commit (source):** `b4b2829e3c`
+- **Source PR:** `#35` (brightfire/sessions-list-archived)
+
+### Rationale
+
+Agents cannot discover archived/reset session IDs through any tool. This adds `includeArchived`, `archivedFrom`, `archivedTo` params to `sessions.list` RPC and `sessions_list` tool, enabling agents to find and read previous session transcripts after resets.
+
+### Files touched
+
+- `src/gateway/protocol/schema/sessions.ts`
+- `src/gateway/session-utils.types.ts`
+- `src/gateway/session-utils.ts`
+- `src/agents/tools/sessions-list-tool.ts`
+- `dist/protocol.schema.json`
+- `apps/macos/Sources/OpenClawProtocol/GatewayModels.swift`
+- `apps/shared/OpenClawKit/Sources/OpenClawProtocol/GatewayModels.swift`
+- `test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/*.json`
+- `test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/*.md`
+
+### Upgrade guidance
+
+```
+git cherry-pick b4b2829e3c
+```
+
+**Conflicts:** Likely conflicts in `session-utils.ts` if upstream changes `listSessionsFromStoreAsync()`. Re-run `pnpm protocol:gen && pnpm protocol:gen:swift` and regenerate prompt snapshots after cherry-pick.
+
+**Drop when:** Upstream adds equivalent archived session discovery (e.g., via native `includeArchived` param or a dedicated archived sessions API).
+
+---
+
 ## Patch Registry Table
 
 | Patch                                    | Canonical branch                                      | Squashed commit (source)  | Commit on v2026.5.7 | Status   |
@@ -435,3 +473,4 @@ git cherry-pick 566dee3c99
 | control-ui-title                         | `brightfire/control-ui-title`                         | `030d2bbc0c`              | `0da0611131`        | active   |
 | xgw-inbound-auth                         | `brightfire/xgw-inbound-auth`                         | `2ffebbbc23`              | `569efbafcc`        | active   |
 | sessions-history-archived                | `brightfire/sessions-history-archived`                | `566dee3c99` (v2026.4.15) | — (deferred)        | deferred |
+| sessions-list-archived                   | `brightfire/sessions-list-archived`                   | `b4b2829e3c`              | `ce1b2aded0`        | active   |

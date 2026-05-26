@@ -55,6 +55,11 @@ import {
   type SessionStoreTarget,
   type SessionScope,
 } from "../config/sessions.js";
+import {
+  isSessionArchiveArtifactName,
+  parseSessionArchiveTimestamp,
+  type SessionArchiveReason,
+} from "../config/sessions/artifacts.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { openBoundaryFileSync } from "../infra/boundary-file-read.js";
 import { projectPluginSessionExtensionsSync } from "../plugins/host-hook-state.js";
@@ -2125,13 +2130,115 @@ export async function listSessionsFromStoreAsync(params: {
     }
   }
 
+  // ── Archived sessions (gated behind includeArchived: true) ──────────
+  if (opts.includeArchived === true) {
+    const archivedFrom = typeof opts.archivedFrom === "number" ? opts.archivedFrom : undefined;
+    const archivedTo = typeof opts.archivedTo === "number" ? opts.archivedTo : undefined;
+    const seenArchiveFiles = new Set<string>();
+
+    // Resolve which directories to scan.  `storePath` normally points to
+    // sessions.json (the store file); archive artifacts live in its parent dir.
+    // When multiple agents exist, `storePath` is the literal string "(multiple)"
+    // and we must resolve each agent's store directory independently.
+    let scanPaths: string[];
+    if (storePath === "(multiple)" || storePath.includes("{agentId}")) {
+      scanPaths = resolveAllAgentSessionStoreTargetsSync(cfg).map((t) => path.dirname(t.storePath));
+    } else {
+      const storeDir = path.dirname(storePath);
+      try {
+        scanPaths = fs.statSync(storeDir).isDirectory() ? [storeDir] : [];
+      } catch {
+        scanPaths = [];
+      }
+    }
+
+    for (const scanPath of scanPaths) {
+      let dirEntries: string[];
+      try {
+        dirEntries = fs.readdirSync(scanPath);
+      } catch {
+        dirEntries = [];
+      }
+
+      for (const fileName of dirEntries) {
+        if (!isSessionArchiveArtifactName(fileName)) {
+          continue;
+        }
+        if (seenArchiveFiles.has(fileName)) {
+          continue;
+        }
+        seenArchiveFiles.add(fileName);
+
+        // Determine archive reason and timestamp from filename
+        let archiveReason: SessionArchiveReason | undefined;
+        let archiveTimestamp: number | null = null;
+        for (const reason of ["reset", "deleted", "bak"] as const) {
+          const ts = parseSessionArchiveTimestamp(fileName, reason);
+          if (ts !== null) {
+            archiveReason = reason;
+            archiveTimestamp = ts;
+            break;
+          }
+        }
+        if (!archiveReason || archiveTimestamp === null) {
+          continue;
+        }
+
+        // Apply epoch-ms time range filters
+        if (archivedFrom !== undefined && archiveTimestamp < archivedFrom) {
+          continue;
+        }
+        if (archivedTo !== undefined && archiveTimestamp > archivedTo) {
+          continue;
+        }
+
+        // Parse session ID from filename: <sessionId>.jsonl.<reason>.<timestamp>
+        const marker = `.jsonl.${archiveReason}.`;
+        const markerIndex = fileName.lastIndexOf(marker);
+        if (markerIndex <= 0) {
+          continue;
+        }
+        const sessionId = fileName.slice(0, markerIndex);
+        if (!sessionId) {
+          continue;
+        }
+
+        // Inherit metadata from the active store entry with the same session ID
+        let inheritedKey: string | undefined;
+        let inheritedLabel: string | undefined;
+        let inheritedChannel: string | undefined;
+        for (const [storeKey, storeEntry] of Object.entries(store)) {
+          if (storeEntry?.sessionId === sessionId || storeKey.includes(sessionId)) {
+            inheritedKey = storeKey;
+            inheritedLabel = storeEntry?.label;
+            inheritedChannel = storeEntry?.lastChannel ?? undefined;
+            break;
+          }
+        }
+
+        const archivedRow: GatewaySessionRow = {
+          key: inheritedKey ?? `archived:${sessionId}`,
+          kind: "unknown",
+          label: inheritedLabel,
+          channel: inheritedChannel,
+          updatedAt: archiveTimestamp,
+          sessionId,
+          archived: true,
+          archiveReason,
+          archiveTimestamp,
+        };
+        sessions.push(archivedRow);
+      }
+    } // end for scanPath
+  }
+
   return {
     ts: now,
     path: storePath,
     count: sessions.length,
-    totalCount,
+    totalCount: opts.includeArchived === true ? sessions.length : totalCount,
     limitApplied,
-    hasMore: sessions.length < totalCount,
+    hasMore: opts.includeArchived === true ? false : sessions.length < totalCount,
     defaults: getSessionDefaults(cfg, params.modelCatalog),
     sessions,
   };
