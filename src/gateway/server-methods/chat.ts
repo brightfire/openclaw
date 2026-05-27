@@ -104,6 +104,8 @@ import {
   resolveGatewaySessionThinkingDefault,
   resolveDeletedAgentIdFromSessionKey,
   readRecentSessionMessagesAsync,
+  resolveArchivedTranscriptPaths,
+  resolveGatewaySessionStoreTarget,
   resolveSessionModelRef,
 } from "../session-utils.js";
 import { formatForLog } from "../ws-log.js";
@@ -1730,9 +1732,29 @@ export const chatHandlers: GatewayRequestHandlers = {
       maxChars?: number;
     };
     const { cfg, storePath, entry } = loadSessionEntry(sessionKey);
-    const sessionId = entry?.sessionId;
+    let sessionId = entry?.sessionId;
     const sessionAgentId = resolveSessionAgentId({ sessionKey, config: cfg });
     const resolvedSessionModel = resolveSessionModelRef(cfg, entry, sessionAgentId);
+
+    // When the session entry is not in the store (deleted, or session ID passed directly),
+    // attempt to locate an archived transcript using storeKeys as candidate session IDs.
+    let archiveOnly = false;
+    let archivedSessionFile: string | undefined;
+    if (!sessionId && storePath) {
+      const { storeKeys } = resolveGatewaySessionStoreTarget({ cfg, key: sessionKey });
+      const sessionsDir = path.dirname(storePath);
+      for (const key of storeKeys) {
+        const archivedPaths = resolveArchivedTranscriptPaths({ sessionId: key, sessionsDir });
+        const existingPath = archivedPaths.find((p) => fs.existsSync(p));
+        if (existingPath) {
+          sessionId = key;
+          archiveOnly = true;
+          archivedSessionFile = existingPath;
+          break;
+        }
+      }
+    }
+
     const hardMax = 1000;
     const defaultLimit = 200;
     const requested = typeof limit === "number" ? limit : defaultLimit;
@@ -1740,7 +1762,7 @@ export const chatHandlers: GatewayRequestHandlers = {
     const maxHistoryBytes = getMaxChatHistoryMessagesBytes();
     const localMessages =
       sessionId && storePath
-        ? await readRecentSessionMessagesAsync(sessionId, storePath, entry?.sessionFile, {
+        ? await readRecentSessionMessagesAsync(sessionId, storePath, archivedSessionFile ?? entry?.sessionFile, {
             maxMessages: max,
             maxBytes: Math.max(maxHistoryBytes * 2, 1024 * 1024),
           })
@@ -1797,6 +1819,7 @@ export const chatHandlers: GatewayRequestHandlers = {
       thinkingLevel,
       fastMode: entry?.fastMode,
       verboseLevel,
+      ...(archiveOnly ? { archived: true } : {}),
     });
   },
   "chat.abort": async ({ params, respond, context, client }) => {
