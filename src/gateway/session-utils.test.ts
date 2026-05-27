@@ -9,6 +9,7 @@ import { createEmptyPluginRegistry } from "../plugins/registry-empty.js";
 import { resetPluginRuntimeStateForTest, setActivePluginRegistry } from "../plugins/runtime.js";
 import { withStateDirEnv } from "../test-helpers/state-dir-env.js";
 import {
+  ARCHIVED_SESSION_KEY_PREFIX,
   buildGatewaySessionRow,
   capArrayByJsonBytes,
   classifySessionKey,
@@ -676,6 +677,23 @@ describe("gateway session utils", () => {
 
       expect(target.storePath).toBe(resolveSyncRealpath(retiredStorePath));
     });
+  });
+
+  test("resolveGatewaySessionStoreTarget extracts bare UUID from archived: prefix key", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "session-utils-archived-"));
+    const storePath = path.join(dir, "sessions.json");
+    fs.writeFileSync(storePath, JSON.stringify({}), "utf8");
+    const cfg = {
+      session: { mainKey: "main", store: storePath },
+      agents: { list: [{ id: "main", default: true }] },
+    } as OpenClawConfig;
+    const target = resolveGatewaySessionStoreTarget({
+      cfg,
+      key: `${ARCHIVED_SESSION_KEY_PREFIX}94287140-abcd-1234-ef56-789012345678`,
+    });
+    expect(target.storeKeys).toEqual(
+      expect.arrayContaining(["94287140-abcd-1234-ef56-789012345678"]),
+    );
   });
 
   test("loadSessionEntry reads discovered stores from non-round-tripping agent dirs", async () => {

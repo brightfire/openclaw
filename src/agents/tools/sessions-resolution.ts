@@ -9,6 +9,7 @@ import {
   listSpawnedSessionKeys,
   sessionVisibilityGatewayTesting,
 } from "../../plugin-sdk/session-visibility.js";
+import { ARCHIVED_SESSION_KEY_PREFIX } from "../../gateway/session-utils.js";
 import { isAcpSessionKey, normalizeMainKey } from "../../routing/session-key.js";
 import { looksLikeSessionId } from "../../sessions/session-id.js";
 import { normalizeOptionalString } from "../../shared/string-coerce.js";
@@ -168,7 +169,7 @@ export function looksLikeSessionKey(value: string): boolean {
   if (raw.startsWith("agent:")) {
     return true;
   }
-  if (raw.startsWith("cron:") || raw.startsWith("hook:")) {
+  if (raw.startsWith("cron:") || raw.startsWith("hook:") || raw.startsWith(ARCHIVED_SESSION_KEY_PREFIX)) {
     return true;
   }
   if (raw.startsWith("node-") || raw.startsWith("node:")) {

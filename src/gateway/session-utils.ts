@@ -140,6 +140,12 @@ export type {
   SessionsPreviewResult,
 } from "./session-utils.types.js";
 
+/**
+ * Prefix used for synthetic session keys representing archived transcripts.
+ * Emitted by `sessions.list` and recognised by session-resolution helpers.
+ */
+export const ARCHIVED_SESSION_KEY_PREFIX = "archived:";
+
 const DERIVED_TITLE_MAX_LEN = 60;
 
 function tryResolveExistingPath(value: string): string | null {
@@ -1180,6 +1186,16 @@ export function resolveGatewaySessionStoreTarget(params: {
   if (key && key !== canonicalKey) {
     storeKeys.add(key);
   }
+  // When the key carries an `archived:` prefix (synthetic keys emitted by
+  // sessions.list for archived transcripts), extract the bare UUID so the
+  // archive-fallback loop in chat.history can match `{uuid}.jsonl.reset.*`
+  // files on disk via `resolveArchivedTranscriptPaths`.
+  if (key.startsWith(ARCHIVED_SESSION_KEY_PREFIX)) {
+    const bareId = key.slice(ARCHIVED_SESSION_KEY_PREFIX.length);
+    if (bareId) {
+      storeKeys.add(bareId);
+    }
+  }
   if (params.scanLegacyKeys !== false) {
     // Scan the on-disk store for case variants of every target to find
     // legacy mixed-case entries (e.g. "agent:ops:MAIN" when canonical is "agent:ops:work").
@@ -2219,7 +2235,7 @@ export async function listSessionsFromStoreAsync(params: {
         }
 
         const archivedRow: GatewaySessionRow = {
-          key: inheritedKey ?? `archived:${sessionId}`,
+          key: inheritedKey ?? `${ARCHIVED_SESSION_KEY_PREFIX}${sessionId}`,
           kind: "unknown",
           label: inheritedLabel,
           channel: inheritedChannel,

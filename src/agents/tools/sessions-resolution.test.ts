@@ -1,5 +1,6 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OpenClawConfig } from "../../config/config.js";
+import { ARCHIVED_SESSION_KEY_PREFIX } from "../../gateway/session-utils.js";
 const callGatewayMock = vi.fn();
 vi.mock("../../gateway/call.js", () => ({
   callGateway: (opts: unknown) => callGatewayMock(opts),
@@ -138,6 +139,7 @@ describe("session reference shape detection", () => {
     expect(looksLikeSessionKey("cron:daily-report")).toBe(true);
     expect(looksLikeSessionKey("node:macbook")).toBe(true);
     expect(looksLikeSessionKey("forum:group:123")).toBe(true);
+    expect(looksLikeSessionKey(`${ARCHIVED_SESSION_KEY_PREFIX}94287140-abcd-1234-ef56-789012345678`)).toBe(true);
     expect(looksLikeSessionKey("random-slug")).toBe(false);
   });
 
@@ -145,6 +147,7 @@ describe("session reference shape detection", () => {
     expect(shouldResolveSessionIdInput("agent:main:main")).toBe(false);
     expect(shouldResolveSessionIdInput("current")).toBe(false);
     expect(shouldResolveSessionIdInput("d4f5a5a1-9f75-42cf-83a6-8d170e6a1538")).toBe(true);
+    expect(shouldResolveSessionIdInput(`${ARCHIVED_SESSION_KEY_PREFIX}94287140-abcd-1234-ef56-789012345678`)).toBe(false);
     expect(shouldResolveSessionIdInput("random-slug")).toBe(true);
   });
 });
