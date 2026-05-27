@@ -1,0 +1,42 @@
+# Branch Prune
+#
+# Prunes feature/* and fix/* branches after their PR is closed/merged.
+# Does NOT touch brightfire/* or stable/* branches.
+#
+# This replaces GitHub's "auto-prune head branches" setting since we need
+# brightfire/* branches to persist across releases.
+
+name: Branch Prune
+
+on:
+  pull_request_target:
+    types: [closed]
+
+permissions:
+  contents: write
+
+jobs:
+  prune:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Prune head branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          HEAD_OWNER: ${{ github.event.pull_request.head.repo.owner.login }}
+        run: |
+          BRANCH="$HEAD_REF"
+
+          case "$BRANCH" in
+            feature/*|fix/*)
+              echo "PR #${{ github.event.pull_request.number }} merged — deleting head branch: $BRANCH"
+              gh api -X DELETE repos/${{ github.repository }}/git/refs/heads/"$BRANCH" || true
+              ;;
+            brightfire/*|stable/*)
+              echo "Skipping branch: $BRANCH (permanent branches are not pruned)"
+              ;;
+            *)
+              echo "Skipping branch: $BRANCH (not feature/* or fix/*)"
+              ;;
+          esac
