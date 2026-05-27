@@ -63,7 +63,6 @@ jobs:
             TAG="$BASE"
           fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          # Strip leading v for stable branch name
           VERSION="${TAG#v}"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
@@ -80,7 +79,6 @@ jobs:
         id: version
         run: |
           VERSION="${{ steps.upstream-tag.outputs.version }}"
-          # Find the highest existing bf suffix for this base version
           BF_NUM=$(git tag -l "v${VERSION}-bf*" 2>/dev/null | sed -E 's/.*-bf([0-9]+)/\1/' | sort -n | tail -1)
           if [ -z "$BF_NUM" ]; then
             BF_NUM=1
@@ -92,80 +90,28 @@ jobs:
           echo "tag=v${VERSION}-bf${BF_NUM}" >> "$GITHUB_OUTPUT"
 
       - name: Install tools
-        run: |
-          npm install -g pnpm
+        run: npm install -g pnpm
+
+      - name: Stage patch parser
+        run: cp scripts/bf/parse-patches.py /tmp/parse-patches.py
 
       - name: Parse active patches from manifest
         id: patches
         run: |
-          python3 << 'PYEOF'
-          import re
-          import sys
-
-          patches_file = "BRIGHTFIRE_PATCHES.md"
-          try:
-              with open(patches_file, 'r') as f:
-                  content = f.read()
-          except FileNotFoundError:
-              print("::error::BRIGHTFIRE_PATCHES.md not found")
-              sys.exit(1)
-
-          active = []
-          current_patch = None
-          current_status = "active"
-          current_reapply = None
-
-          for line in content.split('\n'):
-              # Detect patch section header
-              m = re.match(r'^##\s+(.+)$', line)
-              if m:
-                  if current_patch:
-                      if current_status == "active" and current_reapply != "no":
-                          active.append(current_patch)
-                  current_patch = None
-                  current_status = "active"
-                  current_reapply = None
-              # Canonical branch
-              m = re.match(r'\s*-\s*\*\*Canonical branch\*\*:\s*`brightfire/([^`]+)`', line)
-              if m:
-                  current_patch = m.group(1)
-              # Status
-              m = re.match(r'\s*-\s*\*\*Status\*\*:\s*(\w+)', line)
-              if m:
-                  current_status = m.group(1)
-              # Reapply
-              m = re.match(r'\s*-\s*\*\*Reapply\*\*:\s*(\w+)', line)
-              if m:
-                  current_reapply = m.group(1)
-
-          # Last patch
-          if current_patch:
-              if current_status == "active" and current_reapply != "no":
-                  active.append(current_patch)
-
-          out = ",".join(active)
-          with open("/tmp/patches_list.txt", "w") as f:
-              f.write(out)
-          print(f"::set-output name=count::{len(active)}")
-          print(f"::set-output name=list::{out}")
-          print(f"Active patches ({len(active)}): {out}")
-          PYEOF
+          python3 /tmp/parse-patches.py "$PATCHES_FILE" "$GITHUB_OUTPUT"
 
       - name: Create stable branch from upstream tag
         run: |
           TAG="${{ steps.upstream-tag.outputs.tag }}"
           STABLE_BRANCH="stable/${{ steps.upstream-tag.outputs.version }}"
 
-          # Create/reset stable from upstream tag
           if git ls-remote --exit-code --heads upstream "$STABLE_BRANCH" 2>/dev/null; then
-            # Upstream has this stable branch too — use it as base
             git checkout -b "$STABLE_BRANCH" "upstream/$STABLE_BRANCH" 2>/dev/null || \
             git checkout -b "$STABLE_BRANCH" "$TAG"
           else
             git checkout -b "$STABLE_BRANCH" "$TAG"
           fi
 
-          # Delete old remote stable branch if it exists
           if git ls-remote --exit-code --heads origin "$STABLE_BRANCH" 2>/dev/null; then
             git push origin --delete "$STABLE_BRANCH" || true
           fi
@@ -192,21 +138,17 @@ jobs:
             echo ""
             echo "=== Merging $PATCH_BRANCH ==="
 
-            # Verify branch exists
             if ! git ls-remote --exit-code --heads origin "$PATCH_BRANCH" 2>/dev/null; then
               echo "::warning::$PATCH_BRANCH not found on remote — skipping"
               continue
             fi
 
-            # Squash-merge to avoid history contamination
             if git merge --squash "origin/$PATCH_BRANCH" 2>&1; then
               git commit --no-verify -m "ci: apply $PATCH_BRANCH" 2>&1
               echo "SUCCESS: $PATCH_BRANCH"
             else
               git reset --hard HEAD
               echo "::error::Merge conflict applying $PATCH_BRANCH"
-              echo "CI_MERGE_CONFLICT=true" >> "$GITHUB_ENV"
-              echo "CONFLICT_BRANCH=$PATCH_BRANCH" >> "$GITHUB_ENV"
               exit 1
             fi
           done
@@ -215,8 +157,7 @@ jobs:
         run: pnpm install --frozen-lockfile || pnpm install
 
       - name: Pre-push checks
-        run: |
-          pnpm prepush:ci 2>/dev/null || pnpm tsgo
+        run: pnpm prepush:ci 2>/dev/null || pnpm tsgo
 
       - name: Run tests
         run: pnpm vitest run --reporter=basic 2>/dev/null || echo "Tests step completed (non-blocking)"
@@ -241,25 +182,11 @@ jobs:
           git push origin "$STABLE_BRANCH"
           echo "Pushed $STABLE_BRANCH"
 
-      - name: Update Brightfire patch commit hashes (optional)
-        continue-on-error: true
-        run: |
-          python3 << 'PYEOF'
-          # This step optionally updates BRIGHTFIRE_PATCHES.md with new commit
-          # hashes after a successful build. Disabled for now — we'll handle
-          # this in a future enhancement.
-          pass
-          PYEOF
-
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
           name: "Brightfire ${{ steps.version.outputs.version }}"
-          body: |
-            ## Brightfire OpenClaw ${{ steps.version.outputs.version }}
-            **Based on:** upstream `${{ steps.upstream-tag.outputs.tag }}`
-            **Release notes:** Automated build including patches from ${PATCHES:-BRIGHTFIRE_PATCHES.md}
           target_commitish: ${{ steps.version.outputs.tag }}
           draft: false
 

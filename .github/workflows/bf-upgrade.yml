@@ -45,6 +45,9 @@ jobs:
       - name: Install tools
         run: npm install -g pnpm
 
+      - name: Stage patch parser
+        run: cp scripts/bf/parse-patches.py /tmp/parse-patches.py
+
       - name: Ensure upstream remote
         run: |
           ORIGIN_URL=$(git remote get-url origin)
@@ -71,41 +74,7 @@ jobs:
 
       - name: Parse active patches
         id: patches
-        run: |
-          python3 << 'PYEOF'
-          import re, sys
-          patches_file = "BRIGHTFIRE_PATCHES.md"
-          with open(patches_file, 'r') as f:
-              content = f.read()
-          active = []
-          current_patch = None
-          current_status = "active"
-          current_reapply = None
-          for line in content.split('\n'):
-              if re.match(r'^##\s+', line):
-                  if current_patch:
-                      if current_status == "active" and current_reapply != "no":
-                          active.append(current_patch)
-                  current_patch = None
-                  current_status = "active"
-                  current_reapply = None
-              m = re.match(r'\s*-\s*\*\*Canonical branch\*\*:\s*`brightfire/([^`]+)`', line)
-              if m:
-                  current_patch = m.group(1)
-              m = re.match(r'\s*-\s*\*\*Status\*\*:\s*(\w+)', line)
-              if m:
-                  current_status = m.group(1)
-              m = re.match(r'\s*-\s*\*\*Reapply\*\*:\s*(\w+)', line)
-              if m:
-                  current_reapply = m.group(1)
-          if current_patch:
-              if current_status == "active" and current_reapply != "no":
-                  active.append(current_patch)
-          out = ",".join(active)
-          print(f"::set-output name=count::{len(active)}")
-          print(f"::set-output name=list::{out}")
-          print(f"Active patches ({len(active)}): {out}")
-          PYEOF
+        run: python3 /tmp/parse-patches.py "$PATCHES_FILE" "$GITHUB_OUTPUT"
 
       - name: Rebase each brightfire branch onto new upstream
         env:

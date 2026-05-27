@@ -4,13 +4,11 @@
 Reads the patches manifest file and outputs a comma-separated list of
 canonical branch names that have Status=active and Reapply!=no.
 
-Usage: parse-patches.py [patches-file]
+Usage: parse-patches.py [patches-file] [github-output-file]
   patches-file defaults to BRIGHTFIRE_PATCHES.md
+  github-output-file is the $GITHUB_OUTPUT file path (optional)
 
-Outputs GitHub Actions step output format:
-  ::set-output name=count::N
-  ::set-output name=list::branch1,branch2,...
-  And prints a human-readable summary to stdout.
+Outputs summary to stdout, and writes key=value pairs to github-output-file.
 """
 
 import re
@@ -67,10 +65,14 @@ def main():
     active = parse_patches(patches_file)
 
     out = ",".join(active)
-    # GitHub Actions ::set-output format
-    print(f"::set-output name=count::{len(active)}")
-    print(f"::set-output name=list::{out}")
     print(f"Active patches ({len(active)}): {out}")
+
+    # Write $GITHUB_OUTPUT file if provided
+    if len(sys.argv) > 2:
+        output_file = sys.argv[2]
+        with open(output_file, "a") as f:
+            f.write(f"count={len(active)}\n")
+            f.write(f"list={out}\n")
 
 
 if __name__ == "__main__":
