@@ -384,38 +384,47 @@ git cherry-pick 2ffebbbc23
 
 ## Sessions History Archived
 
-- **Status:** deferred
-- **Reapply:** no (intentionally excluded from v2026.5.7 upgrade; may return in a future release)
+- **Status:** active
+- **Reapply:** yes
 - **Stable branch first merged into:** `stable/v2026.4.15`
+- **Commit on stable/v2026.5.7:** `566dee3c99` (commit hash will change after rebase)
 - **Canonical branch:** `brightfire/sessions-history-archived`
-- **Squashed commit:** `566dee3c99` (on stable/v2026.4.15; not ported to v2026.5.7)
+- **Squashed commit (source):** `566dee3c99`
 - **Source PR:** #32
 
 ### Rationale
 
-`sessions_history` tool couldn't access archived session transcripts after `/reset` or delete. The archive files exist on disk (`{sessionId}.jsonl.reset.{timestamp}`) but were invisible to the lookup layer. Fix adds archive fallback to all `sessions_history` lookup paths.
+When a session is reset or deleted, the transcript file is renamed to
+`{sessionId}.jsonl.reset.{timestamp}` / `{sessionId}.jsonl.deleted.{timestamp}`.
+Previously the history lookup layer only found active files, causing `sessions_history`
+to return 404 (HTTP) or empty messages (WS/tool) for archived sessions.
 
-### Files touched (v2026.4.15)
+This patch adds a directory-scan fallback (`resolveArchivedTranscriptPaths`) at three
+layers: the core `readSessionMessages()` helper, the HTTP history endpoint, and the
+`chat.history` WebSocket handler used by the agent tool. Results include `archived: true`
+so callers know the source was an archived transcript.
+
+### Files touched
 
 - `src/gateway/session-transcript-files.fs.ts` (new `resolveArchivedTranscriptPaths()`)
-- `src/gateway/sessions-history-http.ts` (HTTP endpoint archive fallback)
-- `src/gateway/session-utils.fs.ts` (`readSessionMessages()` archive fallback)
-- `src/gateway/session-utils.ts` (re-export)
-- `src/gateway/server-methods/chat.ts` (WS `chat.history` fallback)
+- `src/gateway/session-utils.fs.ts` (`readSessionMessages()` archive fallback + re-export)
+- `src/gateway/session-utils.ts` (re-export `resolveArchivedTranscriptPaths`)
+- `src/gateway/sessions-history-http.ts` (HTTP endpoint archive fallback + `archived: true` response)
+- `src/gateway/server-methods/chat.ts` (WS `chat.history` fallback + `archived: true`)
 - `src/agents/tools/sessions-history-tool.ts` (pass through `archived` flag)
-- `src/agents/tool-description-presets.ts` (update tool description)
-- `src/gateway/sessions-history-http.test.ts` (4 new tests)
-- `src/gateway/session-utils.fs.test.ts` (15 new tests)
+- `src/agents/tool-description-presets.ts` (updated tool description)
 
 ### Upgrade guidance
-
-When re-enabling for a future stable branch:
 
 ```
 git cherry-pick 566dee3c99
 ```
 
 **Conflicts:** `server-methods/chat.ts` — large file with frequent upstream churn. Check imports and the `chat.history` handler block if conflicts arise.
+
+### Drop when
+
+Drop when upstream adds native archive-fallback support in `readSessionMessages()` and the `chat.history` handler.
 
 ---
 
@@ -459,18 +468,18 @@ git cherry-pick 21956af81b
 
 ## Patch Registry Table
 
-| Patch                                    | Canonical branch                                      | Squashed commit (source)  | Commit on v2026.5.7 | Status   |
-| ---------------------------------------- | ----------------------------------------------------- | ------------------------- | ------------------- | -------- |
-| slack-mrkdwn                             | `brightfire/slack-mrkdwn`                             | `8b472f2555`              | `454393ed35`        | active   |
-| xgw-cross-gateway                        | `brightfire/xgw`                                      | `ee129e4c2a`              | `fdb7f2f660`        | active   |
-| xgw-security-prompt                      | `brightfire/xgw-security-prompt`                      | `139a6d1b6d`              | `64bbc7a1cc`        | active   |
-| preserve-cache-write-short-normalization | `brightfire/preserve-cache-write-short-normalization` | `611b72053c`              | `9dbe61e5ac`        | active   |
-| cache-write-ttl-cost                     | `brightfire/cache-write-ttl-cost`                     | `f7aa4fdc7b`              | `5c9ae8fa78`        | active   |
-| per-message-cache-write-cost             | `brightfire/per-message-cache-write-cost`             | `7813559395`              | `ae690ac173`        | active   |
-| context-estimate-compaction              | `brightfire/context-estimate-compaction`              | `6029b5eb06`              | `a999c64722`        | active   |
-| context-window-min-cap                   | `brightfire/context-window-min-cap`                   | `02cf7b6a4f`              | `487a39b79d`        | active   |
-| session-reset-prompt                     | `brightfire/session-reset-prompt`                     | `a59fb22abc`              | `3867e5612e`        | active   |
-| control-ui-title                         | `brightfire/control-ui-title`                         | `030d2bbc0c`              | `0da0611131`        | active   |
-| xgw-inbound-auth                         | `brightfire/xgw-inbound-auth`                         | `2ffebbbc23`              | `569efbafcc`        | active   |
-| sessions-history-archived                | `brightfire/sessions-history-archived`                | `566dee3c99` (v2026.4.15) | — (deferred)        | deferred |
-| sessions-list-archived                   | `brightfire/sessions-list-archived`                   | `21956af81b`              | `75fe3ef1f1`        | active   |
+| Patch                                    | Canonical branch                                      | Squashed commit (source) | Commit on v2026.5.7 | Status |
+| ---------------------------------------- | ----------------------------------------------------- | ------------------------ | ------------------- | ------ |
+| slack-mrkdwn                             | `brightfire/slack-mrkdwn`                             | `8b472f2555`             | `454393ed35`        | active |
+| xgw-cross-gateway                        | `brightfire/xgw`                                      | `ee129e4c2a`             | `fdb7f2f660`        | active |
+| xgw-security-prompt                      | `brightfire/xgw-security-prompt`                      | `139a6d1b6d`             | `64bbc7a1cc`        | active |
+| preserve-cache-write-short-normalization | `brightfire/preserve-cache-write-short-normalization` | `611b72053c`             | `9dbe61e5ac`        | active |
+| cache-write-ttl-cost                     | `brightfire/cache-write-ttl-cost`                     | `f7aa4fdc7b`             | `5c9ae8fa78`        | active |
+| per-message-cache-write-cost             | `brightfire/per-message-cache-write-cost`             | `7813559395`             | `ae690ac173`        | active |
+| context-estimate-compaction              | `brightfire/context-estimate-compaction`              | `6029b5eb06`             | `a999c64722`        | active |
+| context-window-min-cap                   | `brightfire/context-window-min-cap`                   | `02cf7b6a4f`             | `487a39b79d`        | active |
+| session-reset-prompt                     | `brightfire/session-reset-prompt`                     | `a59fb22abc`             | `3867e5612e`        | active |
+| control-ui-title                         | `brightfire/control-ui-title`                         | `030d2bbc0c`             | `0da0611131`        | active |
+| xgw-inbound-auth                         | `brightfire/xgw-inbound-auth`                         | `2ffebbbc23`             | `569efbafcc`        | active |
+| sessions-history-archived                | `brightfire/sessions-history-archived`                | `566dee3c99`             | `566dee3c99` (TBD)  | active |
+| sessions-list-archived                   | `brightfire/sessions-list-archived`                   | `21956af81b`             | `75fe3ef1f1`        | active |
