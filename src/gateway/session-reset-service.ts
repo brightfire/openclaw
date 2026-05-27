@@ -557,6 +557,16 @@ export async function performGatewaySessionReset(params: {
     oldSessionId = currentEntry?.sessionId;
     oldSessionFile = currentEntry?.sessionFile;
     const now = Date.now();
+    // Archive the current entry before overwriting with the new session.
+    if (currentEntry && oldSessionId) {
+      const archiveKey = `${primaryKey}:archived:${oldSessionId}`;
+      store[archiveKey] = {
+        ...currentEntry,
+        archived: true,
+        archivedAt: now,
+        archivedReason: "reset",
+      };
+    }
     const nextSessionId = randomUUID();
     const sessionFile = resolveSessionFilePath(
       nextSessionId,

@@ -329,6 +329,17 @@ export function resolveSession(opts: {
     opts.sessionId?.trim() || (fresh ? sessionEntry?.sessionId : undefined) || crypto.randomUUID();
   const isNewSession = !fresh && !opts.sessionId;
 
+  // Archive the old session entry before the sessionId is overwritten.
+  if (isNewSession && sessionEntry && sessionEntry.sessionId && sessionKey) {
+    const archiveKey = `${sessionKey}:archived:${sessionEntry.sessionId}`;
+    sessionStore[archiveKey] = {
+      ...sessionEntry,
+      archived: true,
+      archivedAt: now,
+      archivedReason: "rollover" as const,
+    };
+  }
+
   clearBootstrapSnapshotOnSessionRollover({
     sessionKey,
     previousSessionId: isNewSession ? sessionEntry?.sessionId : undefined,

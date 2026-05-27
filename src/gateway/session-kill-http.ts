@@ -15,7 +15,8 @@ import {
   resolveTrustedHttpOperatorScopes,
 } from "./http-utils.js";
 import { authorizeOperatorScopesForMethod } from "./method-scopes.js";
-import { loadSessionEntry } from "./session-utils.js";
+import { updateSessionStore } from "../config/sessions.js";
+import { loadSessionEntry, resolveGatewaySessionStoreTarget } from "./session-utils.js";
 
 const REQUESTER_SESSION_KEY_HEADER = "x-openclaw-requester-session-key";
 
@@ -138,6 +139,24 @@ export async function handleSessionKillHttpRequest(
       sessionKey: canonicalKey,
     });
     killed = result.killed;
+  }
+
+  // Archive the session entry on kill so sessions_history can find it later.
+  if (killed) {
+    const cfg = getRuntimeConfig();
+    const target = resolveGatewaySessionStoreTarget({ cfg, key: canonicalKey });
+    await updateSessionStore(target.storePath, (store) => {
+      const currentEntry = store[target.canonicalKey];
+      if (currentEntry?.sessionId) {
+        const archiveKey = `${target.canonicalKey}:archived:${currentEntry.sessionId}`;
+        store[archiveKey] = {
+          ...currentEntry,
+          archived: true,
+          archivedAt: Date.now(),
+          archivedReason: "deleted",
+        };
+      }
+    });
   }
 
   sendJson(res, 200, {
