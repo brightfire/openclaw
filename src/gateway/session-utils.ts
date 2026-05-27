@@ -122,8 +122,10 @@ export {
   readSessionTitleFieldsFromTranscript,
   readSessionTitleFieldsFromTranscriptAsync,
   readSessionPreviewItemsFromTranscript,
+  readSessionMessages,
   readSessionMessagesAsync,
   visitSessionMessagesAsync,
+  resolveArchivedTranscriptPaths,
   resolveSessionTranscriptCandidates,
 } from "./session-utils.fs.js";
 export type { ReadSessionMessagesAsyncOptions } from "./session-utils.fs.js";

@@ -248,11 +248,12 @@ export function createSessionsHistoryTool(opts?: {
           ? Math.max(1, Math.floor(params.limit))
           : undefined;
       const includeTools = Boolean(params.includeTools);
-      const result = await gatewayCall<{ messages: Array<unknown> }>({
+      const result = await gatewayCall<{ messages: Array<unknown>; archived?: boolean }>({
         method: "chat.history",
         params: { sessionKey: resolvedKey, limit },
       });
       const rawMessages = Array.isArray(result?.messages) ? result.messages : [];
+      const isArchived = result?.archived === true;
       const selectedMessages = includeTools ? rawMessages : stripToolMessages(rawMessages);
       const sanitizedMessages = selectedMessages.map((message) => sanitizeHistoryMessage(message));
       const contentTruncated = sanitizedMessages.some((entry) => entry.truncated);
@@ -275,6 +276,7 @@ export function createSessionsHistoryTool(opts?: {
         contentTruncated,
         contentRedacted,
         bytes: hardened.bytes,
+        ...(isArchived ? { archived: true } : {}),
       });
     },
   };

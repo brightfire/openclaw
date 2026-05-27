@@ -22,6 +22,7 @@ export function describeSessionsHistoryTool(): string {
   return [
     "Fetch sanitized message history for a visible session.",
     "Supports limits and optional tool messages; use this to inspect another session before replying, debugging, or resuming work.",
+    "When the session has been reset or deleted, history is read from the archived transcript and the result includes `archived: true`.",
   ].join(" ");
 }
 
