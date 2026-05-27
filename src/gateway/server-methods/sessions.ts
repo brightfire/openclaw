@@ -1768,8 +1768,17 @@ export const sessionsHandlers: GatewayRequestHandlers = {
     const sessionId = entry?.sessionId;
     const deleted = await updateSessionStore(storePath, (store) => {
       const { primaryKey } = migrateAndPruneGatewaySessionStoreKey({ cfg, key, store });
-      const hadEntry = Boolean(store[primaryKey]);
-      if (hadEntry) {
+      const currentEntry = store[primaryKey];
+      const hadEntry = Boolean(currentEntry);
+      if (hadEntry && currentEntry) {
+        // Archive the entry before deletion so sessions_history can find it.
+        const archiveKey = `${primaryKey}:archived:${currentEntry.sessionId}`;
+        store[archiveKey] = {
+          ...currentEntry,
+          archived: true,
+          archivedAt: Date.now(),
+          archivedReason: "deleted",
+        };
         delete store[primaryKey];
       }
       return hadEntry;

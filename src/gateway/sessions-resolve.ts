@@ -140,6 +140,13 @@ export async function resolveSessionKeyFromResolveParams(params: {
       }
       return { ok: true, key: target.canonicalKey };
     }
+    // Check for archived entries matching this key
+    const archivedKey = Object.keys(store).find(
+      (k) => k.startsWith(`${target.canonicalKey}:archived:`) && store[k]?.archived === true,
+    );
+    if (archivedKey) {
+      return { ok: true, key: archivedKey };
+    }
     const legacyKey = target.storeKeys.find((candidate) => store[candidate]);
     if (!legacyKey) {
       return noSessionFoundResult(key);
@@ -171,6 +178,14 @@ export async function resolveSessionKeyFromResolveParams(params: {
   if (hasSessionId) {
     const { store } = loadCombinedSessionStoreForGateway(cfg);
     const matches = findVisibleSessionIdMatches({ store, p, sessionId });
+    // Also check archived entries by sessionId
+    if (matches.length === 0) {
+      for (const [storeKey, entry] of Object.entries(store)) {
+        if (entry?.archived === true && entry.sessionId === sessionId) {
+          return { ok: true, key: storeKey };
+        }
+      }
+    }
     const selection = resolveSessionIdMatchSelection(matches, sessionId);
     if (selection.kind === "none") {
       return {

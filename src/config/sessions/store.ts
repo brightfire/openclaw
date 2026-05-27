@@ -11,6 +11,7 @@ import {
 } from "../../utils/delivery-context.shared.js";
 import type { DeliveryContext } from "../../utils/delivery-context.types.js";
 import { getFileStatSnapshot } from "../cache-utils.js";
+import { buildArchiveStoreEntry } from "./archive-entry.js";
 import { enforceSessionDiskBudget, type SessionDiskBudgetSweepResult } from "./disk-budget.js";
 import { deriveSessionMetaPatch } from "./metadata.js";
 import {
@@ -440,7 +441,31 @@ export async function updateSessionStore<T>(
   return await runExclusiveSessionStoreWrite(storePath, async () => {
     const store = loadMutableSessionStoreForWriter(storePath);
     const previousAcpByKey = collectAcpMetadataSnapshot(store);
+
+    // Snapshot entries with sessionIds before the mutator runs so we can
+    // detect sessionId changes and archive the old entry automatically.
+    // Skip archive keys themselves (they contain `:archived:`).
+    const previousEntries = new Map<string, SessionEntry>();
+    for (const [key, entry] of Object.entries(store)) {
+      if (entry?.sessionId && !key.includes(":archived:")) {
+        previousEntries.set(key, { ...entry });
+      }
+    }
+
     const result = await mutator(store);
+
+    // Detect sessionId changes and create archive entries for old sessions.
+    for (const [key, oldEntry] of previousEntries) {
+      const newEntry = store[key];
+      if (newEntry?.sessionId && newEntry.sessionId !== oldEntry.sessionId) {
+        const reason = newEntry.archived ? "deleted" : "reset";
+        const { archiveKey, archiveEntry } = buildArchiveStoreEntry(key, oldEntry, reason);
+        if (!store[archiveKey]) {
+          store[archiveKey] = archiveEntry;
+        }
+      }
+    }
+
     preserveExistingAcpMetadata({
       previousAcpByKey,
       nextStore: store,
