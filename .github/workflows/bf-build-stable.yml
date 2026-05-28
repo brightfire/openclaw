@@ -43,6 +43,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Fetch patch manifest from brightfire/ci
+        run: |
+          git show origin/brightfire/ci:BRIGHTFIRE_PATCHES.md > BRIGHTFIRE_PATCHES.md
+          echo "Loaded patch manifest from brightfire/ci"
+
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
