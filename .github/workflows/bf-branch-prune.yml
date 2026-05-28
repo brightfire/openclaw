@@ -11,20 +11,28 @@ name: "BF: Branch Prune"
 on:
   pull_request_target:
     types: [closed]
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to prune (e.g. feature/my-branch)'
+        required: true
+        type: string
 
 permissions:
   contents: write
 
 jobs:
   prune:
-    if: github.event.pull_request.merged == true
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     steps:
       - name: Prune head branch
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          HEAD_REF: ${{ github.event.pull_request.head.ref }}
-          HEAD_OWNER: ${{ github.event.pull_request.head.repo.owner.login }}
+          HEAD_REF: ${{ inputs.branch || github.event.pull_request.head.ref }}
+          HEAD_OWNER: ${{ github.event.pull_request.head.repo.owner.login || github.repository_owner }}
         run: |
           BRANCH="$HEAD_REF"
 
