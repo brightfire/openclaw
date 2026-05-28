@@ -1,8 +1,12 @@
 # Register Patch
 #
 # Triggered when a PR merges into any brightfire/* branch.
-# If the branch is not yet listed in BRIGHTFIRE_PATCHES.md, opens a PR to add it.
-# This ensures every patch branch has a manifest entry for the upgrade replay process.
+# Updates BRIGHTFIRE_PATCHES.md on brightfire/ci directly:
+#   - NEW patches: appends a full manifest entry
+#   - EXISTING patches: updates the squashed commit SHA and source PR number
+#
+# Pushing to brightfire/ci always triggers BF: Build Stable (which watches
+# that branch), so every merged patch PR results in a stable rebuild.
 
 name: BF: Register Patch
 
@@ -23,76 +27,140 @@ jobs:
       startsWith(github.event.pull_request.base.ref, 'brightfire/')
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout brightfire/ci
         uses: actions/checkout@v4
         with:
+          ref: brightfire/ci
           fetch-depth: 0
 
-      - name: Check and register patch
+      - name: Update patch manifest
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PATCH_BRANCH: ${{ github.event.pull_request.base.ref }}
           PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+          HEAD_SHA: ${{ github.sha }}
         run: |
           PATCHES_FILE="BRIGHTFIRE_PATCHES.md"
+
+          # Prefer the merge commit SHA; fall back to HEAD SHA
+          RAW_SHA="${MERGE_SHA:-$HEAD_SHA}"
+          COMMIT_SHORT="${RAW_SHA:0:10}"
 
           # Extract patch name from branch (strip brightfire/ prefix)
           PATCH_NAME=$(echo "$PATCH_BRANCH" | sed 's|^brightfire/||')
 
-          # Check if already registered
-          if grep -q "brightfire/${PATCH_NAME}" "$PATCHES_FILE"; then
-            echo "Patch already registered in manifest — nothing to do"
-            exit 0
-          fi
-
-          echo "New patch detected: $PATCH_NAME"
-
-          # Generate the manifest entry
-          TITLE=$(echo "$PR_TITLE" | sed 's/^feat\s*:\s*//; s/^fix\s*:\s*//; s/^doc\s*:\s*//;')
-          ENTRY="
-          ## $TITLE
-
-          - **Status:** active
-          - **Reapply:** yes
-          - **Stable branch first merged into:** TBD
-          - **Commit on stable:** TBD
-          - **Canonical branch:** \`brightfire/${PATCH_NAME}\`
-          - **Squashed commit (source):** TBD
-          - **Source PR:** #${{ github.event.pull_request.number }}
-
-          ### Rationale
-
-          _Add description of what this patch does and why._
-
-          ### Files touched
-
-          TBD — update after first stable merge
-
-          ### Upgrade guidance
-
-          _Add known conflict notes or \`git merge\` command here._
-          "
-
-          # Branch, edit manifest, push
-          MANIFEST_BRANCH="manifest/add-${PATCH_NAME}"
           git config user.name "brightfire-ci"
           git config user.email "ci@brightfire.net"
 
-          git checkout -b "$MANIFEST_BRANCH"
+          if grep -q "brightfire/${PATCH_NAME}" "$PATCHES_FILE"; then
+            # ----------------------------------------------------------------
+            # EXISTING PATCH — update commit SHA, source PR, and last-updated
+            # ----------------------------------------------------------------
+            echo "Existing patch detected: $PATCH_NAME — updating entry"
 
-          # Append to the end of BRIGHTFIRE_PATCHES.md
-          echo "$ENTRY" >> "$PATCHES_FILE"
+            python3 - <<'PYEOF'
+import re, os, sys
+from datetime import date
 
-          git add "$PATCHES_FILE"
-          git commit -m "ci: add patch registry entry for brightfire/${PATCH_NAME}"
-          git push origin "$MANIFEST_BRANCH"
+patches_file = os.environ['PATCHES_FILE']
+patch_name   = os.environ['PATCH_NAME']
+commit_short = os.environ['COMMIT_SHORT']
+pr_number    = os.environ['PR_NUMBER']
+today        = date.today().isoformat()
 
-          # Open PR
-          PR_URL=$(gh api -X POST repos/${{ github.repository }}/pulls \
-            -f title="ci: register patch $PATCH_NAME in BRIGHTFIRE_PATCHES.md" \
-            -f body="Auto-generated patch registry entry for \`brightfire/${PATCH_NAME}\`. Please fill in the rationale, files touched, and upgrade guidance." \
-            -f head="$MANIFEST_BRANCH" \
-            -f base="stable/v2026.5.7" \
-            | jq -r .html_url)
+with open(patches_file, 'r') as f:
+    content = f.read()
 
-          echo "Opened PR: $PR_URL"
+branch_pattern = f'brightfire/{patch_name}'
+
+# Split on top-level "## " section boundaries (preserve leading text before first ##)
+parts = re.split(r'(?=^## )', content, flags=re.MULTILINE)
+
+updated = False
+new_parts = []
+for part in parts:
+    if branch_pattern in part and '**Canonical branch:**' in part:
+        # Update Squashed commit (source)
+        part = re.sub(
+            r'(\*\*Squashed commit \(source\):\*\*\s*)(`[^`]*`|[^\n]*)',
+            lambda m: m.group(1) + f'`{commit_short}`',
+            part
+        )
+        # Update Source PR
+        part = re.sub(
+            r'(\*\*Source PR:\*\*\s*)([^\n]*)',
+            lambda m: m.group(1) + f'#{pr_number}',
+            part
+        )
+        # Update or insert Last updated
+        if '**Last updated:**' in part:
+            part = re.sub(
+                r'(\*\*Last updated:\*\*\s*)([^\n]*)',
+                lambda m: m.group(1) + today,
+                part
+            )
+        else:
+            part = re.sub(
+                r'(\*\*Source PR:\*\*\s*[^\n]*\n)',
+                lambda m: m.group(0) + f'- **Last updated:** {today}\n',
+                part
+            )
+        updated = True
+    new_parts.append(part)
+
+if not updated:
+    print(f"ERROR: Could not find section for {branch_pattern}", file=sys.stderr)
+    sys.exit(1)
+
+with open(patches_file, 'w') as f:
+    f.write(''.join(new_parts))
+
+print(f"Updated entry for {branch_pattern}: commit={commit_short}, PR=#{pr_number}")
+PYEOF
+
+            git add "$PATCHES_FILE"
+            git commit -m "ci: update patch entry for brightfire/${PATCH_NAME} (PR #${PR_NUMBER}, ${COMMIT_SHORT})"
+
+          else
+            # ----------------------------------------------------------------
+            # NEW PATCH — append a full manifest entry
+            # ----------------------------------------------------------------
+            echo "New patch detected: $PATCH_NAME — creating entry"
+
+            # Strip common conventional commit prefixes from the PR title
+            TITLE=$(echo "$PR_TITLE" | sed 's/^feat\s*:\s*//; s/^fix\s*:\s*//; s/^doc\s*:\s*//; s/^docs\s*:\s*//')
+
+            cat >> "$PATCHES_FILE" <<ENTRY
+
+## $TITLE
+
+- **Status:** active
+- **Reapply:** yes
+- **Stable branch first merged into:** TBD
+- **Commit on stable:** TBD
+- **Canonical branch:** \`brightfire/${PATCH_NAME}\`
+- **Squashed commit (source):** \`${COMMIT_SHORT}\`
+- **Source PR:** #${PR_NUMBER}
+
+### Rationale
+
+_Add description of what this patch does and why._
+
+### Files touched
+
+TBD — update after first stable merge
+
+### Upgrade guidance
+
+_Add known conflict notes or \`git cherry-pick\` command here._
+ENTRY
+
+            git add "$PATCHES_FILE"
+            git commit -m "ci: register new patch brightfire/${PATCH_NAME} (PR #${PR_NUMBER})"
+          fi
+
+          # Always push to brightfire/ci — this triggers BF: Build Stable
+          git push origin brightfire/ci
+          echo "Pushed updated manifest to brightfire/ci"

@@ -12,7 +12,7 @@ name: BF: Build Stable
 on:
   push:
     branches:
-      - 'brightfire/*'
+      - 'brightfire/ci'
     paths-ignore:
       - '.github/workflows/**'
   workflow_dispatch:

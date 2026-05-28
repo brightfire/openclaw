@@ -1,5 +1,21 @@
 # Brightfire Patch Registry
 
+> **This file lives on the `brightfire/ci` branch — not on `stable/*` or any patch branch.**
+>
+> It is the **source of truth** for all Brightfire-specific patches that must be replayed
+> onto each new upstream stable release.
+>
+> **Maintained automatically** by the [`BF: Register Patch`](.github/workflows/bf-register-patch.yml)
+> workflow, which runs whenever a PR is merged into a `brightfire/*` branch. It adds a new
+> entry for previously-unseen branches and updates the commit SHA / source PR for known ones.
+>
+> **Read by [`BF: Build Stable`](.github/workflows/bf-build-stable.yml)** to know which
+> patch branches to merge (in order) when rebuilding the `stable/*` branch.
+>
+> **Manual edits are welcome** — add rationale, upgrade guidance, conflict notes, or update
+> the status field (`active` → `deferred` / `upstreamed` / `superseded`) as patches evolve.
+> The workflow will continue to update `Squashed commit (source)` and `Source PR` automatically.
+
 This file is the source of truth for all Brightfire-specific changes that must be replayed onto future upstream stable releases.
 
 For each patch:
