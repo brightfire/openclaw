@@ -15,6 +15,21 @@ on:
     types: [closed]
     branches:
       - 'brightfire/*'
+  workflow_dispatch:
+    inputs:
+      patch_branch:
+        description: 'Patch branch (e.g. brightfire/sessions-history-archived)'
+        required: true
+        type: string
+      pr_number:
+        description: 'Source PR number'
+        required: true
+        type: string
+      pr_title:
+        description: 'PR title (used for new entries)'
+        required: false
+        type: string
+        default: 'Manual registration'
 
 permissions:
   contents: write
@@ -23,8 +38,9 @@ permissions:
 jobs:
   register:
     if: >-
-      github.event.pull_request.merged == true &&
-      startsWith(github.event.pull_request.base.ref, 'brightfire/')
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.merged == true &&
+      startsWith(github.event.pull_request.base.ref, 'brightfire/'))
     runs-on: ubuntu-latest
     steps:
       - name: Checkout brightfire/ci
@@ -36,10 +52,10 @@ jobs:
       - name: Update patch manifest
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PATCH_BRANCH: ${{ github.event.pull_request.base.ref }}
-          PR_TITLE: ${{ github.event.pull_request.title }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+          PATCH_BRANCH: ${{ inputs.patch_branch || github.event.pull_request.base.ref }}
+          PR_TITLE: ${{ inputs.pr_title || github.event.pull_request.title }}
+          PR_NUMBER: ${{ inputs.pr_number || github.event.pull_request.number }}
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha || '' }}
           HEAD_SHA: ${{ github.sha }}
         run: |
           PATCHES_FILE="BRIGHTFIRE_PATCHES.md"
