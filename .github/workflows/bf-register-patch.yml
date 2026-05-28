@@ -81,9 +81,8 @@ jobs:
 - **Status:** active
 - **Reapply:** yes
 - **Stable branch first merged into:** TBD
-- **Commit on stable:** TBD
 - **Canonical branch:** \`brightfire/${PATCH_NAME}\`
-- **Squashed commit (source):** \`${COMMIT_SHORT}\`
+- **Branch HEAD commit:** \`${COMMIT_SHORT}\`
 - **Source PR:** #${PR_NUMBER}
 
 ### Rationale

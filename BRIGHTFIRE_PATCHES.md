@@ -14,7 +14,7 @@
 >
 > **Manual edits are welcome** — add rationale, upgrade guidance, conflict notes, or update
 > the status field (`active` → `deferred` / `upstreamed` / `superseded`) as patches evolve.
-> The workflow will continue to update `Squashed commit (source)` and `Source PR` automatically.
+> The workflow will continue to update `Branch HEAD commit` and `Source PR` automatically.
 
 This file is the source of truth for all Brightfire-specific changes that must be replayed onto future upstream stable releases.
 
@@ -31,9 +31,8 @@ For each patch:
 - **Status:** active
 - **Reapply:** yes
 - **Stable branch first merged into:** `stable/v2026.5.3`
-- **Commit on stable/v2026.5.7:** `454393ed35`
 - **Canonical branch:** `brightfire/slack-mrkdwn`
-- **Squashed commit (source):** `8b472f2555`
+- **Branch HEAD commit:** `f3adf06a84`
 - **Source PR:** —
 
 ### Rationale
@@ -59,9 +58,8 @@ git cherry-pick 8b472f2555
 - **Status:** active
 - **Reapply:** yes
 - **Stable branch first merged into:** `stable/v2026.5.3`
-- **Commit on stable/v2026.5.7:** `fdb7f2f660`
 - **Canonical branch:** `brightfire/xgw`
-- **Squashed commit (source):** `ee129e4c2a`
+- **Branch HEAD commit:** `caabb461f2`
 - **Source PR:** #19, #20, #21 (v2026.4.15); ported to v2026.5.3 as single commit
 
 ### Rationale
@@ -115,9 +113,8 @@ git cherry-pick ee129e4c2a
 - **Status:** active
 - **Reapply:** yes
 - **Stable branch first merged into:** `stable/v2026.5.3`
-- **Commit on stable/v2026.5.7:** `64bbc7a1cc`
 - **Canonical branch:** `brightfire/xgw-security-prompt`
-- **Squashed commit (source):** `139a6d1b6d`
+- **Branch HEAD commit:** _branch deleted — merged into brightfire/xgw_
 - **Source PR:** #29
 
 ### Rationale
@@ -146,9 +143,8 @@ git cherry-pick 139a6d1b6d
 - **Status:** active
 - **Reapply:** yes
 - **Stable branch first merged into:** `stable/v2026.5.3`
-- **Commit on stable/v2026.5.7:** `9dbe61e5ac`
 - **Canonical branch:** `brightfire/preserve-cache-write-short-normalization`
-- **Squashed commit (source):** `611b72053c`
+- **Branch HEAD commit:** _branch deleted — no longer exists as standalone_
 - **Source PR:** — (ported from stable/v2026.4.15 canonical commit `d7d8bcc73e`)
 
 ### Rationale
@@ -173,9 +169,8 @@ git cherry-pick 611b72053c
 - **Status:** active
 - **Reapply:** yes
 - **Stable branch first merged into:** `stable/v2026.5.3`
-- **Commit on stable/v2026.5.7:** `5c9ae8fa78`
 - **Canonical branch:** `brightfire/cache-write-ttl-cost`
-- **Squashed commit (source):** `f7aa4fdc7b`
+- **Branch HEAD commit:** `13bb2c6064`
 - **Source PR:** #24
 
 ### Rationale
@@ -210,9 +205,8 @@ git cherry-pick f7aa4fdc7b
 - **Status:** active
 - **Reapply:** yes
 - **Stable branch first merged into:** `stable/v2026.5.3`
-- **Commit on stable/v2026.5.7:** `ae690ac173`
 - **Canonical branch:** `brightfire/per-message-cache-write-cost`
-- **Squashed commit (source):** `7813559395`
+- **Branch HEAD commit:** _branch deleted — no longer exists as standalone_
 - **Source PR:** #26, #28
 
 ### Rationale
@@ -238,9 +232,8 @@ git cherry-pick 7813559395
 - **Status:** active
 - **Reapply:** yes
 - **Stable branch first merged into:** `stable/v2026.5.3`
-- **Commit on stable/v2026.5.7:** `a999c64722`
 - **Canonical branch:** `brightfire/context-estimate-compaction`
-- **Squashed commit (source):** `6029b5eb06`
+- **Branch HEAD commit:** _branch deleted — no longer exists as standalone_
 - **Source PR:** — (production patches applied via fleet-upgrade post-install scripts)
 
 ### Rationale
@@ -271,9 +264,8 @@ git cherry-pick 6029b5eb06
 - **Status:** active
 - **Reapply:** yes
 - **Stable branch first merged into:** `stable/v2026.5.3`
-- **Commit on stable/v2026.5.7:** `487a39b79d`
 - **Canonical branch:** `brightfire/context-window-min-cap`
-- **Squashed commit (source):** `02cf7b6a4f`
+- **Branch HEAD commit:** `13d7032bf3`
 - **Source PR:** #31
 
 ### Rationale
@@ -302,9 +294,8 @@ git cherry-pick 02cf7b6a4f
 - **Status:** active
 - **Reapply:** yes
 - **Stable branch first merged into:** `stable/v2026.5.3`
-- **Commit on stable/v2026.5.7:** `3867e5612e`
 - **Canonical branch:** `brightfire/session-reset-prompt`
-- **Squashed commit (source):** `a59fb22abc`
+- **Branch HEAD commit:** `da5af0fb19`
 - **Source PR:** #30
 
 ### Rationale
@@ -335,9 +326,8 @@ git cherry-pick a59fb22abc
 - **Status:** active
 - **Reapply:** yes
 - **Stable branch first merged into:** `stable/v2026.5.3`
-- **Commit on stable/v2026.5.7:** `0da0611131`, `63aa018e31` (Zod schema fix)
 - **Canonical branch:** `brightfire/control-ui-title`
-- **Squashed commit (source):** `030d2bbc0c`
+- **Branch HEAD commit:** `c87162eba5`
 - **Source PR:** —
 
 ### Rationale
@@ -368,9 +358,8 @@ git cherry-pick 030d2bbc0c
 - **Status:** active
 - **Reapply:** yes
 - **Stable branch first merged into:** `stable/v2026.5.3`
-- **Commit on stable/v2026.5.7:** `569efbafcc`
 - **Canonical branch:** `brightfire/xgw-inbound-auth`
-- **Squashed commit (source):** `2ffebbbc23`
+- **Branch HEAD commit:** _branch deleted — likely folded into brightfire/xgw_
 - **Source PR:** — (new patch for v2026.5.3)
 
 ### Rationale
@@ -403,9 +392,8 @@ git cherry-pick 2ffebbbc23
 - **Status:** active
 - **Reapply:** yes
 - **Stable branch first merged into:** `stable/v2026.4.15`
-- **Commit on stable/v2026.5.7:** `566dee3c99` (commit hash will change after rebase)
 - **Canonical branch:** `brightfire/sessions-history-archived`
-- **Squashed commit (source):** `566dee3c99`
+- **Branch HEAD commit:** `4d6e956110`
 - **Source PR:** #32
 
 ### Rationale
@@ -449,9 +437,8 @@ Drop when upstream adds native archive-fallback support in `readSessionMessages(
 - **Status:** active
 - **Reapply:** yes
 - **Stable branch first merged into:** `stable/v2026.5.7`
-- **Commit on stable/v2026.5.7:** `75fe3ef1f1`
 - **Canonical branch:** `brightfire/sessions-list-archived`
-- **Squashed commit (source):** `21956af81b`
+- **Branch HEAD commit:** `0653638ace`
 - **Source PR:** `#35` (brightfire/sessions-list-archived)
 
 ### Rationale
@@ -484,18 +471,18 @@ git cherry-pick 21956af81b
 
 ## Patch Registry Table
 
-| Patch                                    | Canonical branch                                      | Squashed commit (source) | Commit on v2026.5.7 | Status |
-| ---------------------------------------- | ----------------------------------------------------- | ------------------------ | ------------------- | ------ |
-| slack-mrkdwn                             | `brightfire/slack-mrkdwn`                             | `8b472f2555`             | `454393ed35`        | active |
-| xgw-cross-gateway                        | `brightfire/xgw`                                      | `ee129e4c2a`             | `fdb7f2f660`        | active |
-| xgw-security-prompt                      | `brightfire/xgw-security-prompt`                      | `139a6d1b6d`             | `64bbc7a1cc`        | active |
-| preserve-cache-write-short-normalization | `brightfire/preserve-cache-write-short-normalization` | `611b72053c`             | `9dbe61e5ac`        | active |
-| cache-write-ttl-cost                     | `brightfire/cache-write-ttl-cost`                     | `f7aa4fdc7b`             | `5c9ae8fa78`        | active |
-| per-message-cache-write-cost             | `brightfire/per-message-cache-write-cost`             | `7813559395`             | `ae690ac173`        | active |
-| context-estimate-compaction              | `brightfire/context-estimate-compaction`              | `6029b5eb06`             | `a999c64722`        | active |
-| context-window-min-cap                   | `brightfire/context-window-min-cap`                   | `02cf7b6a4f`             | `487a39b79d`        | active |
-| session-reset-prompt                     | `brightfire/session-reset-prompt`                     | `a59fb22abc`             | `3867e5612e`        | active |
-| control-ui-title                         | `brightfire/control-ui-title`                         | `030d2bbc0c`             | `0da0611131`        | active |
-| xgw-inbound-auth                         | `brightfire/xgw-inbound-auth`                         | `2ffebbbc23`             | `569efbafcc`        | active |
-| sessions-history-archived                | `brightfire/sessions-history-archived`                | `566dee3c99`             | `566dee3c99` (TBD)  | active |
-| sessions-list-archived                   | `brightfire/sessions-list-archived`                   | `21956af81b`             | `75fe3ef1f1`        | active |
+| Patch                                    | Canonical branch                                      | Branch HEAD commit | Status |
+| ---------------------------------------- | ----------------------------------------------------- | ------------------ | ------ |
+| slack-mrkdwn                             | `brightfire/slack-mrkdwn`                             | `f3adf06a84`       | active |
+| xgw-cross-gateway                        | `brightfire/xgw`                                      | `caabb461f2`       | active |
+| xgw-security-prompt                      | `brightfire/xgw-security-prompt`                      | _branch deleted_   | active |
+| preserve-cache-write-short-normalization | `brightfire/preserve-cache-write-short-normalization` | _branch deleted_   | active |
+| cache-write-ttl-cost                     | `brightfire/cache-write-ttl-cost`                     | `13bb2c6064`       | active |
+| per-message-cache-write-cost             | `brightfire/per-message-cache-write-cost`             | _branch deleted_   | active |
+| context-estimate-compaction              | `brightfire/context-estimate-compaction`              | _branch deleted_   | active |
+| context-window-min-cap                   | `brightfire/context-window-min-cap`                   | `13d7032bf3`       | active |
+| session-reset-prompt                     | `brightfire/session-reset-prompt`                     | `da5af0fb19`       | active |
+| control-ui-title                         | `brightfire/control-ui-title`                         | `c87162eba5`       | active |
+| xgw-inbound-auth                         | `brightfire/xgw-inbound-auth`                         | _branch deleted_   | active |
+| sessions-history-archived                | `brightfire/sessions-history-archived`                | `4d6e956110`       | active |
+| sessions-list-archived                   | `brightfire/sessions-list-archived`                   | `0653638ace`       | active |

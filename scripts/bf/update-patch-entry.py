@@ -37,7 +37,7 @@ def main():
         if branch_pattern in part and "**Canonical branch:**" in part:
             # Update Squashed commit (source)
             part = re.sub(
-                r"(\*\*Squashed commit \(source\):\*\*\s*)(`[^`]*`|[^\n]*)",
+                r"(\*\*Branch HEAD commit:\*\*\s*)(`[^`]*`|[^\n]*)",
                 lambda m: m.group(1) + f"`{commit_short}`",
                 part,
             )
