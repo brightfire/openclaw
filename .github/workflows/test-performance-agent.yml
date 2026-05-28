@@ -25,6 +25,13 @@ env:
 
 jobs:
   optimize-tests:
+    # if: >
+    #   github.repository == 'openclaw/openclaw' &&
+    #   (github.event_name == 'workflow_dispatch' ||
+    #     (github.event.workflow_run.conclusion == 'success' &&
+    #       github.event.workflow_run.event == 'push' &&
+    #       github.event.workflow_run.head_branch == 'main' &&
+    #       !endsWith(github.event.workflow_run.actor.login, '[bot]')))
     if: false
     runs-on: ubuntu-24.04
     timeout-minutes: 240

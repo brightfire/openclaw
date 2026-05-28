@@ -200,6 +200,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   normal_ci:
+    # if: contains(fromJSON('["all","ci"]'), inputs.rerun_group)
     if: false
     name: Run normal full CI
     needs: [resolve_target]
@@ -299,6 +300,7 @@ jobs:
           dispatch_and_wait ci.yml -f target_ref="$TARGET_SHA" -f include_android=true
 
   plugin_prerelease:
+    # if: contains(fromJSON('["all","plugin-prerelease"]'), inputs.rerun_group)
     if: false
     name: Run plugin prerelease validation
     needs: [resolve_target]
@@ -398,6 +400,7 @@ jobs:
           dispatch_and_wait plugin-prerelease.yml -f target_ref="$TARGET_SHA" -f expected_sha="$TARGET_SHA" -f full_release_validation=true
 
   release_checks:
+    # if: contains(fromJSON('["all","release-checks","install-smoke","cross-os","live-e2e","package","qa","qa-parity","qa-live"]'), inputs.rerun_group)
     if: false
     name: Run release/live/Docker/QA validation
     needs: [resolve_target]
@@ -543,6 +546,7 @@ jobs:
           dispatch_and_wait openclaw-release-checks.yml "${args[@]}"
 
   prepare_release_package:
+    # if: ${{ inputs.npm_telegram_package_spec == '' && inputs.rerun_group == 'all' && inputs.release_profile == 'full' }}
     if: false
     name: Prepare release package artifact
     needs: [resolve_target]
@@ -614,6 +618,7 @@ jobs:
           if-no-files-found: error
 
   npm_telegram:
+    # if: ${{ always() && contains(fromJSON('["all","npm-telegram"]'), inputs.rerun_group) && (inputs.npm_telegram_package_spec != '' || (inputs.rerun_group == 'all' && inputs.release_profile == 'full')) }}
     if: false
     name: Run package Telegram E2E
     needs: [resolve_target, prepare_release_package]
@@ -711,6 +716,7 @@ jobs:
           fi
 
   summary:
+    # if: always()
     if: false
     name: Verify full validation
     needs: [resolve_target, normal_ci, plugin_prerelease, release_checks, npm_telegram]

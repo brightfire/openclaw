@@ -571,6 +571,7 @@ jobs:
       FIREWORKS_API_KEY: ${{ secrets.FIREWORKS_API_KEY }}
 
   package_telegram:
+    # if: needs.resolve_package.outputs.telegram_enabled == 'true'
     if: false
     name: Telegram package acceptance
     needs: resolve_package
@@ -588,6 +589,7 @@ jobs:
       OPENCLAW_QA_CONVEX_SECRET_CI: ${{ secrets.OPENCLAW_QA_CONVEX_SECRET_CI }}
 
   summary:
+    # if: always()
     if: false
     name: Verify package acceptance
     needs: [resolve_package, docker_acceptance, package_telegram]

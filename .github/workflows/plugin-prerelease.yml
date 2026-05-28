@@ -206,6 +206,7 @@ jobs:
           EOF
 
   plugin-prerelease-static-shard:
+    # if: needs.preflight.outputs.run_plugin_prerelease_static == 'true'
     if: false
     permissions:
       contents: read
@@ -242,6 +243,7 @@ jobs:
           bash -c "$PLUGIN_PRERELEASE_COMMAND"
 
   plugin-prerelease-node-shard:
+    # if: needs.preflight.outputs.run_plugin_prerelease_node == 'true'
     if: false
     permissions:
       contents: read
@@ -315,6 +317,7 @@ jobs:
           EOF
 
   plugin-prerelease-extension-shard:
+    # if: needs.preflight.outputs.run_plugin_prerelease_extensions == 'true'
     if: false
     permissions:
       contents: read
@@ -349,6 +352,7 @@ jobs:
         run: pnpm test:extensions:batch -- "$OPENCLAW_EXTENSION_BATCH"
 
   plugin-prerelease-docker-suite:
+    # if: ${{ inputs.full_release_validation && needs.preflight.outputs.run_plugin_prerelease_docker == 'true' }}
     if: false
     name: plugin-prerelease-docker-suite
     needs: [preflight]
@@ -369,6 +373,7 @@ jobs:
       live_models_only: false
 
   plugin-prerelease-suite:
+    # if: ${{ !cancelled() && always() && needs.preflight.outputs.run_plugin_prerelease_suite == 'true' }}
     if: false
     permissions:
       contents: read

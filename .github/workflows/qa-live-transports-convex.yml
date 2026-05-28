@@ -220,6 +220,7 @@ jobs:
           if-no-files-found: warn
 
   run_live_matrix:
+    # if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.matrix_profile == 'all') }}
     if: false
     name: Run Matrix live QA lane
     needs: [authorize_actor, validate_selected_ref]
@@ -295,6 +296,7 @@ jobs:
           if-no-files-found: warn
 
   run_live_matrix_sharded:
+    # if: ${{ github.event_name == 'workflow_dispatch' && inputs.matrix_profile == 'all' }}
     if: false
     name: Run Matrix live QA lane (${{ matrix.profile }})
     needs: [authorize_actor, validate_selected_ref]
@@ -566,6 +568,7 @@ jobs:
           if-no-files-found: warn
 
   run_live_slack:
+    # if: vars.OPENCLAW_QA_SLACK_LIVE_CI_ENABLED == 'true'
     if: false
     name: Run Slack live QA lane with Convex leases
     needs: [authorize_actor, validate_selected_ref]

@@ -100,6 +100,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
   install-smoke-fast:
+    # if: needs.preflight.outputs.run_fast_install_smoke == 'true' && needs.preflight.outputs.run_full_install_smoke != 'true'
     if: false
     needs: [preflight]
     runs-on: blacksmith-16vcpu-ubuntu-2404
@@ -207,6 +208,7 @@ jobs:
           '
 
   root_dockerfile_image:
+    # if: needs.preflight.outputs.run_full_install_smoke == 'true'
     if: false
     needs: [preflight]
     runs-on: blacksmith-16vcpu-ubuntu-2404
@@ -283,6 +285,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   qr_package_install_smoke:
+    # if: needs.preflight.outputs.run_full_install_smoke == 'true'
     if: false
     needs: [preflight]
     runs-on: blacksmith-16vcpu-ubuntu-2404
@@ -298,6 +301,7 @@ jobs:
         run: bash scripts/e2e/qr-import-docker.sh
 
   root_dockerfile_smokes:
+    # if: needs.preflight.outputs.run_full_install_smoke == 'true'
     if: false
     needs: [preflight, root_dockerfile_image]
     runs-on: blacksmith-16vcpu-ubuntu-2404
@@ -385,6 +389,7 @@ jobs:
           '
 
   installer_smoke:
+    # if: needs.preflight.outputs.run_full_install_smoke == 'true'
     if: false
     needs: [preflight, root_dockerfile_image]
     runs-on: blacksmith-16vcpu-ubuntu-2404
@@ -455,6 +460,7 @@ jobs:
         run: bash scripts/test-install-sh-docker.sh
 
   bun_global_install_smoke:
+    # if: needs.preflight.outputs.run_full_install_smoke == 'true' && needs.preflight.outputs.run_bun_global_install_smoke == 'true'
     if: false
     needs: [preflight, root_dockerfile_image]
     runs-on: blacksmith-16vcpu-ubuntu-2404
@@ -489,6 +495,7 @@ jobs:
         run: bash scripts/e2e/bun-global-install-smoke.sh
 
   docker-e2e-fast:
+    # if: needs.preflight.outputs.run_fast_install_smoke == 'true' || needs.preflight.outputs.run_full_install_smoke == 'true'
     if: false
     needs: [preflight]
     runs-on: blacksmith-16vcpu-ubuntu-2404

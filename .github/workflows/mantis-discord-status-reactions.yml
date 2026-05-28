@@ -39,6 +39,19 @@ env:
 
 jobs:
   authorize_actor:
+    # if: >-
+    #   ${{
+    #     github.event_name == 'workflow_dispatch' ||
+    #     (
+    #       github.event_name == 'issue_comment' &&
+    #       github.event.issue.pull_request &&
+    #       (
+    #         contains(github.event.comment.body, '@Mantis') ||
+    #         contains(github.event.comment.body, '@mantis') ||
+    #         contains(github.event.comment.body, '/mantis')
+    #       )
+    #     )
+    #   }}
     if: false
     name: Authorize workflow actor
     runs-on: blacksmith-8vcpu-ubuntu-2404
@@ -155,6 +168,7 @@ jobs:
             }).catch((error) => core.warning(`Could not add eyes reaction: ${error.message}`));
 
   validate_refs:
+    # if: ${{ needs.resolve_request.outputs.should_run == 'true' }}
     if: false
     name: Validate selected refs
     needs: resolve_request
@@ -222,6 +236,7 @@ jobs:
           validate_ref candidate "$CANDIDATE_REF"
 
   run_status_reactions:
+    # if: ${{ needs.resolve_request.outputs.should_run == 'true' }}
     if: false
     name: Run Discord status reaction before/after
     needs: [resolve_request, validate_refs]

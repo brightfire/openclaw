@@ -36,6 +36,7 @@ permissions:
 
 jobs:
   scan:
+    # if: ${{ !github.event.pull_request.draft }}
     if: false
     name: Scan changed paths (precise)
     runs-on: blacksmith-4vcpu-ubuntu-2404
