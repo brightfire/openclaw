@@ -79,7 +79,12 @@ jobs:
         id: version
         run: |
           VERSION="${{ steps.upstream-tag.outputs.version }}"
-          BF_NUM=$(git tag -l "v${VERSION}-bf*" 2>/dev/null | sed -E 's/.*-bf([0-9]+)/\1/' | sort -n | tail -1)
+          # Tag format: bf/v{VERSION}-bf{N}
+          # The bf/ prefix prevents upstream workflows (e.g. docker-release.yml)
+          # from triggering on our tags — they match on `v*` which would fire
+          # on bare v{VERSION}-bf{N} tags. The -bf{N} suffix is kept to match
+          # the package.json version.
+          BF_NUM=$(git tag -l "bf/v${VERSION}-bf*" | sed -E 's/.*-bf([0-9]+)/\1/' | sort -n | tail -1)
           if [ -z "$BF_NUM" ]; then
             BF_NUM=1
           else
@@ -87,7 +92,7 @@ jobs:
           fi
           echo "bf=bf${BF_NUM}" >> "$GITHUB_OUTPUT"
           echo "version=${VERSION}-bf${BF_NUM}" >> "$GITHUB_OUTPUT"
-          echo "tag=v${VERSION}-bf${BF_NUM}" >> "$GITHUB_OUTPUT"
+          echo "tag=bf/v${VERSION}-bf${BF_NUM}" >> "$GITHUB_OUTPUT"
 
       - name: Install tools
         run: npm install -g pnpm
