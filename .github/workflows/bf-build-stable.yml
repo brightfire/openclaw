@@ -182,12 +182,21 @@ jobs:
           git push origin "$STABLE_BRANCH"
           echo "Pushed $STABLE_BRANCH"
 
+      - name: Tag stable build
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          git tag "$TAG"
+          git push origin "$TAG"
+          echo "Tagged: $TAG"
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
           name: "Brightfire ${{ steps.version.outputs.version }}"
-          target_commitish: ${{ steps.version.outputs.tag }}
+          target_commitish: stable/${{ steps.upstream-tag.outputs.version }}
           draft: false
 
       - name: Build and attach tarball
