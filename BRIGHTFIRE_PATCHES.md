@@ -238,97 +238,13 @@ git cherry-pick 030d2bbc0c
 
 ---
 
-## Sessions History Archived
-
-- **Status:** active
-- **Reapply:** yes
-- **Stable branch first merged into:** `stable/v2026.4.15`
-- **Canonical branch:** `brightfire/sessions-history-archived`
-- **Branch HEAD commit:** `4d6e956110`
-- **Source PR:** #32
-
-### Rationale
-
-When a session is reset or deleted, the transcript file is renamed to
-`{sessionId}.jsonl.reset.{timestamp}` / `{sessionId}.jsonl.deleted.{timestamp}`.
-Previously the history lookup layer only found active files, causing `sessions_history`
-to return 404 (HTTP) or empty messages (WS/tool) for archived sessions.
-
-This patch adds a directory-scan fallback (`resolveArchivedTranscriptPaths`) at three
-layers: the core `readSessionMessages()` helper, the HTTP history endpoint, and the
-`chat.history` WebSocket handler used by the agent tool. Results include `archived: true`
-so callers know the source was an archived transcript.
-
-### Files touched
-
-- `src/gateway/session-transcript-files.fs.ts` (new `resolveArchivedTranscriptPaths()`)
-- `src/gateway/session-utils.fs.ts` (`readSessionMessages()` archive fallback + re-export)
-- `src/gateway/session-utils.ts` (re-export `resolveArchivedTranscriptPaths`)
-- `src/gateway/sessions-history-http.ts` (HTTP endpoint archive fallback + `archived: true` response)
-- `src/gateway/server-methods/chat.ts` (WS `chat.history` fallback + `archived: true`)
-- `src/agents/tools/sessions-history-tool.ts` (pass through `archived` flag)
-- `src/agents/tool-description-presets.ts` (updated tool description)
-
-### Upgrade guidance
-
-```
-git cherry-pick 566dee3c99
-```
-
-**Conflicts:** `server-methods/chat.ts` — large file with frequent upstream churn. Check imports and the `chat.history` handler block if conflicts arise.
-
-### Drop when
-
-Drop when upstream adds native archive-fallback support in `readSessionMessages()` and the `chat.history` handler.
-
----
-
-## Sessions List Archived
-
-- **Status:** active
-- **Reapply:** yes
-- **Stable branch first merged into:** `stable/v2026.5.7`
-- **Canonical branch:** `brightfire/sessions-list-archived`
-- **Branch HEAD commit:** `0653638ace`
-- **Source PR:** `#35` (brightfire/sessions-list-archived)
-
-### Rationale
-
-Agents cannot discover archived/reset session IDs through any tool. This adds `includeArchived`, `archivedFrom`, `archivedTo` params to `sessions.list` RPC and `sessions_list` tool, enabling agents to find and read previous session transcripts after resets.
-
-### Files touched
-
-- `src/gateway/protocol/schema/sessions.ts`
-- `src/gateway/session-utils.types.ts`
-- `src/gateway/session-utils.ts`
-- `src/agents/tools/sessions-list-tool.ts`
-- `dist/protocol.schema.json`
-- `apps/macos/Sources/OpenClawProtocol/GatewayModels.swift`
-- `apps/shared/OpenClawKit/Sources/OpenClawProtocol/GatewayModels.swift`
-- `test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/*.json`
-- `test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/*.md`
-
-### Upgrade guidance
-
-```
-git cherry-pick 21956af81b
-```
-
-**Conflicts:** Likely conflicts in `session-utils.ts` if upstream changes `listSessionsFromStoreAsync()`. Re-run `pnpm protocol:gen && pnpm protocol:gen:swift` and regenerate prompt snapshots after cherry-pick.
-
-**Drop when:** Upstream adds equivalent archived session discovery (e.g., via native `includeArchived` param or a dedicated archived sessions API).
-
----
-
 ## Patch Registry Table
 
-| Patch                     | Canonical branch                       | Branch HEAD commit | Status |
-| ------------------------- | -------------------------------------- | ------------------ | ------ |
-| slack-mrkdwn              | `brightfire/slack-mrkdwn`              | `f3adf06a84`       | active |
-| xgw-cross-gateway         | `brightfire/xgw`                       | `caabb461f2`       | active |
-| cache-write-ttl-cost      | `brightfire/cache-write-ttl-cost`      | `13bb2c6064`       | active |
-| context-window-min-cap    | `brightfire/context-window-min-cap`    | `13d7032bf3`       | active |
-| session-reset-prompt      | `brightfire/session-reset-prompt`      | `da5af0fb19`       | active |
-| control-ui-title          | `brightfire/control-ui-title`          | `c87162eba5`       | active |
-| sessions-history-archived | `brightfire/sessions-history-archived` | `4d6e956110`       | active |
-| sessions-list-archived    | `brightfire/sessions-list-archived`    | `0653638ace`       | active |
+| Patch                  | Canonical branch                    | Branch HEAD commit | Status |
+| ---------------------- | ----------------------------------- | ------------------ | ------ |
+| slack-mrkdwn           | `brightfire/slack-mrkdwn`           | `f3adf06a84`       | active |
+| xgw-cross-gateway      | `brightfire/xgw`                    | `caabb461f2`       | active |
+| cache-write-ttl-cost   | `brightfire/cache-write-ttl-cost`   | `13bb2c6064`       | active |
+| context-window-min-cap | `brightfire/context-window-min-cap` | `13d7032bf3`       | active |
+| session-reset-prompt   | `brightfire/session-reset-prompt`   | `da5af0fb19`       | active |
+| control-ui-title       | `brightfire/control-ui-title`       | `c87162eba5`       | active |
