@@ -180,6 +180,7 @@ jobs:
         run: node --import tsx scripts/plugin-clawhub-owner-preflight.ts .local/plugin-clawhub-release-plan.json
 
   preview_plugin_pack:
+    # if: needs.preview_plugins_clawhub.outputs.has_candidates == 'true'
     if: false
     needs: preview_plugins_clawhub
     runs-on: ubuntu-latest
@@ -310,6 +311,7 @@ jobs:
         run: exit 1
 
   collect_preview_results:
+    # if: always() && needs.preview_plugins_clawhub.outputs.has_candidates == 'true'
     if: false
     needs: [preview_plugins_clawhub, preview_plugin_pack]
     runs-on: ubuntu-latest
@@ -390,6 +392,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   publish_plugins_clawhub:
+    # if: always() && github.event_name == 'workflow_dispatch' && needs.preview_plugins_clawhub.outputs.has_candidates == 'true' && needs.collect_preview_results.outputs.passed_count != '0'
     if: false
     needs: [preview_plugins_clawhub, collect_preview_results]
     runs-on: ubuntu-latest
@@ -532,6 +535,7 @@ jobs:
         run: bash scripts/plugin-clawhub-publish.sh --publish "${PACKAGE_DIR}"
 
   verify_plugins_clawhub:
+    # if: always() && needs.preview_plugins_clawhub.outputs.has_candidates == 'true'
     if: false
     needs: [preview_plugins_clawhub, collect_preview_results, publish_plugins_clawhub]
     runs-on: ubuntu-latest

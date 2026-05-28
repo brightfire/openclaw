@@ -154,6 +154,7 @@ jobs:
           jq -r '.skippedPublished[]? | "- \(.packageName)@\(.version)"' .local/plugin-npm-release-plan.json
 
   preview_plugin_pack:
+    # if: needs.preview_plugins_npm.outputs.has_candidates == 'true'
     if: false
     needs: preview_plugins_npm
     runs-on: ubuntu-latest
@@ -185,6 +186,7 @@ jobs:
         run: bash scripts/plugin-npm-publish.sh --pack-dry-run "${{ matrix.plugin.packageDir }}"
 
   publish_plugins_npm:
+    # if: github.event_name == 'workflow_dispatch' && needs.preview_plugins_npm.outputs.has_candidates == 'true'
     if: false
     needs: [preview_plugins_npm, preview_plugin_pack]
     runs-on: ubuntu-latest
