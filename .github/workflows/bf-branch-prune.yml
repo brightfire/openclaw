@@ -33,7 +33,7 @@ jobs:
               echo "PR #${{ github.event.pull_request.number }} merged — deleting head branch: $BRANCH"
               gh api -X DELETE repos/${{ github.repository }}/git/refs/heads/"$BRANCH" || true
               ;;
-            brightfire/*|stable/*)
+            brightfire/*|stable/*|ci|main)
               echo "Skipping branch: $BRANCH (permanent branches are not pruned)"
               ;;
             *)
