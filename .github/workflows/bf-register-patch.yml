@@ -8,7 +8,7 @@
 # Pushing to brightfire/ci always triggers BF: Build Stable (which watches
 # that branch), so every merged patch PR results in a stable rebuild.
 
-name: BF: Register Patch
+name: "BF: Register Patch"
 
 on:
   pull_request_target:
@@ -74,29 +74,29 @@ jobs:
             # Strip common conventional commit prefixes from the PR title
             TITLE=$(echo "$PR_TITLE" | sed 's/^feat\s*:\s*//; s/^fix\s*:\s*//; s/^doc\s*:\s*//; s/^docs\s*:\s*//')
 
-            cat >> "$PATCHES_FILE" <<ENTRY
-
-## $TITLE
-
-- **Status:** active
-- **Reapply:** yes
-- **Stable branch first merged into:** TBD
-- **Canonical branch:** \`brightfire/${PATCH_NAME}\`
-- **Branch HEAD commit:** \`${COMMIT_SHORT}\`
-- **Source PR:** #${PR_NUMBER}
-
-### Rationale
-
-_Add description of what this patch does and why._
-
-### Files touched
-
-TBD — update after first stable merge
-
-### Upgrade guidance
-
-_Add known conflict notes or \`git cherry-pick\` command here._
-ENTRY
+            {
+              echo ""
+              echo "## $TITLE"
+              echo ""
+              echo "- **Status:** active"
+              echo "- **Reapply:** yes"
+              echo "- **Stable branch first merged into:** TBD"
+              echo "- **Canonical branch:** \`brightfire/${PATCH_NAME}\`"
+              echo "- **Branch HEAD commit:** \`${COMMIT_SHORT}\`"
+              echo "- **Source PR:** #${PR_NUMBER}"
+              echo ""
+              echo "### Rationale"
+              echo ""
+              echo "_Add description of what this patch does and why._"
+              echo ""
+              echo "### Files touched"
+              echo ""
+              echo "TBD — update after first stable merge"
+              echo ""
+              echo "### Upgrade guidance"
+              echo ""
+              echo "_Add known conflict notes or \`git cherry-pick\` command here._"
+            } >> "$PATCHES_FILE"
 
             git add "$PATCHES_FILE"
             git commit -m "ci: register new patch brightfire/${PATCH_NAME} (PR #${PR_NUMBER})"
