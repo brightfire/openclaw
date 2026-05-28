@@ -1,3 +1,4 @@
+# Disabled: upstream workflow not used in Brightfire fork
 name: OpenClaw Cross-OS Release Checks (Reusable)
 
 on:
@@ -190,6 +191,7 @@ env:
 
 jobs:
   prepare:
+    if: false
     runs-on: ubuntu-24.04
     outputs:
       baseline_file_name: ${{ steps.baseline_metadata.outputs.file_name }}
@@ -511,6 +513,7 @@ jobs:
           echo "value=${MATRIX_JSON}" >> "$GITHUB_OUTPUT"
 
   cross_os_release_checks:
+    if: false
     name: "${{ matrix.display_name }} / ${{ matrix.suite_label }}"
     needs: prepare
     strategy:

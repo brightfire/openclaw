@@ -1,3 +1,4 @@
+# Disabled: upstream workflow not used in Brightfire fork
 name: OpenClaw Scheduled Live And E2E Checks
 
 on:
@@ -19,6 +20,7 @@ env:
 
 jobs:
   live_and_openwebui_checks:
+    if: false
     permissions:
       contents: read
       packages: write

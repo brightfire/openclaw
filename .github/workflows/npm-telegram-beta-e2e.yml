@@ -1,3 +1,4 @@
+# Disabled: upstream workflow not used in Brightfire fork
 name: NPM Telegram Beta E2E
 
 on:
@@ -98,6 +99,7 @@ env:
 
 jobs:
   run_package_telegram_e2e:
+    if: false
     name: Run package Telegram E2E
     runs-on: blacksmith-32vcpu-ubuntu-2404
     timeout-minutes: 60

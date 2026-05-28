@@ -6,7 +6,7 @@
 # This replaces GitHub's "auto-prune head branches" setting since we need
 # brightfire/* branches to persist across releases.
 
-name: Branch Prune
+name: BF: Branch Prune
 
 on:
   pull_request_target:

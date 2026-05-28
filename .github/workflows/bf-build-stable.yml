@@ -7,7 +7,7 @@
 # Triggered automatically on push to any brightfire/* branch, or manually.
 # Only one run executes at a time — new runs queue and cancel prior runs.
 
-name: Build Stable
+name: BF: Build Stable
 
 on:
   push:

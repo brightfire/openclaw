@@ -1,3 +1,4 @@
+# Disabled: upstream workflow not used in Brightfire fork
 name: OpenGrep — Full
 
 # Manual repository-wide scan for the high-precision OpenGrep rule super-config.
@@ -20,6 +21,7 @@ permissions:
 
 jobs:
   scan:
+    if: false
     name: Scan full repository (precise)
     runs-on: blacksmith-16vcpu-ubuntu-2404
     timeout-minutes: 30

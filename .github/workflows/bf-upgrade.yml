@@ -6,7 +6,7 @@
 #
 # Manual trigger only — requires user to confirm the new upstream tag.
 
-name: Upgrade Stable
+name: BF: Upgrade Stable
 
 on:
   workflow_dispatch:

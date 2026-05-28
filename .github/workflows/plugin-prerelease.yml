@@ -1,3 +1,4 @@
+# Disabled: upstream workflow not used in Brightfire fork
 name: Plugin Prerelease
 
 on:
@@ -31,6 +32,7 @@ env:
 
 jobs:
   preflight:
+    if: false
     name: Build plugin prerelease plan
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -204,11 +206,11 @@ jobs:
           EOF
 
   plugin-prerelease-static-shard:
+    if: false
     permissions:
       contents: read
     name: ${{ matrix.check_name }}
     needs: [preflight]
-    if: needs.preflight.outputs.run_plugin_prerelease_static == 'true'
     runs-on: blacksmith-8vcpu-ubuntu-2404
     timeout-minutes: 45
     strategy:
@@ -240,11 +242,11 @@ jobs:
           bash -c "$PLUGIN_PRERELEASE_COMMAND"
 
   plugin-prerelease-node-shard:
+    if: false
     permissions:
       contents: read
     name: ${{ matrix.check_name }}
     needs: [preflight]
-    if: needs.preflight.outputs.run_plugin_prerelease_node == 'true'
     runs-on: ${{ matrix.runner || 'ubuntu-24.04' }}
     timeout-minutes: 60
     strategy:
@@ -313,11 +315,11 @@ jobs:
           EOF
 
   plugin-prerelease-extension-shard:
+    if: false
     permissions:
       contents: read
     name: ${{ matrix.check_name }}
     needs: [preflight]
-    if: needs.preflight.outputs.run_plugin_prerelease_extensions == 'true'
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     strategy:
@@ -347,9 +349,9 @@ jobs:
         run: pnpm test:extensions:batch -- "$OPENCLAW_EXTENSION_BATCH"
 
   plugin-prerelease-docker-suite:
+    if: false
     name: plugin-prerelease-docker-suite
     needs: [preflight]
-    if: ${{ inputs.full_release_validation && needs.preflight.outputs.run_plugin_prerelease_docker == 'true' }}
     permissions:
       actions: read
       contents: read
@@ -367,6 +369,7 @@ jobs:
       live_models_only: false
 
   plugin-prerelease-suite:
+    if: false
     permissions:
       contents: read
     name: plugin-prerelease-suite
@@ -376,7 +379,6 @@ jobs:
       - plugin-prerelease-node-shard
       - plugin-prerelease-extension-shard
       - plugin-prerelease-docker-suite
-    if: ${{ !cancelled() && always() && needs.preflight.outputs.run_plugin_prerelease_suite == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:

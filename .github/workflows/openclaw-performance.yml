@@ -1,3 +1,4 @@
+# Disabled: upstream workflow not used in Brightfire fork
 name: OpenClaw Performance
 
 on:
@@ -61,6 +62,7 @@ env:
 
 jobs:
   kova:
+    if: false
     name: ${{ matrix.title }}
     runs-on: blacksmith-16vcpu-ubuntu-2404
     timeout-minutes: 240

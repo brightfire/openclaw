@@ -1,3 +1,4 @@
+# Disabled: upstream workflow not used in Brightfire fork
 name: Docs Sync Publish Repo
 
 on:
@@ -15,6 +16,7 @@ permissions:
 
 jobs:
   sync-publish-repo:
+    if: false
     runs-on: ubuntu-latest
     steps:
       - name: Checkout source repo

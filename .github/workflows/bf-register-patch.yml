@@ -4,7 +4,7 @@
 # If the branch is not yet listed in BRIGHTFIRE_PATCHES.md, opens a PR to add it.
 # This ensures every patch branch has a manifest entry for the upgrade replay process.
 
-name: Register Patch
+name: BF: Register Patch
 
 on:
   pull_request_target:
