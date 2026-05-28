@@ -248,24 +248,3 @@ git cherry-pick 030d2bbc0c
 | context-window-min-cap | `brightfire/context-window-min-cap` | `13d7032bf3`       | active |
 | session-reset-prompt   | `brightfire/session-reset-prompt`   | `da5af0fb19`       | active |
 | control-ui-title       | `brightfire/control-ui-title`       | `c87162eba5`       | active |
-
-## Store-based session archiving with configurable retention
-
-- **Status:** active
-- **Reapply:** yes
-- **Stable branch first merged into:** TBD
-- **Canonical branch:** `brightfire/sessions-history-archived`
-- **Branch HEAD commit:** `1fc52459d4`
-- **Source PR:** #39
-
-### Rationale
-
-Centralized store-based session archiving with configurable retention. Detects sessionId changes automatically in `updateSessionStore`, archives old entries with full metadata. Supports `sessions_list` with `includeArchived`, `sessions.resolve` for archived entries, and `chat.history` fallback to archived transcript files.
-
-### Files touched
-
-TBD — update after first stable merge
-
-### Upgrade guidance
-
-_Add conflict notes or `git cherry-pick` command here._
