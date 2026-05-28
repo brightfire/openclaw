@@ -1,5 +1,21 @@
 # Brightfire Patch Registry
 
+> **This file lives on the `brightfire/ci` branch — not on `stable/*` or any patch branch.**
+>
+> It is the **source of truth** for all Brightfire-specific patches that must be replayed
+> onto each new upstream stable release.
+>
+> **Maintained automatically** by the [`BF: Register Patch`](.github/workflows/bf-register-patch.yml)
+> workflow, which runs whenever a PR is merged into a `brightfire/*` branch. It adds a new
+> entry for previously-unseen branches and updates the commit SHA / source PR for known ones.
+>
+> **Read by [`BF: Build Stable`](.github/workflows/bf-build-stable.yml)** to know which
+> patch branches to merge (in order) when rebuilding the `stable/*` branch.
+>
+> **Manual edits are welcome** — add rationale, upgrade guidance, conflict notes, or update
+> the status field (`active` → `deferred` / `upstreamed` / `superseded`) as patches evolve.
+> The workflow will continue to update `Branch HEAD commit` and `Source PR` automatically.
+
 This file is the source of truth for all Brightfire-specific changes that must be replayed onto future upstream stable releases.
 
 For each patch:
@@ -15,9 +31,8 @@ For each patch:
 - **Status:** active
 - **Reapply:** yes
 - **Stable branch first merged into:** `stable/v2026.5.3`
-- **Commit on stable/v2026.5.7:** `454393ed35`
 - **Canonical branch:** `brightfire/slack-mrkdwn`
-- **Squashed commit (source):** `8b472f2555`
+- **Branch HEAD commit:** `f3adf06a84`
 - **Source PR:** —
 
 ### Rationale
@@ -43,9 +58,8 @@ git cherry-pick 8b472f2555
 - **Status:** active
 - **Reapply:** yes
 - **Stable branch first merged into:** `stable/v2026.5.3`
-- **Commit on stable/v2026.5.7:** `fdb7f2f660`
 - **Canonical branch:** `brightfire/xgw`
-- **Squashed commit (source):** `ee129e4c2a`
+- **Branch HEAD commit:** `caabb461f2`
 - **Source PR:** #19, #20, #21 (v2026.4.15); ported to v2026.5.3 as single commit
 
 ### Rationale
@@ -94,72 +108,13 @@ git cherry-pick ee129e4c2a
 
 ---
 
-## XGW Security Prompt
-
-- **Status:** active
-- **Reapply:** yes
-- **Stable branch first merged into:** `stable/v2026.5.3`
-- **Commit on stable/v2026.5.7:** `64bbc7a1cc`
-- **Canonical branch:** `brightfire/xgw-security-prompt`
-- **Squashed commit (source):** `139a6d1b6d`
-- **Source PR:** #29
-
-### Rationale
-
-Makes the XGW inbound security prompt (the context injected before cross-gateway requests are processed) configurable via `fleet.crossGateway.securityPrompt` in config. Also relaxes the default policy from strict refusal to a more permissive default that still informs the agent it is receiving an inter-agent request.
-
-### Files touched
-
-- `src/config/schema.base.generated.ts` (regenerated; new config field)
-- `src/config/zod-schema.ts` (new `securityPrompt` field in XGW fleet config)
-- `src/gateway/xgw/inbound.ts` (reads `securityPrompt` from config; default policy updated)
-- `src/gateway/xgw/types.ts` (type update)
-
-### Upgrade guidance
-
-```
-git cherry-pick 139a6d1b6d
-```
-
-**Conflicts:** `schema.base.generated.ts` — regenerate with `npm run config:schema:gen` instead of manual resolve.
-
----
-
-## Preserve Cache Write Short Normalization
-
-- **Status:** active
-- **Reapply:** yes
-- **Stable branch first merged into:** `stable/v2026.5.3`
-- **Commit on stable/v2026.5.7:** `9dbe61e5ac`
-- **Canonical branch:** `brightfire/preserve-cache-write-short-normalization`
-- **Squashed commit (source):** `611b72053c`
-- **Source PR:** — (ported from stable/v2026.4.15 canonical commit `d7d8bcc73e`)
-
-### Rationale
-
-`resolveModelCost()` in `src/config/defaults.ts` reconstructed cost objects with only 4 base fields (`input`, `output`, `cacheRead`, `cacheWrite`), silently stripping `cacheWriteShort` on every gateway restart. This broke the cache-retention-aware cost estimation (#24) and per-message cache pricing (#26) since their cost lookups would always fall back to the long-TTL rate. Also wires `cacheWriteShort` through `buildProviderCostIndex` (session-level cost summaries) and `computeTieredCost` (tiered pricing path).
-
-### Files touched
-
-- `src/config/defaults.ts` (`resolveModelCost()` preserves `cacheWriteShort`)
-- `src/utils/usage-format.ts` (`buildProviderCostIndex` copies `cacheWriteShort`; `computeTieredCost` accepts `cacheWriteRateOverride`)
-
-### Upgrade guidance
-
-```
-git cherry-pick 611b72053c
-```
-
----
-
 ## Cache Write TTL Cost
 
 - **Status:** active
 - **Reapply:** yes
 - **Stable branch first merged into:** `stable/v2026.5.3`
-- **Commit on stable/v2026.5.7:** `5c9ae8fa78`
 - **Canonical branch:** `brightfire/cache-write-ttl-cost`
-- **Squashed commit (source):** `f7aa4fdc7b`
+- **Branch HEAD commit:** `13bb2c6064`
 - **Source PR:** #24
 
 ### Rationale
@@ -189,75 +144,13 @@ git cherry-pick f7aa4fdc7b
 
 ---
 
-## Per-Message Cache Write Cost
-
-- **Status:** active
-- **Reapply:** yes
-- **Stable branch first merged into:** `stable/v2026.5.3`
-- **Commit on stable/v2026.5.7:** `ae690ac173`
-- **Canonical branch:** `brightfire/per-message-cache-write-cost`
-- **Squashed commit (source):** `7813559395`
-- **Source PR:** #26, #28
-
-### Rationale
-
-Replaces the earlier post-correction approach (patching `usage.cost` after Pi's `calculateCost()` runs) with a cleaner pre-mutation pattern. Wraps `streamFn` to pass a cloned model with `cacheWrite` set to the 5-minute rate before Pi's cost calculation runs, so per-message cost is naturally correct without coupling to Pi library internals.
-
-### Files touched
-
-- `src/agents/pi-embedded-runner/run/attempt.ts` (streamFn wrapper; model clone with short-TTL rate)
-
-### Upgrade guidance
-
-```
-git cherry-pick 7813559395
-```
-
-**Conflicts:** `attempt.ts` has frequent upstream changes. Check the streamFn wrapper pattern and the model clone block around the cache write rate injection.
-
----
-
-## Context Estimate Compaction
-
-- **Status:** active
-- **Reapply:** yes
-- **Stable branch first merged into:** `stable/v2026.5.3`
-- **Commit on stable/v2026.5.7:** `a999c64722`
-- **Canonical branch:** `brightfire/context-estimate-compaction`
-- **Squashed commit (source):** `6029b5eb06`
-- **Source PR:** — (production patches applied via fleet-upgrade post-install scripts)
-
-### Rationale
-
-Two production patches integrated into source to avoid re-patching after every upgrade:
-
-1. **Tool-result token estimate:** `TOOL_RESULT_CHARS_PER_TOKEN_ESTIMATE` was `2`, causing the context guard to trim tool output at ~40% of the configured window instead of ~75%. Set to `4` to match the real token density of tool output.
-
-2. **Preflight compaction early return:** Removed `totalTokensFresh` early return in `runPreflightCompactionIfNeeded()` that was preventing preflight compaction from firing when token counts happened to be fresh. Compaction now evaluates properly regardless of freshness.
-
-**Note:** Semantic review flagged for this patch — verify the agent-runner-memory.ts compaction logic still behaves correctly after upstream changes in v2026.5.7.
-
-### Files touched
-
-- `src/agents/pi-embedded-runner/tool-result-char-estimator.ts` (`TOOL_RESULT_CHARS_PER_TOKEN_ESTIMATE` = 4)
-- `src/auto-reply/reply/agent-runner-memory.ts` (`runPreflightCompactionIfNeeded` early return removed)
-
-### Upgrade guidance
-
-```
-git cherry-pick 6029b5eb06
-```
-
----
-
 ## Context Window Min Cap
 
 - **Status:** active
 - **Reapply:** yes
 - **Stable branch first merged into:** `stable/v2026.5.3`
-- **Commit on stable/v2026.5.7:** `487a39b79d`
 - **Canonical branch:** `brightfire/context-window-min-cap`
-- **Squashed commit (source):** `02cf7b6a4f`
+- **Branch HEAD commit:** `13d7032bf3`
 - **Source PR:** #31
 
 ### Rationale
@@ -286,9 +179,8 @@ git cherry-pick 02cf7b6a4f
 - **Status:** active
 - **Reapply:** yes
 - **Stable branch first merged into:** `stable/v2026.5.3`
-- **Commit on stable/v2026.5.7:** `3867e5612e`
 - **Canonical branch:** `brightfire/session-reset-prompt`
-- **Squashed commit (source):** `a59fb22abc`
+- **Branch HEAD commit:** `da5af0fb19`
 - **Source PR:** #30
 
 ### Rationale
@@ -319,9 +211,8 @@ git cherry-pick a59fb22abc
 - **Status:** active
 - **Reapply:** yes
 - **Stable branch first merged into:** `stable/v2026.5.3`
-- **Commit on stable/v2026.5.7:** `0da0611131`, `63aa018e31` (Zod schema fix)
 - **Canonical branch:** `brightfire/control-ui-title`
-- **Squashed commit (source):** `030d2bbc0c`
+- **Branch HEAD commit:** `c87162eba5`
 - **Source PR:** —
 
 ### Rationale
@@ -347,139 +238,13 @@ git cherry-pick 030d2bbc0c
 
 ---
 
-## XGW Inbound Auth
-
-- **Status:** active
-- **Reapply:** yes
-- **Stable branch first merged into:** `stable/v2026.5.3`
-- **Commit on stable/v2026.5.7:** `569efbafcc`
-- **Canonical branch:** `brightfire/xgw-inbound-auth`
-- **Squashed commit (source):** `2ffebbbc23`
-- **Source PR:** — (new patch for v2026.5.3)
-
-### Rationale
-
-Wires Ed25519 signature verification into the XGW inbound auth layer. Previously `authMode: 'signature-only'` in config had no effect — requests with only a signature header were rejected as unauthorized. Adds:
-
-- `readRawBody()`: reads request bytes once for both auth and JSON parsing (avoids double stream read)
-- `authenticateXgwInbound()`: dispatches to bearer token or Ed25519 verification based on `authMode` config (`token-only` / `dual` / `signature-only`)
-- Both `handleXgwHook` and `handleXgwCallback` now use `authenticateXgwInbound()`
-- Imports `verifyXgwSignature` from `./signing.ts` (which was already implemented in the xgw-cross-gateway patch)
-
-All existing bearer-token tests pass unchanged since `token-only` is the default.
-
-### Files touched
-
-- `src/gateway/xgw/inbound.ts` (`readRawBody`, `authenticateXgwInbound`, updated handler flow)
-
-### Upgrade guidance
-
-```
-git cherry-pick 2ffebbbc23
-```
-
-**Conflicts:** Must be applied after `xgw-cross-gateway` (depends on `inbound.ts` existing and `verifyXgwSignature` being importable from `./signing.ts`).
-
----
-
-## Sessions History Archived
-
-- **Status:** active
-- **Reapply:** yes
-- **Stable branch first merged into:** `stable/v2026.4.15`
-- **Commit on stable/v2026.5.7:** `566dee3c99` (commit hash will change after rebase)
-- **Canonical branch:** `brightfire/sessions-history-archived`
-- **Squashed commit (source):** `566dee3c99`
-- **Source PR:** #32
-
-### Rationale
-
-When a session is reset or deleted, the transcript file is renamed to
-`{sessionId}.jsonl.reset.{timestamp}` / `{sessionId}.jsonl.deleted.{timestamp}`.
-Previously the history lookup layer only found active files, causing `sessions_history`
-to return 404 (HTTP) or empty messages (WS/tool) for archived sessions.
-
-This patch adds a directory-scan fallback (`resolveArchivedTranscriptPaths`) at three
-layers: the core `readSessionMessages()` helper, the HTTP history endpoint, and the
-`chat.history` WebSocket handler used by the agent tool. Results include `archived: true`
-so callers know the source was an archived transcript.
-
-### Files touched
-
-- `src/gateway/session-transcript-files.fs.ts` (new `resolveArchivedTranscriptPaths()`)
-- `src/gateway/session-utils.fs.ts` (`readSessionMessages()` archive fallback + re-export)
-- `src/gateway/session-utils.ts` (re-export `resolveArchivedTranscriptPaths`)
-- `src/gateway/sessions-history-http.ts` (HTTP endpoint archive fallback + `archived: true` response)
-- `src/gateway/server-methods/chat.ts` (WS `chat.history` fallback + `archived: true`)
-- `src/agents/tools/sessions-history-tool.ts` (pass through `archived` flag)
-- `src/agents/tool-description-presets.ts` (updated tool description)
-
-### Upgrade guidance
-
-```
-git cherry-pick 566dee3c99
-```
-
-**Conflicts:** `server-methods/chat.ts` — large file with frequent upstream churn. Check imports and the `chat.history` handler block if conflicts arise.
-
-### Drop when
-
-Drop when upstream adds native archive-fallback support in `readSessionMessages()` and the `chat.history` handler.
-
----
-
-## Sessions List Archived
-
-- **Status:** active
-- **Reapply:** yes
-- **Stable branch first merged into:** `stable/v2026.5.7`
-- **Commit on stable/v2026.5.7:** `75fe3ef1f1`
-- **Canonical branch:** `brightfire/sessions-list-archived`
-- **Squashed commit (source):** `21956af81b`
-- **Source PR:** `#35` (brightfire/sessions-list-archived)
-
-### Rationale
-
-Agents cannot discover archived/reset session IDs through any tool. This adds `includeArchived`, `archivedFrom`, `archivedTo` params to `sessions.list` RPC and `sessions_list` tool, enabling agents to find and read previous session transcripts after resets.
-
-### Files touched
-
-- `src/gateway/protocol/schema/sessions.ts`
-- `src/gateway/session-utils.types.ts`
-- `src/gateway/session-utils.ts`
-- `src/agents/tools/sessions-list-tool.ts`
-- `dist/protocol.schema.json`
-- `apps/macos/Sources/OpenClawProtocol/GatewayModels.swift`
-- `apps/shared/OpenClawKit/Sources/OpenClawProtocol/GatewayModels.swift`
-- `test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/*.json`
-- `test/fixtures/agents/prompt-snapshots/codex-runtime-happy-path/*.md`
-
-### Upgrade guidance
-
-```
-git cherry-pick 21956af81b
-```
-
-**Conflicts:** Likely conflicts in `session-utils.ts` if upstream changes `listSessionsFromStoreAsync()`. Re-run `pnpm protocol:gen && pnpm protocol:gen:swift` and regenerate prompt snapshots after cherry-pick.
-
-**Drop when:** Upstream adds equivalent archived session discovery (e.g., via native `includeArchived` param or a dedicated archived sessions API).
-
----
-
 ## Patch Registry Table
 
-| Patch                                    | Canonical branch                                      | Squashed commit (source) | Commit on v2026.5.7 | Status |
-| ---------------------------------------- | ----------------------------------------------------- | ------------------------ | ------------------- | ------ |
-| slack-mrkdwn                             | `brightfire/slack-mrkdwn`                             | `8b472f2555`             | `454393ed35`        | active |
-| xgw-cross-gateway                        | `brightfire/xgw`                                      | `ee129e4c2a`             | `fdb7f2f660`        | active |
-| xgw-security-prompt                      | `brightfire/xgw-security-prompt`                      | `139a6d1b6d`             | `64bbc7a1cc`        | active |
-| preserve-cache-write-short-normalization | `brightfire/preserve-cache-write-short-normalization` | `611b72053c`             | `9dbe61e5ac`        | active |
-| cache-write-ttl-cost                     | `brightfire/cache-write-ttl-cost`                     | `f7aa4fdc7b`             | `5c9ae8fa78`        | active |
-| per-message-cache-write-cost             | `brightfire/per-message-cache-write-cost`             | `7813559395`             | `ae690ac173`        | active |
-| context-estimate-compaction              | `brightfire/context-estimate-compaction`              | `6029b5eb06`             | `a999c64722`        | active |
-| context-window-min-cap                   | `brightfire/context-window-min-cap`                   | `02cf7b6a4f`             | `487a39b79d`        | active |
-| session-reset-prompt                     | `brightfire/session-reset-prompt`                     | `a59fb22abc`             | `3867e5612e`        | active |
-| control-ui-title                         | `brightfire/control-ui-title`                         | `030d2bbc0c`             | `0da0611131`        | active |
-| xgw-inbound-auth                         | `brightfire/xgw-inbound-auth`                         | `2ffebbbc23`             | `569efbafcc`        | active |
-| sessions-history-archived                | `brightfire/sessions-history-archived`                | `566dee3c99`             | `566dee3c99` (TBD)  | active |
-| sessions-list-archived                   | `brightfire/sessions-list-archived`                   | `21956af81b`             | `75fe3ef1f1`        | active |
+| Patch                  | Canonical branch                    | Branch HEAD commit | Status |
+| ---------------------- | ----------------------------------- | ------------------ | ------ |
+| slack-mrkdwn           | `brightfire/slack-mrkdwn`           | `f3adf06a84`       | active |
+| xgw-cross-gateway      | `brightfire/xgw`                    | `caabb461f2`       | active |
+| cache-write-ttl-cost   | `brightfire/cache-write-ttl-cost`   | `13bb2c6064`       | active |
+| context-window-min-cap | `brightfire/context-window-min-cap` | `13d7032bf3`       | active |
+| session-reset-prompt   | `brightfire/session-reset-prompt`   | `da5af0fb19`       | active |
+| control-ui-title       | `brightfire/control-ui-title`       | `c87162eba5`       | active |
