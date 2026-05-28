@@ -1,3 +1,4 @@
+# Disabled: upstream workflow not used in Brightfire fork
 name: ClawSweeper Dispatch
 
 on:
@@ -23,6 +24,7 @@ concurrency:
 
 jobs:
   dispatch:
+    if: false
     runs-on: ubuntu-latest
     if: ${{ github.event_name == 'issue_comment' || !(endsWith(github.actor, '[bot]') && (github.event.action == 'labeled' || github.event.action == 'unlabeled')) }}
     env:

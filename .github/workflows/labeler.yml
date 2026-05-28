@@ -1,3 +1,4 @@
+# Disabled: upstream workflow not used in Brightfire fork
 name: Labeler
 
 on:
@@ -27,6 +28,7 @@ permissions: {}
 
 jobs:
   label:
+    if: false
     permissions:
       contents: read
       pull-requests: write
@@ -460,6 +462,7 @@ jobs:
             }
 
   backfill-pr-labels:
+    if: false
     if: github.event_name == 'workflow_dispatch'
     permissions:
       contents: read
@@ -760,6 +763,7 @@ jobs:
             core.info(`Processed ${processed} pull requests.`);
 
   label-issues:
+    if: false
     permissions:
       issues: write
     runs-on: ubuntu-24.04

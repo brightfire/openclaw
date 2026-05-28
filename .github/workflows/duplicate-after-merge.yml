@@ -1,3 +1,4 @@
+# Disabled: upstream workflow not used in Brightfire fork
 name: Duplicate PRs After Merge
 
 on:
@@ -32,6 +33,7 @@ env:
 
 jobs:
   close-duplicates:
+    if: false
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout

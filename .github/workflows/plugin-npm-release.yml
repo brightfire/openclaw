@@ -1,3 +1,4 @@
+# Disabled: upstream workflow not used in Brightfire fork
 name: Plugin NPM Release
 
 on:
@@ -44,6 +45,7 @@ env:
 
 jobs:
   preview_plugins_npm:
+    if: false
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -152,6 +154,7 @@ jobs:
           jq -r '.skippedPublished[]? | "- \(.packageName)@\(.version)"' .local/plugin-npm-release-plan.json
 
   preview_plugin_pack:
+    if: false
     needs: preview_plugins_npm
     if: needs.preview_plugins_npm.outputs.has_candidates == 'true'
     runs-on: ubuntu-latest
@@ -183,6 +186,7 @@ jobs:
         run: bash scripts/plugin-npm-publish.sh --pack-dry-run "${{ matrix.plugin.packageDir }}"
 
   publish_plugins_npm:
+    if: false
     needs: [preview_plugins_npm, preview_plugin_pack]
     if: github.event_name == 'workflow_dispatch' && needs.preview_plugins_npm.outputs.has_candidates == 'true'
     runs-on: ubuntu-latest

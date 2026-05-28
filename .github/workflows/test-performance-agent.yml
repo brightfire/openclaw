@@ -1,3 +1,4 @@
+# Disabled: upstream workflow not used in Brightfire fork
 name: Test Performance Agent
 
 on:
@@ -24,6 +25,7 @@ env:
 
 jobs:
   optimize-tests:
+    if: false
     if: >
       github.repository == 'openclaw/openclaw' &&
       (github.event_name == 'workflow_dispatch' ||

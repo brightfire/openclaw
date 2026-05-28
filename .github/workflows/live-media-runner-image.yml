@@ -1,3 +1,4 @@
+# Disabled: upstream workflow not used in Brightfire fork
 name: Live Media Runner Image
 
 on:
@@ -21,6 +22,7 @@ env:
 
 jobs:
   build:
+    if: false
     name: Build live media runner image
     runs-on: blacksmith-8vcpu-ubuntu-2404
     timeout-minutes: 30

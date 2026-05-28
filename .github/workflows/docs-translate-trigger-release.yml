@@ -1,3 +1,4 @@
+# Disabled: upstream workflow not used in Brightfire fork
 name: Docs Trigger Locale Translate On Release
 
 on:
@@ -10,6 +11,7 @@ permissions:
 
 jobs:
   dispatch-translate:
+    if: false
     runs-on: ubuntu-latest
     steps:
       - name: Trigger locale translates in publish repo

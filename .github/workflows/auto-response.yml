@@ -1,3 +1,4 @@
+# Disabled: upstream workflow not used in Brightfire fork
 name: Auto response
 
 on:
@@ -19,6 +20,7 @@ permissions: {}
 
 jobs:
   auto-response:
+    if: false
     permissions:
       contents: read
       issues: write

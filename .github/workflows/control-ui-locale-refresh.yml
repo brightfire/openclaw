@@ -1,3 +1,4 @@
+# Disabled: upstream workflow not used in Brightfire fork
 name: Control UI Locale Refresh
 
 on:
@@ -28,6 +29,7 @@ concurrency:
 
 jobs:
   plan:
+    if: false
     if: github.repository == 'openclaw/openclaw' && (github.event_name != 'push' || github.actor != 'github-actions[bot]')
     runs-on: ubuntu-latest
     outputs:
@@ -101,6 +103,7 @@ jobs:
           echo "locales_json=$locales_json" >> "$GITHUB_OUTPUT"
 
   refresh:
+    if: false
     needs: plan
     if: github.repository == 'openclaw/openclaw' && needs.plan.outputs.has_locales == 'true'
     strategy:

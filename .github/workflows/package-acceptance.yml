@@ -1,3 +1,4 @@
+# Disabled: upstream workflow not used in Brightfire fork
 name: Package Acceptance
 
 on:
@@ -283,6 +284,7 @@ env:
 
 jobs:
   resolve_package:
+    if: false
     name: Resolve package candidate
     runs-on: blacksmith-8vcpu-ubuntu-2404
     timeout-minutes: 60
@@ -505,6 +507,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   docker_acceptance:
+    if: false
     name: Docker product acceptance
     needs: resolve_package
     uses: ./.github/workflows/openclaw-live-and-e2e-checks-reusable.yml
@@ -568,6 +571,7 @@ jobs:
       FIREWORKS_API_KEY: ${{ secrets.FIREWORKS_API_KEY }}
 
   package_telegram:
+    if: false
     name: Telegram package acceptance
     needs: resolve_package
     if: needs.resolve_package.outputs.telegram_enabled == 'true'
@@ -585,6 +589,7 @@ jobs:
       OPENCLAW_QA_CONVEX_SECRET_CI: ${{ secrets.OPENCLAW_QA_CONVEX_SECRET_CI }}
 
   summary:
+    if: false
     name: Verify package acceptance
     needs: [resolve_package, docker_acceptance, package_telegram]
     if: always()

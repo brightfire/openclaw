@@ -1,3 +1,4 @@
+# Disabled: upstream workflow not used in Brightfire fork
 name: Windows Testbox Probe
 
 on:
@@ -46,6 +47,7 @@ env:
 
 jobs:
   probe:
+    if: false
     name: Windows probe
     runs-on: ${{ inputs.runner_label }}
     timeout-minutes: 75

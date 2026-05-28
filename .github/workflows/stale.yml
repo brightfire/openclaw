@@ -1,3 +1,4 @@
+# Disabled: upstream workflow not used in Brightfire fork
 name: Stale
 
 on:
@@ -38,6 +39,7 @@ permissions: {}
 
 jobs:
   stale:
+    if: false
     if: ${{ github.event_name != 'workflow_dispatch' || inputs.backfill_stale_closures != true }}
     permissions:
       issues: write
@@ -241,6 +243,7 @@ jobs:
             That channel is the escape hatch for high-quality PRs that get auto-closed.
 
   backfill-stale-closures:
+    if: false
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.backfill_stale_closures == true }}
     permissions:
       issues: write
@@ -486,6 +489,7 @@ jobs:
             }
 
   lock-closed-issues:
+    if: false
     if: ${{ github.event_name != 'workflow_dispatch' || inputs.backfill_stale_closures != true }}
     permissions:
       issues: write

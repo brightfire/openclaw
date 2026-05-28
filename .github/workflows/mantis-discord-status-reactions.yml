@@ -1,3 +1,4 @@
+# Disabled: upstream workflow not used in Brightfire fork
 name: Mantis Discord Status Reactions
 
 on:
@@ -38,6 +39,7 @@ env:
 
 jobs:
   authorize_actor:
+    if: false
     name: Authorize workflow actor
     if: >-
       ${{
@@ -74,6 +76,7 @@ jobs:
             }
 
   resolve_request:
+    if: false
     name: Resolve Mantis request
     needs: authorize_actor
     runs-on: blacksmith-8vcpu-ubuntu-2404
@@ -165,6 +168,7 @@ jobs:
             }).catch((error) => core.warning(`Could not add eyes reaction: ${error.message}`));
 
   validate_refs:
+    if: false
     name: Validate selected refs
     needs: resolve_request
     if: ${{ needs.resolve_request.outputs.should_run == 'true' }}
@@ -232,6 +236,7 @@ jobs:
           validate_ref candidate "$CANDIDATE_REF"
 
   run_status_reactions:
+    if: false
     name: Run Discord status reaction before/after
     needs: [resolve_request, validate_refs]
     if: ${{ needs.resolve_request.outputs.should_run == 'true' }}
