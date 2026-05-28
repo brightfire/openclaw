@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import {
   formatSessionArchiveTimestamp,
+  isSessionArchiveArtifactName,
   parseSessionArchiveTimestamp,
   type SessionArchiveReason,
 } from "../config/sessions/artifacts.js";
@@ -122,6 +123,54 @@ export function resolveSessionTranscriptCandidates(
   pushCandidate(() => resolveSessionTranscriptPathInDir(sessionId, legacyDir));
 
   return Array.from(new Set(candidates));
+}
+
+/**
+ * Find archived transcript files for a given session ID by scanning the sessions directory.
+ * Returns paths sorted by archive timestamp descending (most recent first).
+ * Matches files with `.reset.` or `.deleted.` archive suffixes.
+ */
+export function resolveArchivedTranscriptPaths(opts: {
+  sessionId: string;
+  sessionsDir: string | undefined;
+  agentId?: string;
+}): string[] {
+  const { sessionId, sessionsDir } = opts;
+  if (!sessionsDir || !sessionId) {
+    return [];
+  }
+  let entries: string[];
+  try {
+    entries = fs.readdirSync(sessionsDir);
+  } catch {
+    return [];
+  }
+
+  const prefix = `${sessionId}.jsonl.`;
+  const results: Array<{ filePath: string; timestamp: number }> = [];
+
+  for (const entry of entries) {
+    if (!entry.startsWith(prefix)) {
+      continue;
+    }
+    if (!isSessionArchiveArtifactName(entry)) {
+      continue;
+    }
+    // Extract timestamp for sort order (most recent first).
+    let timestamp = 0;
+    for (const reason of ["reset", "deleted"] as const) {
+      const ts = parseSessionArchiveTimestamp(entry, reason);
+      if (ts !== null) {
+        timestamp = ts;
+        break;
+      }
+    }
+    results.push({ filePath: path.join(sessionsDir, entry), timestamp });
+  }
+
+  // Sort descending: most recent archive first.
+  results.sort((a, b) => b.timestamp - a.timestamp);
+  return results.map((r) => r.filePath);
 }
 
 export function archiveFileOnDisk(filePath: string, reason: ArchiveFileReason): string {
