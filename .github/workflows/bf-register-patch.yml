@@ -60,8 +60,15 @@ jobs:
         run: |
           PATCHES_FILE="BRIGHTFIRE_PATCHES.md"
 
-          # Prefer the merge commit SHA; fall back to HEAD SHA
-          RAW_SHA="${MERGE_SHA:-$HEAD_SHA}"
+          # Resolve the commit SHA:
+          # - PR event: use the merge commit SHA
+          # - Manual dispatch: resolve HEAD of the patch branch from git
+          if [ -n "$MERGE_SHA" ]; then
+            RAW_SHA="$MERGE_SHA"
+          else
+            git fetch origin "$PATCH_BRANCH" 2>/dev/null || true
+            RAW_SHA=$(git rev-parse "origin/$PATCH_BRANCH" 2>/dev/null || echo "$HEAD_SHA")
+          fi
           COMMIT_SHORT="${RAW_SHA:0:10}"
 
           # Extract patch name from branch (strip brightfire/ prefix)
