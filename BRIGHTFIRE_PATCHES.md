@@ -108,62 +108,6 @@ git cherry-pick ee129e4c2a
 
 ---
 
-## XGW Security Prompt
-
-- **Status:** active
-- **Reapply:** yes
-- **Stable branch first merged into:** `stable/v2026.5.3`
-- **Canonical branch:** `brightfire/xgw-security-prompt`
-- **Branch HEAD commit:** _branch deleted — merged into brightfire/xgw_
-- **Source PR:** #29
-
-### Rationale
-
-Makes the XGW inbound security prompt (the context injected before cross-gateway requests are processed) configurable via `fleet.crossGateway.securityPrompt` in config. Also relaxes the default policy from strict refusal to a more permissive default that still informs the agent it is receiving an inter-agent request.
-
-### Files touched
-
-- `src/config/schema.base.generated.ts` (regenerated; new config field)
-- `src/config/zod-schema.ts` (new `securityPrompt` field in XGW fleet config)
-- `src/gateway/xgw/inbound.ts` (reads `securityPrompt` from config; default policy updated)
-- `src/gateway/xgw/types.ts` (type update)
-
-### Upgrade guidance
-
-```
-git cherry-pick 139a6d1b6d
-```
-
-**Conflicts:** `schema.base.generated.ts` — regenerate with `npm run config:schema:gen` instead of manual resolve.
-
----
-
-## Preserve Cache Write Short Normalization
-
-- **Status:** active
-- **Reapply:** yes
-- **Stable branch first merged into:** `stable/v2026.5.3`
-- **Canonical branch:** `brightfire/preserve-cache-write-short-normalization`
-- **Branch HEAD commit:** _branch deleted — no longer exists as standalone_
-- **Source PR:** — (ported from stable/v2026.4.15 canonical commit `d7d8bcc73e`)
-
-### Rationale
-
-`resolveModelCost()` in `src/config/defaults.ts` reconstructed cost objects with only 4 base fields (`input`, `output`, `cacheRead`, `cacheWrite`), silently stripping `cacheWriteShort` on every gateway restart. This broke the cache-retention-aware cost estimation (#24) and per-message cache pricing (#26) since their cost lookups would always fall back to the long-TTL rate. Also wires `cacheWriteShort` through `buildProviderCostIndex` (session-level cost summaries) and `computeTieredCost` (tiered pricing path).
-
-### Files touched
-
-- `src/config/defaults.ts` (`resolveModelCost()` preserves `cacheWriteShort`)
-- `src/utils/usage-format.ts` (`buildProviderCostIndex` copies `cacheWriteShort`; `computeTieredCost` accepts `cacheWriteRateOverride`)
-
-### Upgrade guidance
-
-```
-git cherry-pick 611b72053c
-```
-
----
-
 ## Cache Write TTL Cost
 
 - **Status:** active
@@ -197,65 +141,6 @@ git cherry-pick f7aa4fdc7b
 ```
 
 **Conflicts:** `schema.base.generated.ts` — regenerate with `npm run config:schema:gen`.
-
----
-
-## Per-Message Cache Write Cost
-
-- **Status:** active
-- **Reapply:** yes
-- **Stable branch first merged into:** `stable/v2026.5.3`
-- **Canonical branch:** `brightfire/per-message-cache-write-cost`
-- **Branch HEAD commit:** _branch deleted — no longer exists as standalone_
-- **Source PR:** #26, #28
-
-### Rationale
-
-Replaces the earlier post-correction approach (patching `usage.cost` after Pi's `calculateCost()` runs) with a cleaner pre-mutation pattern. Wraps `streamFn` to pass a cloned model with `cacheWrite` set to the 5-minute rate before Pi's cost calculation runs, so per-message cost is naturally correct without coupling to Pi library internals.
-
-### Files touched
-
-- `src/agents/pi-embedded-runner/run/attempt.ts` (streamFn wrapper; model clone with short-TTL rate)
-
-### Upgrade guidance
-
-```
-git cherry-pick 7813559395
-```
-
-**Conflicts:** `attempt.ts` has frequent upstream changes. Check the streamFn wrapper pattern and the model clone block around the cache write rate injection.
-
----
-
-## Context Estimate Compaction
-
-- **Status:** active
-- **Reapply:** yes
-- **Stable branch first merged into:** `stable/v2026.5.3`
-- **Canonical branch:** `brightfire/context-estimate-compaction`
-- **Branch HEAD commit:** _branch deleted — no longer exists as standalone_
-- **Source PR:** — (production patches applied via fleet-upgrade post-install scripts)
-
-### Rationale
-
-Two production patches integrated into source to avoid re-patching after every upgrade:
-
-1. **Tool-result token estimate:** `TOOL_RESULT_CHARS_PER_TOKEN_ESTIMATE` was `2`, causing the context guard to trim tool output at ~40% of the configured window instead of ~75%. Set to `4` to match the real token density of tool output.
-
-2. **Preflight compaction early return:** Removed `totalTokensFresh` early return in `runPreflightCompactionIfNeeded()` that was preventing preflight compaction from firing when token counts happened to be fresh. Compaction now evaluates properly regardless of freshness.
-
-**Note:** Semantic review flagged for this patch — verify the agent-runner-memory.ts compaction logic still behaves correctly after upstream changes in v2026.5.7.
-
-### Files touched
-
-- `src/agents/pi-embedded-runner/tool-result-char-estimator.ts` (`TOOL_RESULT_CHARS_PER_TOKEN_ESTIMATE` = 4)
-- `src/auto-reply/reply/agent-runner-memory.ts` (`runPreflightCompactionIfNeeded` early return removed)
-
-### Upgrade guidance
-
-```
-git cherry-pick 6029b5eb06
-```
 
 ---
 
@@ -353,40 +238,6 @@ git cherry-pick 030d2bbc0c
 
 ---
 
-## XGW Inbound Auth
-
-- **Status:** active
-- **Reapply:** yes
-- **Stable branch first merged into:** `stable/v2026.5.3`
-- **Canonical branch:** `brightfire/xgw-inbound-auth`
-- **Branch HEAD commit:** _branch deleted — likely folded into brightfire/xgw_
-- **Source PR:** — (new patch for v2026.5.3)
-
-### Rationale
-
-Wires Ed25519 signature verification into the XGW inbound auth layer. Previously `authMode: 'signature-only'` in config had no effect — requests with only a signature header were rejected as unauthorized. Adds:
-
-- `readRawBody()`: reads request bytes once for both auth and JSON parsing (avoids double stream read)
-- `authenticateXgwInbound()`: dispatches to bearer token or Ed25519 verification based on `authMode` config (`token-only` / `dual` / `signature-only`)
-- Both `handleXgwHook` and `handleXgwCallback` now use `authenticateXgwInbound()`
-- Imports `verifyXgwSignature` from `./signing.ts` (which was already implemented in the xgw-cross-gateway patch)
-
-All existing bearer-token tests pass unchanged since `token-only` is the default.
-
-### Files touched
-
-- `src/gateway/xgw/inbound.ts` (`readRawBody`, `authenticateXgwInbound`, updated handler flow)
-
-### Upgrade guidance
-
-```
-git cherry-pick 2ffebbbc23
-```
-
-**Conflicts:** Must be applied after `xgw-cross-gateway` (depends on `inbound.ts` existing and `verifyXgwSignature` being importable from `./signing.ts`).
-
----
-
 ## Sessions History Archived
 
 - **Status:** active
@@ -471,18 +322,13 @@ git cherry-pick 21956af81b
 
 ## Patch Registry Table
 
-| Patch                                    | Canonical branch                                      | Branch HEAD commit | Status |
-| ---------------------------------------- | ----------------------------------------------------- | ------------------ | ------ |
-| slack-mrkdwn                             | `brightfire/slack-mrkdwn`                             | `f3adf06a84`       | active |
-| xgw-cross-gateway                        | `brightfire/xgw`                                      | `caabb461f2`       | active |
-| xgw-security-prompt                      | `brightfire/xgw-security-prompt`                      | _branch deleted_   | active |
-| preserve-cache-write-short-normalization | `brightfire/preserve-cache-write-short-normalization` | _branch deleted_   | active |
-| cache-write-ttl-cost                     | `brightfire/cache-write-ttl-cost`                     | `13bb2c6064`       | active |
-| per-message-cache-write-cost             | `brightfire/per-message-cache-write-cost`             | _branch deleted_   | active |
-| context-estimate-compaction              | `brightfire/context-estimate-compaction`              | _branch deleted_   | active |
-| context-window-min-cap                   | `brightfire/context-window-min-cap`                   | `13d7032bf3`       | active |
-| session-reset-prompt                     | `brightfire/session-reset-prompt`                     | `da5af0fb19`       | active |
-| control-ui-title                         | `brightfire/control-ui-title`                         | `c87162eba5`       | active |
-| xgw-inbound-auth                         | `brightfire/xgw-inbound-auth`                         | _branch deleted_   | active |
-| sessions-history-archived                | `brightfire/sessions-history-archived`                | `4d6e956110`       | active |
-| sessions-list-archived                   | `brightfire/sessions-list-archived`                   | `0653638ace`       | active |
+| Patch                     | Canonical branch                       | Branch HEAD commit | Status |
+| ------------------------- | -------------------------------------- | ------------------ | ------ |
+| slack-mrkdwn              | `brightfire/slack-mrkdwn`              | `f3adf06a84`       | active |
+| xgw-cross-gateway         | `brightfire/xgw`                       | `caabb461f2`       | active |
+| cache-write-ttl-cost      | `brightfire/cache-write-ttl-cost`      | `13bb2c6064`       | active |
+| context-window-min-cap    | `brightfire/context-window-min-cap`    | `13d7032bf3`       | active |
+| session-reset-prompt      | `brightfire/session-reset-prompt`      | `da5af0fb19`       | active |
+| control-ui-title          | `brightfire/control-ui-title`          | `c87162eba5`       | active |
+| sessions-history-archived | `brightfire/sessions-history-archived` | `4d6e956110`       | active |
+| sessions-list-archived    | `brightfire/sessions-list-archived`    | `0653638ace`       | active |
