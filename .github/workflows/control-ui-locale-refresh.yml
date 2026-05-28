@@ -30,7 +30,6 @@ concurrency:
 jobs:
   plan:
     if: false
-    if: github.repository == 'openclaw/openclaw' && (github.event_name != 'push' || github.actor != 'github-actions[bot]')
     runs-on: ubuntu-latest
     outputs:
       has_locales: ${{ steps.plan.outputs.has_locales }}
@@ -105,7 +104,6 @@ jobs:
   refresh:
     if: false
     needs: plan
-    if: github.repository == 'openclaw/openclaw' && needs.plan.outputs.has_locales == 'true'
     strategy:
       fail-fast: false
       max-parallel: 4

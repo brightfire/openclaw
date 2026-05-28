@@ -41,19 +41,6 @@ jobs:
   authorize_actor:
     if: false
     name: Authorize workflow actor
-    if: >-
-      ${{
-        github.event_name == 'workflow_dispatch' ||
-        (
-          github.event_name == 'issue_comment' &&
-          github.event.issue.pull_request &&
-          (
-            contains(github.event.comment.body, '@Mantis') ||
-            contains(github.event.comment.body, '@mantis') ||
-            contains(github.event.comment.body, '/mantis')
-          )
-        )
-      }}
     runs-on: blacksmith-8vcpu-ubuntu-2404
     steps:
       - name: Require maintainer-level repository access
@@ -171,7 +158,6 @@ jobs:
     if: false
     name: Validate selected refs
     needs: resolve_request
-    if: ${{ needs.resolve_request.outputs.should_run == 'true' }}
     runs-on: blacksmith-8vcpu-ubuntu-2404
     outputs:
       baseline_revision: ${{ steps.validate.outputs.baseline_revision }}
@@ -239,7 +225,6 @@ jobs:
     if: false
     name: Run Discord status reaction before/after
     needs: [resolve_request, validate_refs]
-    if: ${{ needs.resolve_request.outputs.should_run == 'true' }}
     runs-on: blacksmith-8vcpu-ubuntu-2404
     timeout-minutes: 180
     environment: qa-live-shared

@@ -211,7 +211,6 @@ jobs:
       contents: read
     name: ${{ matrix.check_name }}
     needs: [preflight]
-    if: needs.preflight.outputs.run_plugin_prerelease_static == 'true'
     runs-on: blacksmith-8vcpu-ubuntu-2404
     timeout-minutes: 45
     strategy:
@@ -248,7 +247,6 @@ jobs:
       contents: read
     name: ${{ matrix.check_name }}
     needs: [preflight]
-    if: needs.preflight.outputs.run_plugin_prerelease_node == 'true'
     runs-on: ${{ matrix.runner || 'ubuntu-24.04' }}
     timeout-minutes: 60
     strategy:
@@ -322,7 +320,6 @@ jobs:
       contents: read
     name: ${{ matrix.check_name }}
     needs: [preflight]
-    if: needs.preflight.outputs.run_plugin_prerelease_extensions == 'true'
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     strategy:
@@ -355,7 +352,6 @@ jobs:
     if: false
     name: plugin-prerelease-docker-suite
     needs: [preflight]
-    if: ${{ inputs.full_release_validation && needs.preflight.outputs.run_plugin_prerelease_docker == 'true' }}
     permissions:
       actions: read
       contents: read
@@ -383,7 +379,6 @@ jobs:
       - plugin-prerelease-node-shard
       - plugin-prerelease-extension-shard
       - plugin-prerelease-docker-suite
-    if: ${{ !cancelled() && always() && needs.preflight.outputs.run_plugin_prerelease_suite == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:

@@ -102,7 +102,6 @@ jobs:
   install-smoke-fast:
     if: false
     needs: [preflight]
-    if: needs.preflight.outputs.run_fast_install_smoke == 'true' && needs.preflight.outputs.run_full_install_smoke != 'true'
     runs-on: blacksmith-16vcpu-ubuntu-2404
     env:
       DOCKER_BUILD_SUMMARY: "false"
@@ -210,7 +209,6 @@ jobs:
   root_dockerfile_image:
     if: false
     needs: [preflight]
-    if: needs.preflight.outputs.run_full_install_smoke == 'true'
     runs-on: blacksmith-16vcpu-ubuntu-2404
     outputs:
       image_ref: ${{ steps.image.outputs.image_ref }}
@@ -287,7 +285,6 @@ jobs:
   qr_package_install_smoke:
     if: false
     needs: [preflight]
-    if: needs.preflight.outputs.run_full_install_smoke == 'true'
     runs-on: blacksmith-16vcpu-ubuntu-2404
     steps:
       - name: Checkout CLI
@@ -303,7 +300,6 @@ jobs:
   root_dockerfile_smokes:
     if: false
     needs: [preflight, root_dockerfile_image]
-    if: needs.preflight.outputs.run_full_install_smoke == 'true'
     runs-on: blacksmith-16vcpu-ubuntu-2404
     steps:
       - name: Checkout CLI
@@ -391,7 +387,6 @@ jobs:
   installer_smoke:
     if: false
     needs: [preflight, root_dockerfile_image]
-    if: needs.preflight.outputs.run_full_install_smoke == 'true'
     runs-on: blacksmith-16vcpu-ubuntu-2404
     env:
       DOCKER_BUILD_SUMMARY: "false"
@@ -462,7 +457,6 @@ jobs:
   bun_global_install_smoke:
     if: false
     needs: [preflight, root_dockerfile_image]
-    if: needs.preflight.outputs.run_full_install_smoke == 'true' && needs.preflight.outputs.run_bun_global_install_smoke == 'true'
     runs-on: blacksmith-16vcpu-ubuntu-2404
     steps:
       - name: Checkout CLI
@@ -497,7 +491,6 @@ jobs:
   docker-e2e-fast:
     if: false
     needs: [preflight]
-    if: needs.preflight.outputs.run_fast_install_smoke == 'true' || needs.preflight.outputs.run_full_install_smoke == 'true'
     runs-on: blacksmith-16vcpu-ubuntu-2404
     timeout-minutes: 12
     env:

@@ -30,7 +30,6 @@ env:
 jobs:
   validate_manual_backfill:
     if: false
-    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -53,7 +52,6 @@ jobs:
 
   approve_manual_backfill:
     if: false
-    if: github.event_name == 'workflow_dispatch'
     needs: validate_manual_backfill
     # WARNING: KEEP MANUAL BACKFILLS GATED BY THE docker-release ENVIRONMENT.
     runs-on: ubuntu-24.04
@@ -71,7 +69,6 @@ jobs:
   build-amd64:
     if: false
     needs: [approve_manual_backfill]
-    if: ${{ always() && (github.event_name != 'workflow_dispatch' || needs.approve_manual_backfill.result == 'success') }}
     # WARNING: DO NOT REVERT THIS TO A BLACKSMITH RUNNER WITHOUT RE-VALIDATING TAG BACKFILLS.
     runs-on: ubuntu-24.04
     permissions:
@@ -170,7 +167,6 @@ jobs:
   build-arm64:
     if: false
     needs: [approve_manual_backfill]
-    if: ${{ always() && (github.event_name != 'workflow_dispatch' || needs.approve_manual_backfill.result == 'success') }}
     # WARNING: DO NOT REVERT THIS TO A BLACKSMITH RUNNER WITHOUT RE-VALIDATING TAG BACKFILLS.
     runs-on: ubuntu-24.04-arm
     permissions:
@@ -269,7 +265,6 @@ jobs:
   create-manifest:
     if: false
     needs: [approve_manual_backfill, build-amd64, build-arm64]
-    if: ${{ always() && needs.build-amd64.result == 'success' && needs.build-arm64.result == 'success' && (github.event_name != 'workflow_dispatch' || needs.approve_manual_backfill.result == 'success') }}
     # WARNING: DO NOT REVERT THIS TO A BLACKSMITH RUNNER WITHOUT RE-VALIDATING TAG BACKFILLS.
     runs-on: ubuntu-24.04
     permissions:
@@ -345,7 +340,6 @@ jobs:
   verify-attestations:
     if: false
     needs: [create-manifest]
-    if: ${{ always() && needs.create-manifest.result == 'success' }}
     runs-on: ubuntu-24.04
     permissions:
       contents: read

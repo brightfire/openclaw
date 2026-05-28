@@ -156,7 +156,6 @@ jobs:
   preview_plugin_pack:
     if: false
     needs: preview_plugins_npm
-    if: needs.preview_plugins_npm.outputs.has_candidates == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -188,7 +187,6 @@ jobs:
   publish_plugins_npm:
     if: false
     needs: [preview_plugins_npm, preview_plugin_pack]
-    if: github.event_name == 'workflow_dispatch' && needs.preview_plugins_npm.outputs.has_candidates == 'true'
     runs-on: ubuntu-latest
     environment: npm-release
     permissions:

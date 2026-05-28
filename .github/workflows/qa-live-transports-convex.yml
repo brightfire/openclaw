@@ -223,7 +223,6 @@ jobs:
     if: false
     name: Run Matrix live QA lane
     needs: [authorize_actor, validate_selected_ref]
-    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.matrix_profile == 'all') }}
     runs-on: blacksmith-8vcpu-ubuntu-2404
     timeout-minutes: 60
     environment: qa-live-shared
@@ -299,7 +298,6 @@ jobs:
     if: false
     name: Run Matrix live QA lane (${{ matrix.profile }})
     needs: [authorize_actor, validate_selected_ref]
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.matrix_profile == 'all' }}
     runs-on: blacksmith-8vcpu-ubuntu-2404
     timeout-minutes: 60
     environment: qa-live-shared
@@ -571,7 +569,6 @@ jobs:
     if: false
     name: Run Slack live QA lane with Convex leases
     needs: [authorize_actor, validate_selected_ref]
-    if: vars.OPENCLAW_QA_SLACK_LIVE_CI_ENABLED == 'true'
     runs-on: blacksmith-8vcpu-ubuntu-2404
     timeout-minutes: 60
     environment: qa-live-shared

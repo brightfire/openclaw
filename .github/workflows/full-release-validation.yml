@@ -203,7 +203,6 @@ jobs:
     if: false
     name: Run normal full CI
     needs: [resolve_target]
-    if: contains(fromJSON('["all","ci"]'), inputs.rerun_group)
     runs-on: ubuntu-24.04
     timeout-minutes: 240
     outputs:
@@ -303,7 +302,6 @@ jobs:
     if: false
     name: Run plugin prerelease validation
     needs: [resolve_target]
-    if: contains(fromJSON('["all","plugin-prerelease"]'), inputs.rerun_group)
     runs-on: ubuntu-24.04
     timeout-minutes: 300
     outputs:
@@ -403,7 +401,6 @@ jobs:
     if: false
     name: Run release/live/Docker/QA validation
     needs: [resolve_target]
-    if: contains(fromJSON('["all","release-checks","install-smoke","cross-os","live-e2e","package","qa","qa-parity","qa-live"]'), inputs.rerun_group)
     runs-on: ubuntu-24.04
     timeout-minutes: 720
     outputs:
@@ -549,7 +546,6 @@ jobs:
     if: false
     name: Prepare release package artifact
     needs: [resolve_target]
-    if: ${{ inputs.npm_telegram_package_spec == '' && inputs.rerun_group == 'all' && inputs.release_profile == 'full' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     permissions:
@@ -621,7 +617,6 @@ jobs:
     if: false
     name: Run package Telegram E2E
     needs: [resolve_target, prepare_release_package]
-    if: ${{ always() && contains(fromJSON('["all","npm-telegram"]'), inputs.rerun_group) && (inputs.npm_telegram_package_spec != '' || (inputs.rerun_group == 'all' && inputs.release_profile == 'full')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     outputs:
@@ -719,7 +714,6 @@ jobs:
     if: false
     name: Verify full validation
     needs: [resolve_target, normal_ci, plugin_prerelease, release_checks, npm_telegram]
-    if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:

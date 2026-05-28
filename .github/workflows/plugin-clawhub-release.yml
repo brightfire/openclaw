@@ -182,7 +182,6 @@ jobs:
   preview_plugin_pack:
     if: false
     needs: preview_plugins_clawhub
-    if: needs.preview_plugins_clawhub.outputs.has_candidates == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -313,7 +312,6 @@ jobs:
   collect_preview_results:
     if: false
     needs: [preview_plugins_clawhub, preview_plugin_pack]
-    if: always() && needs.preview_plugins_clawhub.outputs.has_candidates == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -394,7 +392,6 @@ jobs:
   publish_plugins_clawhub:
     if: false
     needs: [preview_plugins_clawhub, collect_preview_results]
-    if: always() && github.event_name == 'workflow_dispatch' && needs.preview_plugins_clawhub.outputs.has_candidates == 'true' && needs.collect_preview_results.outputs.passed_count != '0'
     runs-on: ubuntu-latest
     environment: clawhub-plugin-release
     permissions:
@@ -537,7 +534,6 @@ jobs:
   verify_plugins_clawhub:
     if: false
     needs: [preview_plugins_clawhub, collect_preview_results, publish_plugins_clawhub]
-    if: always() && needs.preview_plugins_clawhub.outputs.has_candidates == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
