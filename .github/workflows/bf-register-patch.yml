@@ -40,7 +40,8 @@ jobs:
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event.pull_request.merged == true &&
-      startsWith(github.event.pull_request.base.ref, 'brightfire/'))
+      startsWith(github.event.pull_request.base.ref, 'brightfire/') &&
+      github.event.pull_request.base.ref != 'brightfire/ci')
     runs-on: ubuntu-latest
     steps:
       - name: Generate app token
