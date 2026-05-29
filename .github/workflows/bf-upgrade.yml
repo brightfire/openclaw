@@ -32,10 +32,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
+      - name: Generate app token
+        uses: actions/create-github-app-token@v3
+        id: app-token
+        with:
+          app-id: ${{ vars.BF_CI_APP_ID }}
+          private-key: ${{ secrets.BF_CI_APP_PRIVATE_KEY }}
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+          persist-credentials: true
 
       - name: Configure git
         run: |
@@ -170,28 +179,52 @@ jobs:
 
       - name: Push stable branch
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           STABLE_BRANCH="stable/${{ steps.tag.outputs.version }}"
           git push origin "$STABLE_BRANCH"
           echo "Pushed $STABLE_BRANCH"
 
+      - name: Update upstream pin in BRIGHTFIRE_PATCHES.md (brightfire/ci)
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+          NEW_TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          # The pin in BRIGHTFIRE_PATCHES.md _meta is the SINGLE source of truth
+          # for which upstream version build-stable rebuilds against. After a
+          # successful upgrade we must update it on brightfire/ci, otherwise the
+          # next build-stable run will still rebuild against the previous pin.
+          WORK=$(mktemp -d)
+          git clone --depth 1 --branch brightfire/ci "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$WORK"
+          cd "$WORK"
+          git config user.name "brightfire-ci"
+          git config user.email "ci@brightfire.net"
+          python3 scripts/bf/update-upstream-pin.py BRIGHTFIRE_PATCHES.md "$NEW_TAG"
+          if git diff --quiet BRIGHTFIRE_PATCHES.md; then
+            echo "No pin change needed (already $NEW_TAG)"
+          else
+            git add BRIGHTFIRE_PATCHES.md
+            git commit --no-verify -m "ci: bump upstream pin to $NEW_TAG"
+            git push origin brightfire/ci
+            echo "Bumped manifest pin to $NEW_TAG on brightfire/ci"
+          fi
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: "v${{ steps.tag.outputs.version }}-bf1"
+          tag_name: "bf/v${{ steps.tag.outputs.version }}-bf1"
           name: "Brightfire v${{ steps.tag.outputs.version }}-bf1 (upgrade)"
           body: |
             Upgraded from upstream `${{ inputs.old_upstream_tag }}` to `${{ steps.tag.outputs.tag }}`
             Active patches applied: ${{ steps.patches.outputs.list }}
-          target_commitish: "v${{ steps.tag.outputs.version }}-bf1"
+          target_commitish: "stable/${{ steps.tag.outputs.version }}"
 
       - name: Build and attach tarball
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           VERSION="${{ steps.tag.outputs.version }}"
-          TAG="v${VERSION}-bf1"
+          TAG="bf/v${VERSION}-bf1"
           NODE_OPTIONS="--max-old-space-size=6000" pnpm build
           pnpm ui:build
           npm pack --ignore-scripts

@@ -26,6 +26,18 @@ For each patch:
 
 ---
 
+## _meta
+
+- **Upstream version:** `v2026.5.7`
+
+> The pinned upstream tag that `BF: Build Stable` rebuilds against. Patches in this
+> manifest are applied on top of this exact upstream version. Bumping this value is a
+> deliberate upgrade decision (handled by the openclaw-fleet-upgrade flow), **never**
+> auto-detected. Must be a `vX.Y.Z` tag that exists on the upstream remote
+> (`openclaw/openclaw`).
+
+---
+
 ## Slack Markdown
 
 - **Status:** active
