@@ -96,6 +96,16 @@ jobs:
             python3 scripts/bf/update-patch-entry.py "$PATCHES_FILE" "$PATCH_NAME" "$COMMIT_SHORT" "$PR_NUMBER"
 
             git add "$PATCHES_FILE"
+            if git diff --cached --quiet; then
+              # No-op update: the manifest already has this SHA and PR number
+              # for this patch (e.g. a manual re-dispatch of the same registration,
+              # or a merge that didn't change the canonical-branch HEAD).
+              # Treat as success and skip the push — there is nothing for
+              # bf-build-stable to react to. If a rebuild is desired anyway,
+              # dispatch bf-build-stable manually.
+              echo "No manifest changes for $PATCH_NAME (commit=$COMMIT_SHORT, PR=#$PR_NUMBER already recorded); skipping push."
+              exit 0
+            fi
             git commit -m "ci: update patch entry for brightfire/${PATCH_NAME} (PR #${PR_NUMBER}, ${COMMIT_SHORT})"
 
           else
