@@ -43,15 +43,24 @@ jobs:
       startsWith(github.event.pull_request.base.ref, 'brightfire/'))
     runs-on: ubuntu-latest
     steps:
+      - name: Generate app token
+        uses: actions/create-github-app-token@v3
+        id: app-token
+        with:
+          app-id: ${{ vars.BF_CI_APP_ID }}
+          private-key: ${{ secrets.BF_CI_APP_PRIVATE_KEY }}
+
       - name: Checkout brightfire/ci
         uses: actions/checkout@v4
         with:
           ref: brightfire/ci
           fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+          persist-credentials: true
 
       - name: Update patch manifest
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
           PATCH_BRANCH: ${{ inputs.patch_branch || github.event.pull_request.base.ref }}
           PR_TITLE: ${{ inputs.pr_title || github.event.pull_request.title }}
           PR_NUMBER: ${{ inputs.pr_number || github.event.pull_request.number }}
