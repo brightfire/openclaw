@@ -33,7 +33,8 @@ For each patch:
 - **Stable branch first merged into:** `stable/v2026.5.3`
 - **Canonical branch:** `brightfire/slack-mrkdwn`
 - **Branch HEAD commit:** `f3adf06a84`
-- **Source PR:** —
+- **Source PR:** #0
+- **Last updated:** 2026-05-29
 
 ### Rationale
 
