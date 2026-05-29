@@ -2,10 +2,15 @@
 """Update an existing patch entry in BRIGHTFIRE_PATCHES.md.
 
 Called by the BF: Register Patch workflow when a patch is already registered.
-Updates the squashed commit SHA, source PR number, and last-updated date.
+Updates the Branch HEAD commit and the last-updated date.
 
 Usage:
     python3 update-patch-entry.py <patches_file> <patch_name> <commit_short> <pr_number>
+
+If <pr_number> is empty (""), the Source PR field is left untouched. This is the
+'catch-up sync' mode — brings the recorded SHA current after a direct push to the
+patch branch without overwriting the historical PR audit trail. Pass a real PR
+number (or 0) only when the change is from an actual PR-close event.
 """
 
 import re
@@ -41,12 +46,15 @@ def main():
                 lambda m: m.group(1) + f"`{commit_short}`",
                 part,
             )
-            # Update Source PR
-            part = re.sub(
-                r"(\*\*Source PR:\*\*\s*)([^\n]*)",
-                lambda m: m.group(1) + f"#{pr_number}",
-                part,
-            )
+            # Update Source PR — but only when pr_number is non-empty.
+            # The catch-up sync flow passes an empty string so it doesn't
+            # clobber the historical Source PR with stale data.
+            if pr_number != "":
+                part = re.sub(
+                    r"(\*\*Source PR:\*\*\s*)([^\n]*)",
+                    lambda m: m.group(1) + f"#{pr_number}",
+                    part,
+                )
             # Update or insert Last updated
             if "**Last updated:**" in part:
                 part = re.sub(
@@ -70,7 +78,10 @@ def main():
     with open(patches_file, "w") as f:
         f.write("".join(new_parts))
 
-    print(f"Updated entry for {branch_pattern}: commit={commit_short}, PR=#{pr_number}")
+    if pr_number == "":
+        print(f"Updated entry for {branch_pattern}: commit={commit_short} (Source PR unchanged)")
+    else:
+        print(f"Updated entry for {branch_pattern}: commit={commit_short}, PR=#{pr_number}")
 
 
 if __name__ == "__main__":
