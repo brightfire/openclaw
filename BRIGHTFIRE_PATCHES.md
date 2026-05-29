@@ -135,8 +135,9 @@ git cherry-pick ee129e4c2a
 - **Reapply:** yes
 - **Stable branch first merged into:** `stable/v2026.5.3`
 - **Canonical branch:** `brightfire/cache-write-ttl-cost`
-- **Branch HEAD commit:** `13bb2c6064`
-- **Source PR:** #24
+- **Branch HEAD commit:** `b88dbad357`
+- **Source PR:** #0
+- **Last updated:** 2026-05-29
 
 ### Rationale
 
