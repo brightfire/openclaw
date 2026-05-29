@@ -21,8 +21,16 @@ This file is the source of truth for all Brightfire-specific changes that must b
 For each patch:
 
 1. **Status**: `active`, `deferred`, `upstreamed`, or `superseded`
-2. **Canonical branch**: `brightfire/<name>` — single squashed commit for clean cherry-pick
-3. **Upgrade guidance**: exact `git cherry-pick` command for applying to a new stable branch
+2. **Canonical branch**: `brightfire/<name>` — carries the patch's own commits **plus** merge commits from each upstream tag the patch has been brought current with. The `brightfire/ci` build flow squash-merges this branch onto stable.
+3. **Upgrade guidance**: notes on which upstream changes have historically conflicted and how they were resolved, to help future upgrades.
+
+## Brightfire patches use **merge**, not rebase, to absorb upstream
+
+When a `brightfire/<patch>` branch needs to be brought current with a new upstream tag, we **merge the tag into the patch branch** (`git merge v<new-tag>` on the branch). We do not rebase the branch onto the new tag.
+
+Why: each upstream catch-up produces real conflicts that need human/LLM judgment. Recording those resolutions as discrete merge commits gives a durable, reviewable audit trail — `git log` shows exactly when each upstream tag was absorbed and `git show <merge-sha>` shows the conflict resolution diff. Rebase would silently bake the resolutions into rewritten commits with no marker that a conflict was resolved at all, and would force-push the branch in the process.
+
+The `bf-build-stable.yml` workflow always uses `git merge --squash` to apply each patch onto stable, so a patch branch with internal merge commits still flattens cleanly into a single "apply patch" commit on `stable/*`. The audit trail lives where it's useful (on the patch branch); the stable history stays linear.
 
 ---
 
