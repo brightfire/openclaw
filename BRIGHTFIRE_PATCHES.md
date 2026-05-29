@@ -235,8 +235,9 @@ git cherry-pick a59fb22abc
 - **Reapply:** yes
 - **Stable branch first merged into:** `stable/v2026.5.3`
 - **Canonical branch:** `brightfire/control-ui-title`
-- **Branch HEAD commit:** `c87162eba5`
-- **Source PR:** —
+- **Branch HEAD commit:** `0027e9c8fd`
+- **Source PR:** #0
+- **Last updated:** 2026-05-29
 
 ### Rationale
 
