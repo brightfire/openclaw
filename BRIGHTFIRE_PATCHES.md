@@ -202,8 +202,9 @@ git cherry-pick 02cf7b6a4f
 - **Reapply:** yes
 - **Stable branch first merged into:** `stable/v2026.5.3`
 - **Canonical branch:** `brightfire/session-reset-prompt`
-- **Branch HEAD commit:** `da5af0fb19`
-- **Source PR:** #30
+- **Branch HEAD commit:** `88504fce32`
+- **Source PR:** #0
+- **Last updated:** 2026-05-29
 
 ### Rationale
 
