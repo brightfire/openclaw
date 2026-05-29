@@ -186,6 +186,18 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile || pnpm install
 
+      - name: Update package.json version
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('package.json','utf8'));
+            pkg.version = '$VERSION';
+            fs.writeFileSync('package.json', JSON.stringify(pkg,null,2)+'\n');
+          "
+          git add package.json
+          git commit --no-verify -m "ci: bump version to $VERSION"
+
       - name: Regenerate build artifacts
         # Generated files are build output, not source. Patches must never
         # hand-edit them, and a clean-but-stale generated file on a patch
@@ -210,18 +222,6 @@ jobs:
 
       - name: Run tests
         run: pnpm vitest run --reporter=basic 2>/dev/null || echo "Tests step completed (non-blocking)"
-
-      - name: Update package.json version
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          node -e "
-            const fs = require('fs');
-            const pkg = JSON.parse(fs.readFileSync('package.json','utf8'));
-            pkg.version = '$VERSION';
-            fs.writeFileSync('package.json', JSON.stringify(pkg,null,2)+'\n');
-          "
-          git add package.json
-          git commit --no-verify -m "ci: bump version to $VERSION"
 
       - name: Push stable branch
         env:
