@@ -186,6 +186,25 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile || pnpm install
 
+      - name: Regenerate build artifacts
+        # Generated files are build output, not source. Patches must never
+        # hand-edit them, and a clean-but-stale generated file on a patch
+        # branch would otherwise ship in the tarball. Regenerate canonical
+        # outputs from the merged sources here so the build is deterministic
+        # regardless of what any patch branch contains. See SKILL.md "Patch
+        # Discipline" rule 6 in the openclaw-dev skill for the full policy.
+        run: |
+          pnpm config:schema:gen
+          pnpm protocol:gen
+          pnpm protocol:gen:swift
+          if ! git diff --quiet; then
+            git add -A
+            git commit --no-verify -m "ci: regenerate build artifacts on stable"
+            echo "Regenerated build artifacts committed."
+          else
+            echo "No regenerated-artifact drift; nothing to commit."
+          fi
+
       - name: Pre-push checks
         run: pnpm prepush:ci 2>/dev/null || pnpm tsgo
 
