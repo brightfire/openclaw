@@ -204,9 +204,15 @@ jobs:
             echo "No pin change needed (already $NEW_TAG)"
           else
             git add BRIGHTFIRE_PATCHES.md
-            git commit --no-verify -m "ci: bump upstream pin to $NEW_TAG"
+            # `[skip ci]` suppresses bf-build-stable's push trigger for THIS
+            # commit only — we do not want this pin bump to launch a parallel
+            # build-stable run that would race the upgrade's own release/tag/
+            # tarball steps. Subsequent register-patch pushes to brightfire/ci
+            # still trigger build-stable normally; the marker only applies to
+            # the head commit of this one push.
+            git commit --no-verify -m "ci: bump upstream pin to $NEW_TAG [skip ci]"
             git push origin brightfire/ci
-            echo "Bumped manifest pin to $NEW_TAG on brightfire/ci"
+            echo "Bumped manifest pin to $NEW_TAG on brightfire/ci (build-stable suppressed via [skip ci])"
           fi
 
       - name: Create Release
