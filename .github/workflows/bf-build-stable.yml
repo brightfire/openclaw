@@ -53,32 +53,47 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Determine upstream tag
-        id: upstream-tag
-        run: |
-          if [ -n "${{ inputs.upstream_tag }}" ]; then
-            TAG="${{ inputs.upstream_tag }}"
-          else
-            # Read the base version from the current stable branch name
-            # or fallback to the base version in package.json
-            BASE=$(git tag -l --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
-            if [ -z "$BASE" ]; then
-              BASE=$(git tag -l --sort=-v:refname | head -1)
-            fi
-            TAG="$BASE"
-          fi
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          VERSION="${TAG#v}"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-
       - name: Ensure upstream remote
         run: |
           ORIGIN_URL=$(git remote get-url origin 2>/dev/null || echo "")
           if echo "$ORIGIN_URL" | grep -q brightfire; then
             UPSTREAM_URL=$( echo "$ORIGIN_URL" | sed 's|brightfire/openclaw|openclaw/openclaw|' )
             git remote add upstream "$UPSTREAM_URL" 2>/dev/null || git remote set-url upstream "$UPSTREAM_URL"
-            git fetch --force upstream
+            # Fetch upstream tags BEFORE determining the upstream tag so detection
+            # sees real upstream tags rather than whatever happened to be in the
+            # checkout (e.g. our own bf/* tags pushed by prior runs).
+            git fetch --force --tags upstream
           fi
+
+      - name: Determine upstream tag
+        id: upstream-tag
+        run: |
+          if [ -n "${{ inputs.upstream_tag }}" ]; then
+            TAG="${{ inputs.upstream_tag }}"
+          else
+            # Pick the highest semver-shaped upstream tag (vX.Y.Z, no suffix, no prefix).
+            # Prefer tags reachable from upstream/main so we never pick up our own bf/* tags.
+            if git rev-parse --verify --quiet upstream/main >/dev/null; then
+              TAG=$(git tag -l --merged upstream/main --sort=-v:refname 'v*' \
+                | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
+            else
+              TAG=$(git tag -l --sort=-v:refname 'v*' \
+                | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
+            fi
+            if [ -z "$TAG" ]; then
+              echo "::error::Could not determine an upstream tag (no vX.Y.Z tags found). Pass inputs.upstream_tag explicitly."
+              exit 1
+            fi
+          fi
+          # Validate shape (also protects the explicit inputs.upstream_tag path).
+          if ! echo "$TAG" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::Resolved upstream tag '$TAG' is not vX.Y.Z; refusing to continue."
+            exit 1
+          fi
+          VERSION="${TAG#v}"
+          echo "Resolved upstream tag: $TAG (version=$VERSION)"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Compute version suffix
         id: version
