@@ -4,6 +4,10 @@
 Called by the BF: Register Patch workflow when a patch is already registered.
 Updates the Branch HEAD commit and the last-updated date.
 
+Idempotent per-entry: when the recorded Branch HEAD SHA already equals
+commit_short, no fields are rewritten (SHA, Source PR, Last updated are all
+left unchanged) and the script exits 0 with a no-op message.
+
 Usage:
     python3 update-patch-entry.py <patches_file> <patch_name> <commit_short> <pr_number>
 
@@ -37,9 +41,27 @@ def main():
     parts = re.split(r"(?=^## )", content, flags=re.MULTILINE)
 
     updated = False
+    noop = False
     new_parts = []
     for part in parts:
         if branch_pattern in part and "**Canonical branch:**" in part:
+            # Extract the currently recorded Branch HEAD SHA for idempotency check.
+            existing_sha_match = re.search(
+                r"\*\*Branch HEAD commit:\*\*\s*`([^`]*)`",
+                part,
+            )
+            existing_sha = existing_sha_match.group(1) if existing_sha_match else None
+
+            if existing_sha == commit_short:
+                # SHA already matches — skip all mutations to keep the entry
+                # byte-identical (no Last updated bump, no Source PR overwrite).
+                # This makes sync_all truly no-op when all patch tips are current.
+                updated = True
+                noop = True
+                new_parts.append(part)
+                print(f"No changes for {branch_pattern}: commit={commit_short} already recorded")
+                continue
+
             # Update Squashed commit (source)
             part = re.sub(
                 r"(\*\*Branch HEAD commit:\*\*\s*)(`[^`]*`|[^\n]*)",
@@ -77,6 +99,10 @@ def main():
 
     with open(patches_file, "w") as f:
         f.write("".join(new_parts))
+
+    if noop:
+        # Message already printed inside the loop; nothing more to emit.
+        return
 
     if pr_number == "":
         print(f"Updated entry for {branch_pattern}: commit={commit_short} (Source PR unchanged)")
