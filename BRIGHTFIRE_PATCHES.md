@@ -172,8 +172,9 @@ git cherry-pick f7aa4fdc7b
 - **Reapply:** yes
 - **Stable branch first merged into:** `stable/v2026.5.3`
 - **Canonical branch:** `brightfire/context-window-min-cap`
-- **Branch HEAD commit:** `13d7032bf3`
-- **Source PR:** #31
+- **Branch HEAD commit:** `68203b417d`
+- **Source PR:** #0
+- **Last updated:** 2026-05-29
 
 ### Rationale
 
