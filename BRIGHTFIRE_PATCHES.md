@@ -52,7 +52,7 @@ The `bf-build-stable.yml` workflow always uses `git merge --squash` to apply eac
 - **Reapply:** yes
 - **Stable branch first merged into:** `stable/v2026.5.3`
 - **Canonical branch:** `brightfire/slack-mrkdwn`
-- **Branch HEAD commit:** `f3adf06a84`
+- **Branch HEAD commit:** `d60b00265d`
 - **Source PR:** #0
 - **Last updated:** 2026-05-29
 
