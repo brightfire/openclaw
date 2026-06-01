@@ -4,7 +4,8 @@
 # and merging all active brightfire/* patch branches in manifest order.
 # Then tags the result and creates a GitHub Release with the built tarball.
 #
-# Triggered automatically on push to any brightfire/* branch, or manually.
+# Triggered automatically on push to brightfire/ci when BRIGHTFIRE_PATCHES.md
+# or this workflow changes. Manual dispatch otherwise.
 # Only one run executes at a time — new runs queue and cancel prior runs.
 
 name: "BF: Build Stable"
@@ -13,8 +14,9 @@ on:
   push:
     branches:
       - 'brightfire/ci'
-    paths-ignore:
-      - '.github/workflows/**'
+    paths:
+      - 'BRIGHTFIRE_PATCHES.md'
+      - '.github/workflows/bf-build-stable.yml'
   workflow_dispatch:
     inputs:
       upstream_tag:
