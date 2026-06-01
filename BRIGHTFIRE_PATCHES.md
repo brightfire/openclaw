@@ -294,3 +294,24 @@ TBD — update after first stable merge
 ### Upgrade guidance
 
 _Add known conflict notes or `git cherry-pick` command here._
+
+## CLI HTTP Health Fallback (Loopback Trusted-Proxy)
+
+- **Status:** active
+- **Reapply:** yes
+- **Stable branch first merged into:** TBD
+- **Canonical branch:** `brightfire/cli-http-fallback`
+- **Branch HEAD commit:** `3340721625`
+- **Source PR:** #0
+
+### Rationale
+
+_Add description of what this patch does and why._
+
+### Files touched
+
+TBD — update after first stable merge
+
+### Upgrade guidance
+
+_Add known conflict notes or `git cherry-pick` command here._
