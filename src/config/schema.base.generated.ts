@@ -21016,6 +21016,11 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
                 description:
                   "Retention for reset transcript archives (`*.reset.<timestamp>`). Accepts a duration (for example `30d`), or `false` to disable cleanup. Defaults to pruneAfter so reset artifacts do not grow forever.",
               },
+              sessionHistoryRetentionDays: {
+                type: "integer",
+                exclusiveMinimum: 0,
+                maximum: 9007199254740991,
+              },
               maxDiskBytes: {
                 anyOf: [
                   {

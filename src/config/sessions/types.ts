@@ -5,6 +5,7 @@ import type { ChannelId } from "../../channels/plugins/channel-id.types.js";
 import { normalizeOptionalString } from "../../shared/string-coerce.js";
 import type { DeliveryContext } from "../../utils/delivery-context.types.js";
 import type { TtsAutoMode } from "../types.tts.js";
+import type { SessionArchiveReason } from "./artifacts.js";
 
 export type SessionScope = "per-sender" | "global";
 
@@ -331,6 +332,12 @@ export type SessionEntry = {
    */
   pluginDebugEntries?: SessionPluginDebugEntry[];
   acp?: SessionAcpMeta;
+  /** True when this entry represents an archived (reset/deleted/killed) session. */
+  archived?: boolean;
+  /** Epoch-ms timestamp when the session was archived. */
+  archivedAt?: number;
+  /** Reason the session was archived. */
+  archivedReason?: SessionArchiveReason;
 };
 
 function isSessionPluginTraceLine(line: string): boolean {

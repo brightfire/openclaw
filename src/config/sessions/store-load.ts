@@ -12,6 +12,7 @@ import {
 import { resolveMaintenanceConfig } from "./store-maintenance-runtime.js";
 import {
   capEntryCount,
+  compactExpiredArchivedEntries,
   pruneStaleEntries,
   shouldRunSessionEntryMaintenance,
   type ResolvedSessionMaintenanceConfig,
@@ -153,6 +154,19 @@ export function loadSessionStore(
   if (opts.runMaintenance) {
     const maintenance = opts.maintenanceConfig ?? resolveMaintenanceConfig();
     const beforeCount = Object.keys(store).length;
+    // Always compact expired archived entries regardless of mode.
+    const archivedCompacted = compactExpiredArchivedEntries(
+      store,
+      maintenance.sessionHistoryRetentionMs,
+      { log: false },
+    );
+    if (archivedCompacted > 0) {
+      serializedFromDisk = undefined;
+      log.info("compacted expired archived session entries during load-time maintenance", {
+        storePath,
+        compacted: archivedCompacted,
+      });
+    }
     if (maintenance.mode === "enforce" && beforeCount > maintenance.maxEntries) {
       const pruned = pruneStaleEntries(store, maintenance.pruneAfterMs, { log: false });
       const countAfterPrune = Object.keys(store).length;

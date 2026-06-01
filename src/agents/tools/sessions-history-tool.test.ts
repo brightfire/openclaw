@@ -38,6 +38,61 @@ function createHistoryToolWithMessage(content: string) {
   });
 }
 
+describe("sessions_history includeArchived", () => {
+  beforeAll(async () => {
+    previousConfigPath = process.env.OPENCLAW_CONFIG_PATH;
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-sessions-history-archived-"));
+    useLoggingConfig("archived-test.json", {});
+    ({ createSessionsHistoryTool } = await import("./sessions-history-tool.js"));
+  });
+
+  afterAll(() => {
+    if (previousConfigPath === undefined) {
+      delete process.env.OPENCLAW_CONFIG_PATH;
+    } else {
+      process.env.OPENCLAW_CONFIG_PATH = previousConfigPath;
+    }
+    if (tempDir) {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("includes archived flag when chat.history returns archived data", async () => {
+    const tool = createSessionsHistoryTool({
+      config: {},
+      callGateway: async <T = Record<string, unknown>>(request: CallGatewayRequest): Promise<T> => {
+        if (request.method === "chat.history") {
+          return {
+            messages: [
+              { role: "assistant", content: "archived message" },
+            ],
+            archived: true,
+          } as T;
+        }
+        return {} as T;
+      },
+    });
+
+    // "main" resolves without needing the gateway
+    const result = await tool.execute("call-1", {
+      sessionKey: "main",
+      includeArchived: true,
+    });
+    const details = result.details as Record<string, unknown>;
+    expect(details.archived).toBe(true);
+    expect(Array.isArray(details.messages)).toBe(true);
+  });
+
+  it("schema accepts includeArchived parameter", () => {
+    // Verify the tool schema includes includeArchived
+    const tool = createSessionsHistoryTool({ config: {} });
+    const schema = tool.parameters as Record<string, unknown>;
+    const properties = (schema as { properties?: Record<string, unknown> }).properties;
+    expect(properties).toBeDefined();
+    expect(properties!.includeArchived).toBeDefined();
+  });
+});
+
 describe("sessions_history redaction", () => {
   beforeAll(async () => {
     previousConfigPath = process.env.OPENCLAW_CONFIG_PATH;
