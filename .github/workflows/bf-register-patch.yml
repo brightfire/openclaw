@@ -124,9 +124,17 @@ jobs:
           # ------------------------------------------------------------
           # Single-patch mode (PR-close event OR manual dispatch with a
           # specific patch_branch). Unchanged behavior, except that an
-          # empty pr_number now means 'preserve existing Source PR'
+          # empty OR zero pr_number means 'preserve existing Source PR'
           # (catch-up sync semantic for one branch).
           # ------------------------------------------------------------
+
+          # Treat 0 / "0" / whitespace as empty so that the historical
+          # workflow_dispatch default of `0` does not clobber Source PR
+          # on catch-up dispatches.
+          if [ -n "$PR_NUMBER" ] && [ "$(printf '%s' "$PR_NUMBER" | tr -d '[:space:]')" = "0" ]; then
+            echo "DEBUG: PR_NUMBER='$PR_NUMBER' treated as preserve"
+            PR_NUMBER=""
+          fi
 
           # Resolve the commit SHA:
           # - PR event: use the merge commit SHA
