@@ -292,7 +292,7 @@ def _append_new_entry(content, patch_name, commit_short, pr_value, pr_title):
         "",
         "### Upgrade guidance",
         "",
-        "_Add known conflict notes or `git cherry-pick` command here._",
+        "_Describe upstream changes that have historically conflicted and how they were resolved. Patches are absorbed by `bf-build-stable` via squash-merge of the canonical branch — do not prescribe `git cherry-pick` here._",
         "",
     ]
     return content + "\n".join(block_lines)

@@ -25,6 +25,13 @@ For each patch:
 3. **Source PR**: Full URL to the PR (e.g. `https://github.com/brightfire/openclaw/pull/N`). For cross-repo refs (upstream `openclaw/openclaw`, etc.) use the appropriate full URL. Use `—` when there is no PR. Tooling that receives a bare `N` or `#N` will default to `https://github.com/brightfire/openclaw/pull/N`.
 4. **Upgrade guidance**: notes on which upstream changes have historically conflicted and how they were resolved, to help future upgrades.
 
+> **Don't put `git cherry-pick <sha>` in upgrade guidance.** Patches are absorbed into
+> stable by `bf-build-stable.yml`, which `git merge --squash`es each canonical branch
+> in manifest order. To bring a patch branch up to a new upstream tag, follow the
+> `openclaw-dev` skill's upstream-upgrade flow (merge the upstream tag into the patch
+> branch, resolve conflicts, commit). Upgrade guidance should describe **what tends
+> to conflict and how to resolve it**, not prescribe a commit-level workflow.
+
 ## Brightfire patches use **merge**, not rebase, to absorb upstream
 
 When a `brightfire/<patch>` branch needs to be brought current with a new upstream tag, we **merge the tag into the patch branch** (`git merge v<new-tag>` on the branch). We do not rebase the branch onto the new tag.
@@ -67,11 +74,7 @@ The Slack extension was using `text_markup: 'mrkdwn'` (Slack's proprietary diale
 
 ### Upgrade guidance
 
-```
-git cherry-pick 8b472f2555
-```
-
-**Conflicts:** Unlikely. Small, isolated change.
+**Conflicts:** Unlikely. Small, isolated change to `inboundFormattingHints`.
 
 ---
 
@@ -118,11 +121,7 @@ Cross-gateway (XGW) communication layer that allows OpenClaw instances to route 
 
 ### Upgrade guidance
 
-```
-git cherry-pick ee129e4c2a
-```
-
-**Conflicts on v2026.5.7:** `server-http.ts` and `server.impl.ts`.
+**Conflicts seen on past upgrades:** `server-http.ts` and `server.impl.ts`.
 
 - `server-http.ts`: upstream added `isManagedOutgoingImagePath()` in the same area as our `isXgwPath()`. Include both; XGW handler goes AFTER upstream's `isManagedOutgoingImagePath` in the function declarations.
 - `server.impl.ts`: upstream added `else` branch after `scheduleGatewayPostReadyMaintenance`. Our `initXgw()` goes inside the `if (!minimalTestGateway)` block; preserve upstream's `else` branch.
@@ -160,11 +159,7 @@ Worker/sub-agent sessions use 5-minute cache TTL (not 1-hour), but the cost esti
 
 ### Upgrade guidance
 
-```
-git cherry-pick f7aa4fdc7b
-```
-
-**Conflicts:** `schema.base.generated.ts` — regenerate with `npm run config:schema:gen`.
+**Conflicts:** `schema.base.generated.ts` — regenerate with `npm run config:schema:gen` rather than resolving by hand.
 
 ---
 
@@ -193,9 +188,7 @@ When a user configures `contextWindow: 200000` for a model whose native catalog 
 
 ### Upgrade guidance
 
-```
-git cherry-pick 02cf7b6a4f
-```
+**Conflicts:** Usually none. Touches isolated context-window-guard code paths.
 
 ---
 
@@ -224,11 +217,7 @@ Makes the bare `/new` and `/reset` session greeting customizable via `agents.def
 
 ### Upgrade guidance
 
-```
-git cherry-pick a59fb22abc
-```
-
-**Conflicts:** `schema.base.generated.ts` — regenerate with `npm run config:schema:gen` instead of manual resolve. The test file may also conflict if upstream changes the default reset prompt text again — update the expected string in the test.
+**Conflicts:** `schema.base.generated.ts` — regenerate with `npm run config:schema:gen` rather than resolving by hand. The test file may also conflict if upstream changes the default reset prompt text again — update the expected string in the test.
 
 ---
 
@@ -257,11 +246,7 @@ Adds `gateway.controlUi.title` config option to customize the HTML `<title>` of 
 
 ### Upgrade guidance
 
-```
-git cherry-pick 030d2bbc0c
-```
-
-**Conflicts:** `ui/index.html` — check the `<title>` tag. `src/config/types.gateway.ts` — check the `GatewayConfig` type for new upstream fields.
+**Conflicts:** `ui/index.html` — check the `<title>` tag for upstream changes. `src/config/types.gateway.ts` — check the `GatewayConfig` type for new upstream fields.
 
 ---
 
@@ -276,26 +261,59 @@ git cherry-pick 030d2bbc0c
 | session-reset-prompt   | `brightfire/session-reset-prompt`   | `da5af0fb19`       | active |
 | control-ui-title       | `brightfire/control-ui-title`       | `c87162eba5`       | active |
 
-## store-based session archiving with configurable retention
+## Store-Based Session Archiving (Configurable Retention)
 
 - **Status:** active
 - **Reapply:** yes
-- **Stable branch first merged into:** TBD
+- **Stable branch first merged into:** `stable/v2026.5.7`
 - **Canonical branch:** `brightfire/sessions-history-archived`
 - **Branch HEAD commit:** `1fc52459d4`
 - **Source PR:** https://github.com/brightfire/openclaw/pull/39
 
 ### Rationale
 
-_Add description of what this patch does and why._
+Replaces the upstream file-based session archive (`.jsonl.reset.*` next to the
+active transcript) with a store-based archive entry created at archive time.
+Centralized in `updateSessionStore` so any code path that mints a new sessionId
+(rollover, explicit `/reset`, `sessions.delete`) is captured. Archive entries
+carry the original metadata plus an `_archiveReason` (`"rollover"`, `"reset"`,
+or `"deleted"`) and a typed `archivedAt` timestamp.
+
+The `_archiveReason` field is transient: set on the in-memory SessionEntry
+before the store write, consumed by the archive hook, then stripped before
+persistence. A safety-net strip in `store-load.ts` catches any leakage.
+
+Makes `sessions_list` with `includeArchived: true` show archived entries from
+the store (full metadata, not just transcript snippets), `sessions.resolve`
+find archived entries sorted by `archivedAt` descending, and `chat.history`
+fall back to archived transcript files when the store entry is archived.
+
+Config: `session.maintenance.sessionHistoryRetentionDays` (default 30).
 
 ### Files touched
 
-TBD — update after first stable merge
+- `src/agents/sessions-list-internal.ts` (archived entry merge)
+- `src/agents/sessions-resolve.ts` (archived sort + lookup)
+- `src/agents/tools/sessions-resolution.ts` (archived prefix detection)
+- `src/chat/chat-history-internal.ts` (archive transcript fallback)
+- `src/config/types.session.ts` (`sessionHistoryRetentionDays` field)
+- `src/gateway/session-utils.ts` (`buildArchiveStoreEntry`, archived row builder)
+- `src/gateway/sessions-internal.ts` (sessions.delete uses inline archive)
+- `src/gateway/store-load.ts` (strip `_archiveReason` safety net)
+- `src/gateway/update-session-store.ts` (centralized archive hook)
 
 ### Upgrade guidance
 
-_Add known conflict notes or `git cherry-pick` command here._
+**Conflicts seen on past upgrades:** most session-related upstream changes touch
+`updateSessionStore` directly; the archive hook must stay in the same call
+ordering relative to the sessionId-mint check. If `chat-history-internal.ts`
+upstream changes its file-finding logic, re-verify the archived-transcript
+fallback path.
+
+**Note:** several code paths mint sessionIds (rollover, explicit reset,
+`sessions.delete`, `get-reply-fast-path` test path); the centralized hook in
+`updateSessionStore` catches all of them. `get-reply-fast-path.ts` is
+test-only and intentionally bypasses the hook.
 
 ## CLI HTTP Health Fallback (Loopback Trusted-Proxy)
 
@@ -331,11 +349,7 @@ CLI fallback yet, so we carry this as a Brightfire-original patch.
 
 ### Upgrade guidance
 
-```
-git cherry-pick 3340721625
-```
-
-**Known conflict on `v2026.5.7`:** `status.print.ts` — upstream introduced a
+**Conflicts seen on past upgrades:** `status.print.ts` — upstream introduced a
 dynamic probe label via `formatProbeKindLabel(rpc.kind)` (`"Connectivity
 probe:"` / `"Read probe:"`). Preserve upstream's `probeLabel` variable and
 apply it inside both the `rpc.ok && rpc.httpFallback` branch and the existing
