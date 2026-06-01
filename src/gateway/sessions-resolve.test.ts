@@ -206,6 +206,110 @@ describe("resolveSessionKeyFromResolveParams", () => {
     });
   });
 
+  describe("archived entry resolution", () => {
+    it("finds an archived entry by key prefix when live entry is missing", async () => {
+      const archivedStoreKey = `${canonicalKey}:archived:sess-archived`;
+      hoisted.loadSessionStoreMock.mockReturnValue({
+        [archivedStoreKey]: {
+          sessionId: "sess-archived",
+          updatedAt: 1,
+          archived: true,
+          archivedAt: 2000,
+          archivedReason: "deleted",
+        },
+      });
+
+      const result = await resolveSessionKeyFromResolveParams({
+        cfg: {},
+        p: { key: canonicalKey },
+      });
+
+      expect(result).toEqual({ ok: true, key: archivedStoreKey });
+    });
+
+    it("finds an archived entry by sessionId lookup", async () => {
+      const archivedStoreKey = `${canonicalKey}:archived:sess-old`;
+      hoisted.loadCombinedSessionStoreForGatewayMock.mockReturnValue({
+        storePath,
+        store: {
+          [archivedStoreKey]: {
+            sessionId: "sess-old",
+            updatedAt: 1,
+            archived: true,
+            archivedAt: 3000,
+            archivedReason: "reset",
+          },
+        },
+      });
+
+      const result = await resolveSessionKeyFromResolveParams({
+        cfg: {},
+        p: { sessionId: "sess-old" },
+      });
+
+      expect(result).toEqual({ ok: true, key: archivedStoreKey });
+    });
+
+    it("returns the most recent archived entry when multiple exist for same key prefix", async () => {
+      const olderArchiveKey = `${canonicalKey}:archived:sess-older`;
+      const newerArchiveKey = `${canonicalKey}:archived:sess-newer`;
+      hoisted.loadSessionStoreMock.mockReturnValue({
+        [olderArchiveKey]: {
+          sessionId: "sess-older",
+          updatedAt: 1,
+          archived: true,
+          archivedAt: 1000,
+          archivedReason: "reset",
+        },
+        [newerArchiveKey]: {
+          sessionId: "sess-newer",
+          updatedAt: 2,
+          archived: true,
+          archivedAt: 5000,
+          archivedReason: "deleted",
+        },
+      });
+
+      const result = await resolveSessionKeyFromResolveParams({
+        cfg: {},
+        p: { key: canonicalKey },
+      });
+
+      expect(result).toEqual({ ok: true, key: newerArchiveKey });
+    });
+
+    it("returns the most recent archived entry when multiple exist for same sessionId", async () => {
+      const olderArchiveKey = `${canonicalKey}:archived:sess-dup`;
+      const newerArchiveKey = "agent:main:other:archived:sess-dup";
+      hoisted.loadCombinedSessionStoreForGatewayMock.mockReturnValue({
+        storePath,
+        store: {
+          [olderArchiveKey]: {
+            sessionId: "sess-dup",
+            updatedAt: 1,
+            archived: true,
+            archivedAt: 1000,
+            archivedReason: "reset",
+          },
+          [newerArchiveKey]: {
+            sessionId: "sess-dup",
+            updatedAt: 2,
+            archived: true,
+            archivedAt: 9000,
+            archivedReason: "deleted",
+          },
+        },
+      });
+
+      const result = await resolveSessionKeyFromResolveParams({
+        cfg: {},
+        p: { sessionId: "sess-dup" },
+      });
+
+      expect(result).toEqual({ ok: true, key: newerArchiveKey });
+    });
+  });
+
   it("resolves sessionId matches from raw store metadata without hydrating session rows", async () => {
     hoisted.loadCombinedSessionStoreForGatewayMock.mockReturnValue({
       storePath,
