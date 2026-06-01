@@ -237,7 +237,7 @@ git cherry-pick a59fb22abc
 - **Stable branch first merged into:** `stable/v2026.5.3`
 - **Canonical branch:** `brightfire/control-ui-title`
 - **Branch HEAD commit:** `0027e9c8fd`
-- **Source PR:** —
+- **Source PR:** https://github.com/openclaw/openclaw/pull/51067
 - **Last updated:** 2026-05-29
 
 ### Rationale
