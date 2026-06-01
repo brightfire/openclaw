@@ -1,68 +1,28 @@
 # Brightfire Patch Registry
 
-> **This file lives on the `brightfire/ci` branch — not on `stable/*` or any patch branch.**
->
-> It is the **source of truth** for all Brightfire-specific patches that must be replayed
-> onto each new upstream stable release.
->
-> **Maintained automatically** by the [`BF: Register Patch`](.github/workflows/bf-register-patch.yml)
-> workflow, which runs whenever a PR is merged into a `brightfire/*` branch. It adds a new
-> entry for previously-unseen branches and updates the commit SHA / source PR for known ones.
->
-> **Read by [`BF: Build Stable`](.github/workflows/bf-build-stable.yml)** to know which
-> patch branches to merge (in order) when rebuilding the `stable/*` branch.
->
-> **Manual edits are welcome** — add rationale, upgrade guidance, conflict notes, or update
-> the status field (`active` → `deferred` / `upstreamed` / `superseded`) as patches evolve.
-> The workflow will continue to update `Branch HEAD commit` and `Source PR` automatically.
-
-This file is the source of truth for all Brightfire-specific changes that must be replayed onto future upstream stable releases.
-
-For each patch:
-
-1. **Status**: `active`, `deferred`, `upstreamed`, or `superseded`
-2. **Canonical branch**: `brightfire/<name>` — carries the patch's own commits **plus** merge commits from each upstream tag the patch has been brought current with. The `brightfire/ci` build flow squash-merges this branch onto stable.
-3. **Source PR**: Full URL to the PR (e.g. `https://github.com/brightfire/openclaw/pull/N`). For cross-repo refs (upstream `openclaw/openclaw`, etc.) use the appropriate full URL. Use `—` when there is no PR. Tooling that receives a bare `N` or `#N` will default to `https://github.com/brightfire/openclaw/pull/N`.
-4. **Upgrade guidance**: notes on which upstream changes have historically conflicted and how they were resolved, to help future upgrades.
-
-> **Don't put `git cherry-pick <sha>` in upgrade guidance.** Patches are absorbed into
-> stable by `bf-build-stable.yml`, which `git merge --squash`es each canonical branch
-> in manifest order. To bring a patch branch up to a new upstream tag, follow the
-> `openclaw-dev` skill's upstream-upgrade flow (merge the upstream tag into the patch
-> branch, resolve conflicts, commit). Upgrade guidance should describe **what tends
-> to conflict and how to resolve it**, not prescribe a commit-level workflow.
-
-## Brightfire patches use **merge**, not rebase, to absorb upstream
-
-When a `brightfire/<patch>` branch needs to be brought current with a new upstream tag, we **merge the tag into the patch branch** (`git merge v<new-tag>` on the branch). We do not rebase the branch onto the new tag.
-
-Why: each upstream catch-up produces real conflicts that need human/LLM judgment. Recording those resolutions as discrete merge commits gives a durable, reviewable audit trail — `git log` shows exactly when each upstream tag was absorbed and `git show <merge-sha>` shows the conflict resolution diff. Rebase would silently bake the resolutions into rewritten commits with no marker that a conflict was resolved at all, and would force-push the branch in the process.
-
-The `bf-build-stable.yml` workflow always uses `git merge --squash` to apply each patch onto stable, so a patch branch with internal merge commits still flattens cleanly into a single "apply patch" commit on `stable/*`. The audit trail lives where it's useful (on the patch branch); the stable history stays linear.
-
----
+See [docs/brightfire-patches.md](docs/brightfire-patches.md) for how this file
+is maintained, the merge-not-rebase philosophy, and the new-entry template.
 
 ## _meta
 
 - **Upstream version:** `v2026.5.7`
 
-> The pinned upstream tag that `BF: Build Stable` rebuilds against. Patches in this
-> manifest are applied on top of this exact upstream version. Bumping this value is a
-> deliberate upgrade decision (handled by the openclaw-fleet-upgrade flow), **never**
-> auto-detected. Must be a `vX.Y.Z` tag that exists on the upstream remote
-> (`openclaw/openclaw`).
+## Patches
 
----
+| Name | Canonical branch | Branch HEAD | Source PR | Stable since | Status | Reapply | Last updated |
+| ---- | ---------------- | ----------- | --------- | ------------ | ------ | ------- | ------------ |
+| Slack Markdown | `brightfire/slack-mrkdwn` | `d60b00265d` | — | `stable/v2026.5.3` | active | yes | 2026-05-29 |
+| XGW Cross-Gateway | `brightfire/xgw` | `93987583f9` | <https://github.com/brightfire/openclaw/pull/19>, <https://github.com/brightfire/openclaw/pull/20>, <https://github.com/brightfire/openclaw/pull/21> | `stable/v2026.5.3` | active | yes | 2026-06-01 |
+| Cache Write TTL Cost | `brightfire/cache-write-ttl-cost` | `b88dbad357` | <https://github.com/brightfire/openclaw/pull/24> | `stable/v2026.5.3` | active | yes | 2026-05-29 |
+| Context Window Min Cap | `brightfire/context-window-min-cap` | `68203b417d` | <https://github.com/brightfire/openclaw/pull/31> | `stable/v2026.5.3` | active | yes | 2026-05-29 |
+| Session Reset Prompt | `brightfire/session-reset-prompt` | `88504fce32` | <https://github.com/brightfire/openclaw/pull/30> | `stable/v2026.5.3` | active | yes | 2026-05-29 |
+| Control UI Title | `brightfire/control-ui-title` | `0027e9c8fd` | <https://github.com/openclaw/openclaw/pull/51067> | `stable/v2026.5.3` | active | yes | 2026-05-29 |
+| Store-Based Session Archiving | `brightfire/sessions-history-archived` | `1fc52459d4` | <https://github.com/brightfire/openclaw/pull/39> | `stable/v2026.5.7` | active | yes | 2026-06-01 |
+| CLI HTTP Health Fallback | `brightfire/cli-http-fallback` | `3340721625` | — | `stable/v2026.5.7` | active | yes | 2026-06-01 |
 
 ## Slack Markdown
 
-- **Status:** active
-- **Reapply:** yes
-- **Stable branch first merged into:** `stable/v2026.5.3`
-- **Canonical branch:** `brightfire/slack-mrkdwn`
-- **Branch HEAD commit:** `d60b00265d`
-- **Source PR:** —
-- **Last updated:** 2026-05-29
+(canonical: `brightfire/slack-mrkdwn`)
 
 ### Rationale
 
@@ -76,17 +36,9 @@ The Slack extension was using `text_markup: 'mrkdwn'` (Slack's proprietary diale
 
 **Conflicts:** Unlikely. Small, isolated change to `inboundFormattingHints`.
 
----
-
 ## XGW Cross-Gateway
 
-- **Status:** active
-- **Reapply:** yes
-- **Stable branch first merged into:** `stable/v2026.5.3`
-- **Canonical branch:** `brightfire/xgw`
-- **Branch HEAD commit:** `93987583f9`
-- **Source PR:** https://github.com/brightfire/openclaw/pull/19, https://github.com/brightfire/openclaw/pull/20, https://github.com/brightfire/openclaw/pull/21 (v2026.4.15); ported to v2026.5.3 as single commit
-- **Last updated:** 2026-06-01
+(canonical: `brightfire/xgw`)
 
 ### Rationale
 
@@ -98,6 +50,8 @@ Cross-gateway (XGW) communication layer that allows OpenClaw instances to route 
 - Route registration: XGW HTTP routes wired into `createGatewayHttpServer()`
 - Lifecycle: `initXgw()` called at gateway startup, `shutdownXgw()` at shutdown
 - Porting fixes: `fleet/FleetConfig` type on `OpenClawConfig`, `correlationId` on `startAgentRun` return type
+
+**Historical note:** On `v2026.4.15` this was three separate canonical branches (`brightfire/xgw`, `brightfire/xgw-async`, `brightfire/xgw-sessions-send-reply`), corresponding to the three Source PRs (#19, #20, #21). For `v2026.5.3` all three were ported together as one squashed commit since they are tightly coupled and there is no reason to apply them independently.
 
 ### Files touched
 
@@ -126,19 +80,9 @@ Cross-gateway (XGW) communication layer that allows OpenClaw instances to route 
 - `server-http.ts`: upstream added `isManagedOutgoingImagePath()` in the same area as our `isXgwPath()`. Include both; XGW handler goes AFTER upstream's `isManagedOutgoingImagePath` in the function declarations.
 - `server.impl.ts`: upstream added `else` branch after `scheduleGatewayPostReadyMaintenance`. Our `initXgw()` goes inside the `if (!minimalTestGateway)` block; preserve upstream's `else` branch.
 
-**Note:** On v2026.4.15 this was three separate canonical branches (`brightfire/xgw`, `brightfire/xgw-async`, `brightfire/xgw-sessions-send-reply`). For v2026.5.3 all three were ported together as one squashed commit since they are tightly coupled and there is no reason to apply them independently.
-
----
-
 ## Cache Write TTL Cost
 
-- **Status:** active
-- **Reapply:** yes
-- **Stable branch first merged into:** `stable/v2026.5.3`
-- **Canonical branch:** `brightfire/cache-write-ttl-cost`
-- **Branch HEAD commit:** `b88dbad357`
-- **Source PR:** https://github.com/brightfire/openclaw/pull/24
-- **Last updated:** 2026-05-29
+(canonical: `brightfire/cache-write-ttl-cost`)
 
 ### Rationale
 
@@ -161,17 +105,9 @@ Worker/sub-agent sessions use 5-minute cache TTL (not 1-hour), but the cost esti
 
 **Conflicts:** `schema.base.generated.ts` — regenerate with `npm run config:schema:gen` rather than resolving by hand.
 
----
-
 ## Context Window Min Cap
 
-- **Status:** active
-- **Reapply:** yes
-- **Stable branch first merged into:** `stable/v2026.5.3`
-- **Canonical branch:** `brightfire/context-window-min-cap`
-- **Branch HEAD commit:** `68203b417d`
-- **Source PR:** https://github.com/brightfire/openclaw/pull/31
-- **Last updated:** 2026-05-29
+(canonical: `brightfire/context-window-min-cap`)
 
 ### Rationale
 
@@ -190,17 +126,9 @@ When a user configures `contextWindow: 200000` for a model whose native catalog 
 
 **Conflicts:** Usually none. Touches isolated context-window-guard code paths.
 
----
-
 ## Session Reset Prompt
 
-- **Status:** active
-- **Reapply:** yes
-- **Stable branch first merged into:** `stable/v2026.5.3`
-- **Canonical branch:** `brightfire/session-reset-prompt`
-- **Branch HEAD commit:** `88504fce32`
-- **Source PR:** https://github.com/brightfire/openclaw/pull/30
-- **Last updated:** 2026-05-29
+(canonical: `brightfire/session-reset-prompt`)
 
 ### Rationale
 
@@ -219,17 +147,9 @@ Makes the bare `/new` and `/reset` session greeting customizable via `agents.def
 
 **Conflicts:** `schema.base.generated.ts` — regenerate with `npm run config:schema:gen` rather than resolving by hand. The test file may also conflict if upstream changes the default reset prompt text again — update the expected string in the test.
 
----
-
 ## Control UI Title
 
-- **Status:** active
-- **Reapply:** yes
-- **Stable branch first merged into:** `stable/v2026.5.3`
-- **Canonical branch:** `brightfire/control-ui-title`
-- **Branch HEAD commit:** `0027e9c8fd`
-- **Source PR:** https://github.com/openclaw/openclaw/pull/51067
-- **Last updated:** 2026-05-29
+(canonical: `brightfire/control-ui-title`)
 
 ### Rationale
 
@@ -248,27 +168,9 @@ Adds `gateway.controlUi.title` config option to customize the HTML `<title>` of 
 
 **Conflicts:** `ui/index.html` — check the `<title>` tag for upstream changes. `src/config/types.gateway.ts` — check the `GatewayConfig` type for new upstream fields.
 
----
+## Store-Based Session Archiving
 
-## Patch Registry Table
-
-| Patch                  | Canonical branch                    | Branch HEAD commit | Status |
-| ---------------------- | ----------------------------------- | ------------------ | ------ |
-| slack-mrkdwn           | `brightfire/slack-mrkdwn`           | `f3adf06a84`       | active |
-| xgw-cross-gateway      | `brightfire/xgw`                    | `caabb461f2`       | active |
-| cache-write-ttl-cost   | `brightfire/cache-write-ttl-cost`   | `13bb2c6064`       | active |
-| context-window-min-cap | `brightfire/context-window-min-cap` | `13d7032bf3`       | active |
-| session-reset-prompt   | `brightfire/session-reset-prompt`   | `da5af0fb19`       | active |
-| control-ui-title       | `brightfire/control-ui-title`       | `c87162eba5`       | active |
-
-## Store-Based Session Archiving (Configurable Retention)
-
-- **Status:** active
-- **Reapply:** yes
-- **Stable branch first merged into:** `stable/v2026.5.7`
-- **Canonical branch:** `brightfire/sessions-history-archived`
-- **Branch HEAD commit:** `1fc52459d4`
-- **Source PR:** https://github.com/brightfire/openclaw/pull/39
+(canonical: `brightfire/sessions-history-archived`)
 
 ### Rationale
 
@@ -315,14 +217,9 @@ fallback path.
 `updateSessionStore` catches all of them. `get-reply-fast-path.ts` is
 test-only and intentionally bypasses the hook.
 
-## CLI HTTP Health Fallback (Loopback Trusted-Proxy)
+## CLI HTTP Health Fallback
 
-- **Status:** active
-- **Reapply:** yes
-- **Stable branch first merged into:** `stable/v2026.5.7`
-- **Canonical branch:** `brightfire/cli-http-fallback`
-- **Branch HEAD commit:** `3340721625`
-- **Source PR:** —
+(canonical: `brightfire/cli-http-fallback`)
 
 ### Rationale
 

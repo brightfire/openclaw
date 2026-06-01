@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 """Mutate BRIGHTFIRE_PATCHES.md — the only writer for the patch manifest.
 
+The manifest's `## Patches` table is the source of truth for all
+tool-editable fields (Branch HEAD, Source PR, Last updated). The per-patch
+prose sections below the table carry only Rationale / Files touched /
+Upgrade guidance and are not touched by this script except when creating
+brand-new entries (using the template at
+`docs/brightfire-patches/new-entry-template.md`).
+
 Owns four modes, all dispatched via argparse:
 
   1. Update existing entry (or create new one if missing):
@@ -54,6 +61,7 @@ Idempotency:
 """
 
 import argparse
+import os
 import re
 import subprocess
 import sys
@@ -63,6 +71,9 @@ from datetime import date
 # any short ref (`123` or `#123`) since that's where canonical patch branches
 # live. Cross-repo refs MUST be passed as full URLs by the caller.
 _DEFAULT_PR_REPO_URL = "https://github.com/brightfire/openclaw"
+
+# Path to the externalized new-entry template (relative to repo root).
+_TEMPLATE_PATH = "docs/brightfire-patches/new-entry-template.md"
 
 
 # ---------------------------------------------------------------------------
@@ -104,43 +115,256 @@ def _normalize_pr_ref(value):
     return f"{_DEFAULT_PR_REPO_URL}/pull/{n}"
 
 
-def _parse_active_patches(content):
-    """Return list of active patch names (no `brightfire/` prefix).
+# ---------------------------------------------------------------------------
+# Table parsing / mutation
+# ---------------------------------------------------------------------------
 
-    Mirrors scripts/bf/parse-patches.py's active-list semantics: a patch is
-    active when Status=active and Reapply!=no. parse-patches.py is still
-    the source of truth for bf-build-stable.yml; this in-process copy
-    exists so update-patch-entry.py is self-contained for `--refresh --all`.
+
+# Column ordering, fixed for the lifetime of this manifest format.
+_TABLE_COLS = [
+    "Name",
+    "Canonical branch",
+    "Branch HEAD",
+    "Source PR",
+    "Stable since",
+    "Status",
+    "Reapply",
+    "Last updated",
+]
+
+
+def _split_row(line):
+    """Split a pipe-delimited markdown table row into cells (no outer pipes)."""
+    # Drop leading/trailing whitespace; tolerate optional leading/trailing |.
+    s = line.strip()
+    if s.startswith("|"):
+        s = s[1:]
+    if s.endswith("|"):
+        s = s[:-1]
+    return [c.strip() for c in s.split("|")]
+
+
+def _is_separator_row(cells):
+    """A markdown header-separator row: every cell matches ^:?-+:?$."""
+    if not cells:
+        return False
+    for c in cells:
+        if not re.match(r"^:?-+:?$", c.strip()):
+            return False
+    return True
+
+
+def _find_table_bounds(content):
+    """Locate the Patches table in the manifest.
+
+    Returns (header_idx, sep_idx, first_row_idx, last_row_idx, lines) where
+    indices are 0-based line numbers and last_row_idx is inclusive. Raises
+    RuntimeError when no table is found.
     """
-    active = []
-    current_patch = None
-    current_status = "active"
-    current_reapply = None
+    lines = content.split("\n")
+    in_patches = False
+    header_idx = None
+    for i, line in enumerate(lines):
+        # Enter the Patches section; leave at any subsequent ## heading.
+        if re.match(r"^\s*##\s+Patches\s*$", line):
+            in_patches = True
+            continue
+        if in_patches and re.match(r"^\s*##\s+", line):
+            break
+        if not in_patches:
+            continue
+        # First pipe-delimited row in the section is the header.
+        if line.lstrip().startswith("|") and header_idx is None:
+            header_idx = i
+            break
 
-    for line in content.split("\n"):
-        if re.match(r"^\s*##\s+[A-Z]", line):
-            if current_patch and current_status == "active" and current_reapply != "no":
-                active.append(current_patch)
-            current_patch = None
-            current_status = "active"
-            current_reapply = None
+    if header_idx is None:
+        raise RuntimeError("Could not find Patches table in manifest.")
 
-        m = re.match(r"\s*-\s*\*\*Canonical branch:\*\*\s*`brightfire/([^`]+)`", line)
-        if m:
-            current_patch = m.group(1)
+    sep_idx = header_idx + 1
+    if sep_idx >= len(lines) or not _is_separator_row(_split_row(lines[sep_idx])):
+        raise RuntimeError(
+            "Patches table is missing its header-separator row "
+            f"(expected at line {sep_idx + 1})."
+        )
 
-        m = re.match(r"\s*-\s*\*\*Status:\*\*\s*(\w+)", line)
-        if m:
-            current_status = m.group(1)
+    first_row_idx = sep_idx + 1
+    last_row_idx = first_row_idx - 1
+    for j in range(first_row_idx, len(lines)):
+        line = lines[j]
+        stripped = line.strip()
+        if not stripped:
+            break
+        if not stripped.startswith("|"):
+            break
+        last_row_idx = j
 
-        m = re.match(r"\s*-\s*\*\*Reapply:\*\*\s*(\w+)", line)
-        if m:
-            current_reapply = m.group(1)
+    return header_idx, sep_idx, first_row_idx, last_row_idx, lines
 
-    if current_patch and current_status == "active" and current_reapply != "no":
-        active.append(current_patch)
 
-    return active
+def _parse_table(content):
+    """Return (rows, bounds, lines) where rows is a list of dicts keyed by
+    `_TABLE_COLS` and bounds is `(header_idx, sep_idx, first_row_idx,
+    last_row_idx)`. Skips header + separator rows.
+    """
+    header_idx, sep_idx, first_row_idx, last_row_idx, lines = _find_table_bounds(content)
+    header_cells = _split_row(lines[header_idx])
+    # We don't strictly require column-name match (lets cosmetic header
+    # changes through), but we do require column count.
+    if len(header_cells) != len(_TABLE_COLS):
+        raise RuntimeError(
+            f"Patches table header has {len(header_cells)} columns; expected "
+            f"{len(_TABLE_COLS)} ({', '.join(_TABLE_COLS)})."
+        )
+
+    rows = []
+    for j in range(first_row_idx, last_row_idx + 1):
+        cells = _split_row(lines[j])
+        if len(cells) != len(_TABLE_COLS):
+            # Don't crash on malformed cells — just skip. parse-patches
+            # treats only well-formed rows as patches.
+            continue
+        row = dict(zip(_TABLE_COLS, cells))
+        row["_line"] = j
+        rows.append(row)
+
+    return rows, (header_idx, sep_idx, first_row_idx, last_row_idx), lines
+
+
+_CANONICAL_BRANCH_RE = re.compile(r"`brightfire/([^`]+)`")
+
+
+def _row_branch_name(row):
+    """Extract the patch name (no `brightfire/` prefix) from the Canonical
+    branch cell. Returns None when the cell doesn't match the expected
+    `brightfire/<name>` shape.
+    """
+    m = _CANONICAL_BRANCH_RE.search(row.get("Canonical branch", ""))
+    if not m:
+        return None
+    return m.group(1)
+
+
+def _row_status(row):
+    return row.get("Status", "").strip().lower()
+
+
+def _row_reapply(row):
+    return row.get("Reapply", "").strip().lower()
+
+
+def _row_head_sha(row):
+    """Pull the bare SHA out of the Branch HEAD cell (strip backticks)."""
+    cell = row.get("Branch HEAD", "").strip()
+    m = re.match(r"`([0-9a-fA-F]+)`", cell)
+    if m:
+        return m.group(1)
+    return cell
+
+
+def _render_row(row):
+    """Render a row dict back into a `| ... |` markdown row line."""
+    cells = [row[c] for c in _TABLE_COLS]
+    return "| " + " | ".join(cells) + " |"
+
+
+def _replace_row(lines, row, new_row):
+    """Replace `row` in `lines` with `new_row` (both share `_line`)."""
+    j = row["_line"]
+    new_row["_line"] = j
+    lines[j] = _render_row(new_row)
+
+
+# ---------------------------------------------------------------------------
+# Section helpers (for new-entry append)
+# ---------------------------------------------------------------------------
+
+
+def _strip_conventional_prefix(title):
+    """Strip a leading `feat:` / `fix:` / `doc:` / `docs:` from a PR title."""
+    if not title:
+        return ""
+    return re.sub(r"^(feat|fix|docs?)\s*:\s*", "", title)
+
+
+def _load_template(manifest_path):
+    """Locate and read the new-entry template.
+
+    Search order:
+      1. `$BF_NEW_ENTRY_TEMPLATE` env var (test/override hook).
+      2. `<manifest-dir>/docs/brightfire-patches/new-entry-template.md`.
+      3. `<cwd>/docs/brightfire-patches/new-entry-template.md`.
+      4. `<script-dir>/../../docs/brightfire-patches/new-entry-template.md`
+         (script lives at `scripts/bf/`).
+
+    Returns the raw template text. Raises FileNotFoundError when no
+    candidate is readable.
+    """
+    override = os.environ.get("BF_NEW_ENTRY_TEMPLATE")
+    if override:
+        with open(override, "r") as f:
+            return f.read()
+
+    candidates = []
+    manifest_dir = os.path.dirname(os.path.abspath(manifest_path)) or "."
+    candidates.append(os.path.join(manifest_dir, _TEMPLATE_PATH))
+    candidates.append(os.path.join(os.getcwd(), _TEMPLATE_PATH))
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    candidates.append(
+        os.path.normpath(os.path.join(script_dir, "..", "..", _TEMPLATE_PATH))
+    )
+
+    seen = set()
+    for path in candidates:
+        if path in seen:
+            continue
+        seen.add(path)
+        if os.path.isfile(path):
+            with open(path, "r") as f:
+                return f.read()
+
+    raise FileNotFoundError(
+        "new-entry template not found. Looked in: "
+        + ", ".join(candidates)
+        + ". Set $BF_NEW_ENTRY_TEMPLATE to override."
+    )
+
+
+def _extract_fenced_block(template_text, heading):
+    """Pull the first fenced code block following the given `##` heading.
+
+    Lets `new-entry-template.md` document the row + section templates as
+    fenced blocks, which the script just lifts verbatim.
+    """
+    # Find the heading line, then capture content between the next pair of
+    # ``` fences after it.
+    heading_re = re.compile(rf"^\s*##\s+{re.escape(heading)}\s*$", re.MULTILINE)
+    m = heading_re.search(template_text)
+    if not m:
+        raise RuntimeError(
+            f"new-entry template missing required heading: '## {heading}'"
+        )
+    rest = template_text[m.end():]
+    fence_re = re.compile(r"```[^\n]*\n(.*?)\n```", re.DOTALL)
+    fm = fence_re.search(rest)
+    if not fm:
+        raise RuntimeError(
+            f"new-entry template heading '{heading}' has no following ``` block."
+        )
+    return fm.group(1)
+
+
+def _render_template(template_str, substitutions):
+    """Apply `{KEY}` substitution to the template text."""
+    rendered = template_str
+    for k, v in substitutions.items():
+        rendered = rendered.replace("{" + k + "}", v)
+    return rendered
+
+
+# ---------------------------------------------------------------------------
+# git helpers
+# ---------------------------------------------------------------------------
 
 
 def _resolve_branch_head(patch_name):
@@ -170,13 +394,6 @@ def _resolve_branch_head(patch_name):
     return sha[:10]
 
 
-def _strip_conventional_prefix(title):
-    """Strip a leading `feat:` / `fix:` / `doc:` / `docs:` from a PR title."""
-    if not title:
-        return ""
-    return re.sub(r"^(feat|fix|docs?)\s*:\s*", "", title)
-
-
 # ---------------------------------------------------------------------------
 # Entry-level mutators
 # ---------------------------------------------------------------------------
@@ -185,117 +402,91 @@ def _strip_conventional_prefix(title):
 def _update_entry(content, patch_name, commit_short, pr_value):
     """Update an existing patch entry's Branch HEAD / Source PR / Last updated.
 
-    Args:
-        content: full manifest text.
-        patch_name: patch name without the `brightfire/` prefix.
-        commit_short: 10-char short SHA to record.
-        pr_value: raw --pr value (may be None for 'preserve'). Normalized
-            via `_normalize_pr_ref()`; only written when non-None.
+    The table row is the source of truth; only table cells are mutated.
 
     Returns:
         (new_content, did_change, found_entry)
-          new_content: rewritten manifest text (== content when nothing changed).
-          did_change: True when at least one field was rewritten.
-          found_entry: True when a matching section was located in the file.
     """
     today = date.today().isoformat()
-    branch_pattern = f"brightfire/{patch_name}"
 
-    parts = re.split(r"(?=^## )", content, flags=re.MULTILINE)
-    found = False
-    did_change = False
-    new_parts = []
+    rows, _bounds, lines = _parse_table(content)
+    found_row = None
+    for row in rows:
+        if _row_branch_name(row) == patch_name:
+            found_row = row
+            break
 
-    for part in parts:
-        if branch_pattern in part and "**Canonical branch:**" in part:
-            found = True
-            existing_sha_match = re.search(
-                r"\*\*Branch HEAD commit:\*\*\s*`([^`]*)`",
-                part,
-            )
-            existing_sha = existing_sha_match.group(1) if existing_sha_match else None
+    if not found_row:
+        return content, False, False
 
-            normalized_pr = _normalize_pr_ref(pr_value)
+    normalized_pr = _normalize_pr_ref(pr_value)
+    existing_sha = _row_head_sha(found_row)
 
-            # Idempotency: same SHA AND no Source PR change → leave the
-            # entry byte-identical (no Last updated bump either).
-            if existing_sha == commit_short and normalized_pr is None:
-                new_parts.append(part)
-                continue
+    # Idempotency: same SHA AND no Source PR change → leave the row
+    # byte-identical (no Last updated bump either).
+    if existing_sha == commit_short and normalized_pr is None:
+        return content, False, True
 
-            # Branch HEAD commit
-            part = re.sub(
-                r"(\*\*Branch HEAD commit:\*\*\s*)(`[^`]*`|[^\n]*)",
-                lambda m: m.group(1) + f"`{commit_short}`",
-                part,
-            )
-            # Source PR — only when caller actually provided one.
-            if normalized_pr is not None:
-                part = re.sub(
-                    r"(\*\*Source PR:\*\*\s*)([^\n]*)",
-                    lambda m: m.group(1) + normalized_pr,
-                    part,
-                )
-            elif pr_value is not None and pr_value.strip() not in ("", "#"):
-                # Caller passed something (e.g. "0"/"#0") that resolved to
-                # preserve — emit a debug line so the log explains why
-                # Source PR didn't change. Empty/omitted stays silent.
-                print(
-                    f"DEBUG: pr={pr_value!r} treated as preserve; Source PR for {branch_pattern} left unchanged",
-                    file=sys.stderr,
-                )
-            # Last updated
-            if "**Last updated:**" in part:
-                part = re.sub(
-                    r"(\*\*Last updated:\*\*\s*)([^\n]*)",
-                    lambda m: m.group(1) + today,
-                    part,
-                )
-            else:
-                part = re.sub(
-                    r"(\*\*Source PR:\*\*\s*[^\n]*\n)",
-                    lambda m: m.group(0) + f"- **Last updated:** {today}\n",
-                    part,
-                )
-            did_change = True
-        new_parts.append(part)
+    new_row = dict(found_row)
+    new_row["Branch HEAD"] = f"`{commit_short}`"
+    if normalized_pr is not None:
+        new_row["Source PR"] = normalized_pr
+    elif pr_value is not None and pr_value.strip() not in ("", "#"):
+        print(
+            f"DEBUG: pr={pr_value!r} treated as preserve; Source PR for "
+            f"brightfire/{patch_name} left unchanged",
+            file=sys.stderr,
+        )
+    new_row["Last updated"] = today
 
-    return "".join(new_parts), did_change, found
+    _replace_row(lines, found_row, new_row)
+    return "\n".join(lines), True, True
 
 
-def _append_new_entry(content, patch_name, commit_short, pr_value, pr_title):
-    """Append a fresh manifest section for a brand-new patch."""
+def _append_new_entry(content, patch_name, commit_short, pr_value, pr_title,
+                     manifest_path):
+    """Append a fresh table row + manifest section for a brand-new patch.
+
+    The row template and section template both live in
+    `docs/brightfire-patches/new-entry-template.md` so the prose can be
+    edited without touching this script.
+    """
     title = _strip_conventional_prefix(pr_title) or "Manual registration"
     normalized_pr = _normalize_pr_ref(pr_value)
     source_pr_field = normalized_pr if normalized_pr is not None else "—"
+    today = date.today().isoformat()
 
-    # The manifest's existing sections end without a trailing blank line in
-    # some places, so we always inject a leading newline to play safe.
-    block_lines = [
-        "",
-        f"## {title}",
-        "",
-        "- **Status:** active",
-        "- **Reapply:** yes",
-        "- **Stable branch first merged into:** TBD",
-        f"- **Canonical branch:** `brightfire/{patch_name}`",
-        f"- **Branch HEAD commit:** `{commit_short}`",
-        f"- **Source PR:** {source_pr_field}",
-        "",
-        "### Rationale",
-        "",
-        "_Add description of what this patch does and why._",
-        "",
-        "### Files touched",
-        "",
-        "TBD — update after first stable merge",
-        "",
-        "### Upgrade guidance",
-        "",
-        "_Describe upstream changes that have historically conflicted and how they were resolved. Patches are absorbed by `bf-build-stable` via squash-merge of the canonical branch — do not prescribe `git cherry-pick` here._",
-        "",
-    ]
-    return content + "\n".join(block_lines)
+    substitutions = {
+        "NAME": title,
+        "CANONICAL": patch_name,
+        "COMMIT": commit_short,
+        "SOURCE_PR": source_pr_field,
+        "TODAY": today,
+    }
+
+    template_text = _load_template(manifest_path)
+    row_template = _extract_fenced_block(template_text, "Table row template").strip("\n")
+    section_template = _extract_fenced_block(template_text, "Section template").strip("\n")
+
+    rendered_row = _render_template(row_template, substitutions).strip("\n")
+    rendered_section = _render_template(section_template, substitutions)
+
+    # 1. Insert the new row at the end of the existing Patches table.
+    _rows, bounds, lines = _parse_table(content)
+    _header_idx, _sep_idx, _first_row_idx, last_row_idx = bounds
+    if last_row_idx >= bounds[2] - 1:
+        # last_row_idx may be (first_row_idx - 1) when the table has no
+        # body rows yet; we want to insert at the next line either way.
+        insert_at = last_row_idx + 1
+    else:
+        insert_at = last_row_idx + 1
+    lines.insert(insert_at, rendered_row)
+    content_with_row = "\n".join(lines)
+
+    # 2. Append the section at the end of the file.
+    if not content_with_row.endswith("\n"):
+        content_with_row += "\n"
+    return content_with_row + "\n" + rendered_section.rstrip("\n") + "\n"
 
 
 def _refresh_one(content, patch_name):
@@ -315,6 +506,24 @@ def _refresh_one(content, patch_name):
             f"--refresh --patch {patch_name}: no entry found in manifest"
         )
     return new_content, did_change, short_sha
+
+
+def _list_active_patches(content):
+    """Return list of active patch names (no `brightfire/` prefix) from the
+    Patches table. Active = Status==active AND Reapply!='no'.
+    """
+    rows, _bounds, _lines = _parse_table(content)
+    active = []
+    for row in rows:
+        name = _row_branch_name(row)
+        if not name:
+            continue
+        if _row_status(row) != "active":
+            continue
+        if _row_reapply(row) == "no":
+            continue
+        active.append(name)
+    return active
 
 
 # ---------------------------------------------------------------------------
@@ -398,7 +607,7 @@ def _validate_args(args, parser):
 
 
 def _run_refresh_all(content, patches_file):
-    patches = _parse_active_patches(content)
+    patches = _list_active_patches(content)
     if not patches:
         print("refresh-all: no active patches found in manifest; nothing to do.")
         return 0
@@ -476,7 +685,9 @@ def main():
         return 0
 
     # No existing entry → append a new one.
-    new_content = _append_new_entry(content, patch_name, commit_short, pr_value, pr_title)
+    new_content = _append_new_entry(
+        content, patch_name, commit_short, pr_value, pr_title, patches_file,
+    )
     with open(patches_file, "w") as f:
         f.write(new_content)
     normalized_pr = _normalize_pr_ref(pr_value)
