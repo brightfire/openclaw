@@ -3072,6 +3072,9 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
                           cacheWrite: {
                             type: "number",
                           },
+                          cacheWriteShort: {
+                            type: "number",
+                          },
                           tieredPricing: {
                             type: "array",
                             items: {
@@ -3742,6 +3745,12 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
                 title: "Prompt Overlays",
                 description:
                   "Provider-independent prompt overlays applied by model family before provider-specific prompt hooks.",
+              },
+              sessionResetPrompt: {
+                type: "string",
+                minLength: 1,
+                description:
+                  "Custom greeting prompt injected on bare /new and /reset commands. Replaces the built-in default session reset prompt. Must be a non-empty string. If unset, OpenClaw uses the default prompt that instructs the agent to greet the user in their configured persona.",
               },
               skipBootstrap: {
                 type: "boolean",
@@ -21007,6 +21016,11 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
                 description:
                   "Retention for reset transcript archives (`*.reset.<timestamp>`). Accepts a duration (for example `30d`), or `false` to disable cleanup. Defaults to pruneAfter so reset artifacts do not grow forever.",
               },
+              sessionHistoryRetentionDays: {
+                type: "integer",
+                exclusiveMinimum: 0,
+                maximum: 9007199254740991,
+              },
               maxDiskBytes: {
                 anyOf: [
                   {
@@ -22405,6 +22419,9 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
                 description:
                   "Disables Control UI device identity checks and relies on token/password only. Use only for short-lived debugging on trusted networks, then turn it off immediately.",
               },
+              title: {
+                type: "string",
+              },
             },
             additionalProperties: false,
             title: "Control UI",
@@ -23751,6 +23768,100 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
         additionalProperties: false,
         title: "Memory",
         description: "Memory backend configuration (global).",
+      },
+      fleet: {
+        type: "object",
+        properties: {
+          crossGateway: {
+            type: "object",
+            properties: {
+              enabled: {
+                type: "boolean",
+              },
+              gatewayName: {
+                type: "string",
+              },
+              agentId: {
+                type: "string",
+              },
+              maxConcurrent: {
+                type: "integer",
+                minimum: -9007199254740991,
+                maximum: 9007199254740991,
+              },
+              maxPendingAsync: {
+                type: "integer",
+                minimum: -9007199254740991,
+                maximum: 9007199254740991,
+              },
+              exposureTtlSeconds: {
+                type: "integer",
+                minimum: -9007199254740991,
+                maximum: 9007199254740991,
+              },
+              acceptedTokens: {
+                type: "object",
+                propertyNames: {
+                  type: "string",
+                },
+                additionalProperties: {
+                  type: "string",
+                },
+              },
+              peers: {
+                type: "object",
+                propertyNames: {
+                  type: "string",
+                },
+                additionalProperties: {
+                  type: "object",
+                  properties: {
+                    url: {
+                      type: "string",
+                    },
+                    token: {
+                      type: "string",
+                    },
+                  },
+                  additionalProperties: false,
+                },
+              },
+              securityPrompt: {
+                type: "string",
+              },
+              authMode: {
+                anyOf: [
+                  {
+                    type: "string",
+                    const: "token-only",
+                  },
+                  {
+                    type: "string",
+                    const: "dual",
+                  },
+                  {
+                    type: "string",
+                    const: "signature-only",
+                  },
+                ],
+              },
+              privateKey: {
+                type: "string",
+              },
+              trustedKeys: {
+                type: "object",
+                propertyNames: {
+                  type: "string",
+                },
+                additionalProperties: {
+                  type: "string",
+                },
+              },
+            },
+            additionalProperties: false,
+          },
+        },
+        additionalProperties: false,
       },
       mcp: {
         type: "object",
@@ -29002,6 +29113,10 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
       help: "Plugin-defined configuration payload interpreted by that plugin's own schema and validation rules. Use only documented fields from the plugin to prevent ignored or invalid settings.",
       tags: ["advanced"],
     },
+    "agents.defaults.sessionResetPrompt": {
+      help: "Custom greeting prompt injected on bare /new and /reset commands. Replaces the built-in default session reset prompt. Must be a non-empty string. If unset, OpenClaw uses the default prompt that instructs the agent to greet the user in their configured persona.",
+      tags: ["storage"],
+    },
     "models.providers.*.headers.*": {
       sensitive: true,
       tags: ["security", "models"],
@@ -29422,6 +29537,6 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
       tags: ["advanced", "url-secret"],
     },
   },
-  version: "2026.5.7",
+  version: "2026.5.7-bf3",
   generatedAt: "2026-03-22T21:17:33.302Z",
 };

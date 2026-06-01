@@ -11,6 +11,7 @@ import {
 } from "../../utils/delivery-context.shared.js";
 import type { DeliveryContext } from "../../utils/delivery-context.types.js";
 import { getFileStatSnapshot } from "../cache-utils.js";
+import { buildArchiveStoreEntry } from "./archive-entry.js";
 import { enforceSessionDiskBudget, type SessionDiskBudgetSweepResult } from "./disk-budget.js";
 import { deriveSessionMetaPatch } from "./metadata.js";
 import {
@@ -440,7 +441,37 @@ export async function updateSessionStore<T>(
   return await runExclusiveSessionStoreWrite(storePath, async () => {
     const store = loadMutableSessionStoreForWriter(storePath);
     const previousAcpByKey = collectAcpMetadataSnapshot(store);
+
+    // Snapshot entries with sessionIds before the mutator runs so we can
+    // detect sessionId changes and archive the old entry automatically.
+    // Skip archive keys themselves (they contain `:archived:`).
+    const previousEntries = new Map<string, SessionEntry>();
+    for (const [key, entry] of Object.entries(store)) {
+      if (entry?.sessionId && !key.includes(":archived:")) {
+        previousEntries.set(key, { ...entry });
+      }
+    }
+
     const result = await mutator(store);
+
+    // Detect sessionId changes and create archive entries for old sessions.
+    for (const [key, oldEntry] of previousEntries) {
+      const newEntry = store[key];
+      if (newEntry?.sessionId && newEntry.sessionId !== oldEntry.sessionId) {
+        // Determine the archive reason:
+        // - "deleted": the entry is being marked as archived (explicit deletion)
+        // - "reset": the entry still exists with a new sessionId and is not
+        //   archived (e.g. daily auto-reset or session rollover)
+        // - "reset" is not produced here; explicit resets go through their own
+        //   code path. The centralized hook only sees delete vs reset.
+        const reason = newEntry.archived ? "deleted" : "reset";
+        const { archiveKey, archiveEntry } = buildArchiveStoreEntry(key, oldEntry, reason);
+        if (!store[archiveKey]) {
+          store[archiveKey] = archiveEntry;
+        }
+      }
+    }
+
     preserveExistingAcpMetadata({
       previousAcpByKey,
       nextStore: store,
@@ -523,6 +554,12 @@ async function persistResolvedSessionEntry(params: {
   return params.next;
 }
 
+/**
+ * Patch metadata on an existing session entry without participating in
+ * archive snapshotting. This bypasses the sessionId-change detection in
+ * `updateSessionStore` — which is fine because callers only patch
+ * metadata fields (label, model, thinkingLevel, etc.), never sessionIds.
+ */
 export async function updateSessionStoreEntry(params: {
   storePath: string;
   sessionKey: string;

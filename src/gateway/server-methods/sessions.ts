@@ -12,6 +12,7 @@ import {
 import { compactEmbeddedPiSession } from "../../agents/pi-embedded.js";
 import { clearSessionQueues } from "../../auto-reply/reply/queue/cleanup.js";
 import { normalizeReasoningLevel, normalizeThinkLevel } from "../../auto-reply/thinking.js";
+import { buildArchiveStoreEntry } from "../../config/sessions/archive-entry.js";
 import {
   loadSessionStore,
   runSessionsCleanup,
@@ -1753,8 +1754,12 @@ export const sessionsHandlers: GatewayRequestHandlers = {
     const sessionId = entry?.sessionId;
     const deleted = await updateSessionStore(storePath, (store) => {
       const { primaryKey } = migrateAndPruneGatewaySessionStoreKey({ cfg, key, store });
-      const hadEntry = Boolean(store[primaryKey]);
-      if (hadEntry) {
+      const currentEntry = store[primaryKey];
+      const hadEntry = Boolean(currentEntry);
+      if (hadEntry && currentEntry) {
+        // Archive the entry before deletion so sessions_history can find it.
+        const { archiveKey, archiveEntry } = buildArchiveStoreEntry(primaryKey, currentEntry, "deleted");
+        store[archiveKey] = archiveEntry;
         delete store[primaryKey];
       }
       return hadEntry;
