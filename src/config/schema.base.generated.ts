@@ -3743,6 +3743,12 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
                 description:
                   "Provider-independent prompt overlays applied by model family before provider-specific prompt hooks.",
               },
+              sessionResetPrompt: {
+                type: "string",
+                minLength: 1,
+                description:
+                  "Custom greeting prompt injected on bare /new and /reset commands. Replaces the built-in default session reset prompt. Must be a non-empty string. If unset, OpenClaw uses the default prompt that instructs the agent to greet the user in their configured persona.",
+              },
               skipBootstrap: {
                 type: "boolean",
               },
@@ -29001,6 +29007,10 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
       label: "Plugin Config",
       help: "Plugin-defined configuration payload interpreted by that plugin's own schema and validation rules. Use only documented fields from the plugin to prevent ignored or invalid settings.",
       tags: ["advanced"],
+    },
+    "agents.defaults.sessionResetPrompt": {
+      help: "Custom greeting prompt injected on bare /new and /reset commands. Replaces the built-in default session reset prompt. Must be a non-empty string. If unset, OpenClaw uses the default prompt that instructs the agent to greet the user in their configured persona.",
+      tags: ["storage"],
     },
     "models.providers.*.headers.*": {
       sensitive: true,
