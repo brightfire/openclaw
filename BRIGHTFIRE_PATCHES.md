@@ -301,19 +301,47 @@ _Add known conflict notes or `git cherry-pick` command here._
 
 - **Status:** active
 - **Reapply:** yes
-- **Stable branch first merged into:** TBD
+- **Stable branch first merged into:** `stable/v2026.5.7`
 - **Canonical branch:** `brightfire/cli-http-fallback`
 - **Branch HEAD commit:** `3340721625`
 - **Source PR:** —
 
 ### Rationale
 
-_Add description of what this patch does and why._
+When `gateway.auth.mode` is `trusted-proxy`, the CLI's WebSocket status probe is
+rejected on loopback (127.0.0.1 / ::1) because no proxy identity headers are
+present on the loopback connection. Without this patch, `openclaw status` and
+related CLI flows report `unreachable (unauthorized)` against a perfectly healthy
+local gateway.
+
+This patch falls back to an unauthenticated `HTTP GET /ready` health check when
+the WS probe is rejected for that reason. On success, the CLI reports
+`ok (health-check only — WS auth unavailable on loopback)` so the operator knows
+the gateway is alive even though a full WS session was not opened.
+
+Upstream context: openclaw/openclaw#50580, openclaw/openclaw#67524 (loopback
+auth behaviour in trusted-proxy mode). No upstream PR has shipped an equivalent
+CLI fallback yet, so we carry this as a Brightfire-original patch.
 
 ### Files touched
 
-TBD — update after first stable merge
+- `src/cli/daemon-cli/probe.ts`
+- `src/cli/daemon-cli/status.gather.ts`
+- `src/cli/daemon-cli/status.print.ts`
 
 ### Upgrade guidance
 
-_Add known conflict notes or `git cherry-pick` command here._
+```
+git cherry-pick 3340721625
+```
+
+**Known conflict on `v2026.5.7`:** `status.print.ts` — upstream introduced a
+dynamic probe label via `formatProbeKindLabel(rpc.kind)` (`"Connectivity
+probe:"` / `"Read probe:"`). Preserve upstream's `probeLabel` variable and
+apply it inside both the `rpc.ok && rpc.httpFallback` branch and the existing
+`rpc.ok` branch. Also thread `kind` through to the `httpFallback` return in
+`probe.ts` (`return { ok: true, kind, httpFallback: true, ... }`) so the dynamic
+label stays correct on both code paths.
+
+**Drop when:** upstream lands an equivalent CLI HTTP fallback, or upstream
+stops rejecting loopback connections in `trusted-proxy` mode entirely.
