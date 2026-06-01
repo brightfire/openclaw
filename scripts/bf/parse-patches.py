@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Parse BRIGHTFIRE_PATCHES.md and emit active branches for CI workflows.
+"""Parse BRIGHTFIRE_PATCHES.md and emit patch branches for CI workflows.
 
 Reads the patches manifest file and outputs a comma-separated list of
-canonical branch names that have Status=active and Reapply!=no.
+canonical branch names, in the order they appear in the `## Patches` table.
+Presence in the table is the apply signal — every row is included.
 
 Usage: parse-patches.py [patches-file] [github-output-file]
   patches-file defaults to BRIGHTFIRE_PATCHES.md
@@ -20,14 +21,41 @@ import sys
 UPSTREAM_VERSION_RE = re.compile(r"^v[0-9]+\.[0-9]+\.[0-9]+$")
 
 # Match `- **Upstream version:** \`v2026.5.7\`` inside the _meta section.
-# (Manifest uses `**Foo:**` — colon inside the bold.)
 _UPSTREAM_VERSION_LINE_RE = re.compile(
     r"\s*-\s*\*\*Upstream version:\*\*\s*`([^`]+)`"
 )
 
+# Match a `brightfire/<name>` ref inside backticks (used in the
+# Canonical branch table cell).
+_CANONICAL_BRANCH_RE = re.compile(r"`brightfire/([^`]+)`")
+
+
+def _split_row(line: str) -> list[str]:
+    s = line.strip()
+    if s.startswith("|"):
+        s = s[1:]
+    if s.endswith("|"):
+        s = s[:-1]
+    return [c.strip() for c in s.split("|")]
+
+
+def _is_separator_row(cells: list[str]) -> bool:
+    if not cells:
+        return False
+    for c in cells:
+        if not re.match(r"^:?-+:?$", c.strip()):
+            return False
+    return True
+
 
 def parse_patches(patches_file: str) -> list[str]:
-    """Parse BRIGHTFIRE_PATCHES.md and return list of active patch branch names."""
+    """Parse BRIGHTFIRE_PATCHES.md and return patch branch names to apply.
+
+    Walks the `## Patches` table; presence in the table is the apply signal.
+    Every row with a valid `brightfire/<name>` Canonical branch cell is
+    included. Rows whose Canonical branch cell doesn't match that shape are
+    skipped silently (separator row, malformed entries).
+    """
     try:
         with open(patches_file, "r") as f:
             content = f.read()
@@ -35,38 +63,60 @@ def parse_patches(patches_file: str) -> list[str]:
         print(f"::error::{patches_file} not found", file=sys.stderr)
         sys.exit(1)
 
+    lines = content.split("\n")
+    in_patches = False
+    header_idx = None
+    for i, line in enumerate(lines):
+        if re.match(r"^\s*##\s+Patches\s*$", line):
+            in_patches = True
+            continue
+        if in_patches and re.match(r"^\s*##\s+", line):
+            break
+        if in_patches and line.lstrip().startswith("|"):
+            header_idx = i
+            break
+
+    if header_idx is None:
+        # No table found — empty active list (build-stable will warn).
+        return []
+
+    header_cells = _split_row(lines[header_idx])
+    # Locate the column indices we need by header name.
+    def _col(name: str) -> int:
+        for j, c in enumerate(header_cells):
+            if c.strip().lower() == name.lower():
+                return j
+        raise RuntimeError(f"Patches table missing required column: {name}")
+
+    try:
+        canonical_col = _col("Canonical branch")
+    except RuntimeError as exc:
+        print(f"::error::{exc}", file=sys.stderr)
+        sys.exit(1)
+
+    sep_idx = header_idx + 1
+    if sep_idx >= len(lines) or not _is_separator_row(_split_row(lines[sep_idx])):
+        print(
+            "::error::Patches table is missing its header-separator row",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
     active = []
-    current_patch = None
-    current_status = "active"
-    current_reapply = None
-
-    for line in content.split("\n"):
-        # Detect new patch section header (## followed by non-space)
-        if re.match(r"^\s*##\s+[A-Z]", line):
-            if current_patch and current_status == "active" and current_reapply != "no":
-                active.append(current_patch)
-            current_patch = None
-            current_status = "active"
-            current_reapply = None
-
-        # Canonical branch — manifest uses `**Foo:**` (colon inside bold)
-        m = re.match(r"\s*-\s*\*\*Canonical branch:\*\*\s*`brightfire/([^`]+)`", line)
-        if m:
-            current_patch = m.group(1)
-
-        # Status
-        m = re.match(r"\s*-\s*\*\*Status:\*\*\s*(\w+)", line)
-        if m:
-            current_status = m.group(1)
-
-        # Reapply
-        m = re.match(r"\s*-\s*\*\*Reapply:\*\*\s*(\w+)", line)
-        if m:
-            current_reapply = m.group(1)
-
-    # Last patch
-    if current_patch and current_status == "active" and current_reapply != "no":
-        active.append(current_patch)
+    for j in range(sep_idx + 1, len(lines)):
+        line = lines[j]
+        stripped = line.strip()
+        if not stripped:
+            break
+        if not stripped.startswith("|"):
+            break
+        cells = _split_row(line)
+        if len(cells) <= canonical_col:
+            continue
+        m = _CANONICAL_BRANCH_RE.search(cells[canonical_col])
+        if not m:
+            continue
+        active.append(m.group(1))
 
     return active
 
