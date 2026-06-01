@@ -95,27 +95,6 @@ def _normalize_pr_ref(value):
     return f"{_DEFAULT_PR_REPO_URL}/pull/{n}"
 
 
-def _is_preserve_pr(pr_number: str) -> bool:
-    """Return True if pr_number should be treated as 'preserve existing Source PR'.
-
-    Both an empty string and any integer-zero form ('0', '00', whitespace-only,
-    etc.) are treated as preserve. This matches the workflow_dispatch quirk
-    where the historical input default was 0, and catch-up re-dispatches that
-    accept the default should not overwrite the historical Source PR with #0.
-    Non-zero integers and any non-numeric string are taken at face value and
-    written through to the manifest.
-    """
-    if pr_number is None:
-        return True
-    stripped = pr_number.strip()
-    if stripped == "":
-        return True
-    try:
-        return int(stripped) == 0
-    except ValueError:
-        return False
-
-
 def main():
     parser = argparse.ArgumentParser(
         description="Update an existing patch entry in BRIGHTFIRE_PATCHES.md.",
@@ -206,10 +185,11 @@ def main():
                     lambda m: m.group(1) + normalized_pr,
                     part,
                 )
-            elif pr_number is not None and pr_number.strip() != "":
-                # Non-empty but zero — emit a single debug line so the
-                # workflow run log explains why Source PR didn't change.
-                # Empty pr_number is the normal catch-up path and stays silent.
+            elif pr_number is not None and pr_number.strip() not in ("", "#"):
+                # Caller passed something (e.g. "0" / "#0") that resolved to
+                # preserve — emit a debug line so the workflow log explains why
+                # Source PR didn't change. Empty/omitted is the normal catch-up
+                # path and stays silent.
                 print(
                     f"DEBUG: pr={pr_number!r} treated as preserve; Source PR for {branch_pattern} left unchanged",
                     file=sys.stderr,
