@@ -81,8 +81,9 @@ git cherry-pick 8b472f2555
 - **Reapply:** yes
 - **Stable branch first merged into:** `stable/v2026.5.3`
 - **Canonical branch:** `brightfire/xgw`
-- **Branch HEAD commit:** `caabb461f2`
+- **Branch HEAD commit:** `93987583f9`
 - **Source PR:** https://github.com/brightfire/openclaw/pull/19, https://github.com/brightfire/openclaw/pull/20, https://github.com/brightfire/openclaw/pull/21 (v2026.4.15); ported to v2026.5.3 as single commit
+- **Last updated:** 2026-06-01
 
 ### Rationale
 
