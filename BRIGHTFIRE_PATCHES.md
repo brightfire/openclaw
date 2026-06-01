@@ -53,7 +53,7 @@ The `bf-build-stable.yml` workflow always uses `git merge --squash` to apply eac
 - **Stable branch first merged into:** `stable/v2026.5.3`
 - **Canonical branch:** `brightfire/slack-mrkdwn`
 - **Branch HEAD commit:** `d60b00265d`
-- **Source PR:** #0
+- **Source PR:** —
 - **Last updated:** 2026-05-29
 
 ### Rationale
@@ -136,7 +136,7 @@ git cherry-pick ee129e4c2a
 - **Stable branch first merged into:** `stable/v2026.5.3`
 - **Canonical branch:** `brightfire/cache-write-ttl-cost`
 - **Branch HEAD commit:** `b88dbad357`
-- **Source PR:** #0
+- **Source PR:** #24
 - **Last updated:** 2026-05-29
 
 ### Rationale
@@ -173,7 +173,7 @@ git cherry-pick f7aa4fdc7b
 - **Stable branch first merged into:** `stable/v2026.5.3`
 - **Canonical branch:** `brightfire/context-window-min-cap`
 - **Branch HEAD commit:** `68203b417d`
-- **Source PR:** #0
+- **Source PR:** #31
 - **Last updated:** 2026-05-29
 
 ### Rationale
@@ -204,7 +204,7 @@ git cherry-pick 02cf7b6a4f
 - **Stable branch first merged into:** `stable/v2026.5.3`
 - **Canonical branch:** `brightfire/session-reset-prompt`
 - **Branch HEAD commit:** `88504fce32`
-- **Source PR:** #0
+- **Source PR:** #30
 - **Last updated:** 2026-05-29
 
 ### Rationale
@@ -237,7 +237,7 @@ git cherry-pick a59fb22abc
 - **Stable branch first merged into:** `stable/v2026.5.3`
 - **Canonical branch:** `brightfire/control-ui-title`
 - **Branch HEAD commit:** `0027e9c8fd`
-- **Source PR:** #0
+- **Source PR:** —
 - **Last updated:** 2026-05-29
 
 ### Rationale
@@ -302,7 +302,7 @@ _Add known conflict notes or `git cherry-pick` command here._
 - **Stable branch first merged into:** TBD
 - **Canonical branch:** `brightfire/cli-http-fallback`
 - **Branch HEAD commit:** `3340721625`
-- **Source PR:** #0
+- **Source PR:** —
 
 ### Rationale
 
