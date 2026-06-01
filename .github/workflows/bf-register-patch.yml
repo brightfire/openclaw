@@ -4,6 +4,13 @@
 # Updates BRIGHTFIRE_PATCHES.md on brightfire/ci directly:
 #   - NEW patches: appends a full manifest entry
 #   - EXISTING patches: updates the squashed commit SHA and source PR number
+#   - workflow_dispatch with refresh_branch_heads=true: bulk-refreshes
+#     Branch HEAD for every active patch via git ls-remote (Source PR
+#     preserved)
+#
+# All manifest mutation is owned by scripts/bf/update-patch-entry.py. This
+# workflow is a thin caller: it shapes the CLI args, runs git config /
+# commit / push, and lets the script decide what (if anything) to write.
 #
 # Pushing to brightfire/ci always triggers BF: Build Stable (which watches
 # that branch), so every merged patch PR results in a stable rebuild.
@@ -72,13 +79,36 @@ jobs:
           PR_TITLE: ${{ inputs.pr_title || github.event.pull_request.title }}
           PR_NUMBER: ${{ inputs.pr_number || github.event.pull_request.number }}
           MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha || '' }}
-          HEAD_SHA: ${{ github.sha }}
         run: |
+          set -euo pipefail
           git config user.name "brightfire-ci"
           git config user.email "ci@brightfire.net"
 
           if [ "$REFRESH_BRANCH_HEADS" = "true" ]; then
-            bash scripts/bf/refresh-branch-heads.sh
+            python3 scripts/bf/update-patch-entry.py \
+              -f BRIGHTFIRE_PATCHES.md --refresh --all
           else
-            bash scripts/bf/register-patch.sh
+            PATCH_NAME="${PATCH_BRANCH#brightfire/}"
+            ARGS=(-f BRIGHTFIRE_PATCHES.md --patch "$PATCH_NAME")
+            # On a merged PR_TARGET event MERGE_SHA is authoritative; on a
+            # manual workflow_dispatch it's empty and the script falls back
+            # to `git ls-remote origin refs/heads/brightfire/<patch>`.
+            if [ -n "$MERGE_SHA" ]; then
+              ARGS+=(--commit-sha "${MERGE_SHA:0:10}")
+            fi
+            if [ -n "$PR_NUMBER" ]; then
+              ARGS+=(--pr "$PR_NUMBER")
+            fi
+            if [ -n "$PR_TITLE" ]; then
+              ARGS+=(--pr-title "$PR_TITLE")
+            fi
+            python3 scripts/bf/update-patch-entry.py "${ARGS[@]}"
           fi
+
+          git add BRIGHTFIRE_PATCHES.md
+          if git diff --cached --quiet; then
+            echo "No manifest changes; skipping push."
+            exit 0
+          fi
+          git commit -m "ci: update patch manifest"
+          git push origin brightfire/ci

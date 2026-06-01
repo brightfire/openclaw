@@ -1,43 +1,61 @@
 #!/usr/bin/env python3
-"""Update an existing patch entry in BRIGHTFIRE_PATCHES.md.
+"""Mutate BRIGHTFIRE_PATCHES.md — the only writer for the patch manifest.
 
-Called by the BF: Register Patch workflow when a patch is already registered.
-Updates the Branch HEAD commit and the last-updated date.
+Owns four modes, all dispatched via argparse:
 
-Idempotent per-entry: when the recorded Branch HEAD SHA already equals
-commit_short, no fields are rewritten (SHA, Source PR, Last updated are all
-left unchanged) and the script exits 0 with a no-op message.
+  1. Update existing entry (or create new one if missing):
+       update-patch-entry.py -f BRIGHTFIRE_PATCHES.md \\
+         --patch sessions-history-archived --commit-sha 93987583f9 [--pr 39]
 
-Usage:
-    python3 update-patch-entry.py \\
-        --file BRIGHTFIRE_PATCHES.md \\
-        --patch sessions-history-archived \\
-        --commit-sha 93987583f9 \\
-        [--pr 39 | --pr "#39" | --pr https://github.com/brightfire/openclaw/pull/39]
+  2. Create new entry (auto-detected from --patch missing in manifest);
+     optional title via --pr-title (conventional-commit prefixes stripped):
+       update-patch-entry.py -f BRIGHTFIRE_PATCHES.md \\
+         --patch my-new-patch --commit-sha abcd1234ef --pr 42 \\
+         --pr-title "feat: my new feature"
 
-    Short forms: -f / -p / -c for --file / --patch / --commit-sha.
+  3. Refresh ONE entry's HEAD via `git ls-remote origin
+     refs/heads/brightfire/<patch>` — Source PR always preserved:
+       update-patch-entry.py -f BRIGHTFIRE_PATCHES.md \\
+         --refresh --patch sessions-history-archived
 
-If --pr is omitted, empty (""), or "0" (or any integer-zero form), the Source
-PR field is left untouched. This is the 'catch-up sync' mode — brings the
-recorded SHA current after a direct push to the patch branch without
-overwriting the historical PR audit trail.
+  4. Refresh EVERY active entry's HEAD via ls-remote — Source PR always
+     preserved on all entries:
+       update-patch-entry.py -f BRIGHTFIRE_PATCHES.md --refresh --all
 
-The '0'/empty conflation exists because workflow_dispatch defaulted `pr_number`
-to 0 historically, and re-dispatching with that default would silently wipe
-every patch's real Source PR to `#0`. Empty and zero both now mean 'preserve';
-the script emits a single debug line to stderr noting the preserve, and the
-caller can pass a non-zero PR number to actually update the field.
+Responsibilities are deliberately narrow:
 
-Source PR refs are written as full URLs to keep the manifest unambiguous about
-which repo a PR belongs to (Brightfire fork vs. upstream openclaw vs. anything
-else). When the caller passes a bare `N` or `#N`, it is defaulted to
-`https://github.com/brightfire/openclaw/pull/N`. Full URLs (http:// or https://)
-are written through unchanged so cross-repo refs (e.g. upstream openclaw PRs)
-are honoured. See `_normalize_pr_ref()`.
+  - Writes the manifest file in place. That is it.
+  - Does NOT run `git commit` or `git push`.
+  - Does NOT print commit-message-shaped strings for the workflow to consume.
+  - Does NOT read environment variables — every input is an explicit CLI flag.
+  - The caller (the workflow) is responsible for staging, committing, and
+    pushing the change.
+
+PR normalization:
+
+  --pr accepts a bare number (`24`), `#N` form (`#24`), or a full URL.
+  Bare/`#N` is resolved to `https://github.com/brightfire/openclaw/pull/<N>`.
+  Omit / empty / `0` / `#0` mean 'preserve existing Source PR' (catch-up
+  sync). This 0-conflation exists because workflow_dispatch defaulted
+  `pr_number` to 0 historically; both empty and zero now mean 'preserve'.
+
+In `--refresh` modes, `--pr` is never accepted (Source PR is always
+preserved).
+
+Idempotency:
+
+  Update path is idempotent per entry: if the recorded Branch HEAD SHA
+  already equals --commit-sha, no fields are rewritten (SHA, Source PR,
+  Last updated all left byte-identical) and the script logs a no-op line.
+
+  In `--refresh --all`, individual no-ops are silent (so we don't spam
+  one line per current patch); a single summary line is printed at the
+  end.
 """
 
 import argparse
 import re
+import subprocess
 import sys
 from datetime import date
 
@@ -45,6 +63,11 @@ from datetime import date
 # any short ref (`123` or `#123`) since that's where canonical patch branches
 # live. Cross-repo refs MUST be passed as full URLs by the caller.
 _DEFAULT_PR_REPO_URL = "https://github.com/brightfire/openclaw"
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
 
 def _normalize_pr_ref(value):
@@ -57,145 +80,171 @@ def _normalize_pr_ref(value):
         (so cross-repo refs like upstream openclaw PRs are honoured).
         `https://github.com/brightfire/openclaw/pull/<N>` for bare `N` or `#N`
         (the Brightfire fork is the default owner of short refs).
-
-    Examples:
-        _normalize_pr_ref("")    -> None
-        _normalize_pr_ref("0")   -> None
-        _normalize_pr_ref("#0")  -> None
-        _normalize_pr_ref("#")   -> None
-        _normalize_pr_ref("24")  -> "https://github.com/brightfire/openclaw/pull/24"
-        _normalize_pr_ref("#24") -> "https://github.com/brightfire/openclaw/pull/24"
-        _normalize_pr_ref("https://github.com/openclaw/openclaw/pull/51067")
-            -> "https://github.com/openclaw/openclaw/pull/51067"
     """
     if value is None:
         return None
     stripped = value.strip()
     if stripped == "" or stripped == "#":
         return None
-    # Full URLs (http:// or https://) — pass through unchanged so cross-repo
-    # refs like upstream openclaw PRs survive.
     if stripped.startswith("http://") or stripped.startswith("https://"):
         return stripped
-    # Strip a single leading `#` for `#N` form.
     if stripped.startswith("#"):
         stripped = stripped[1:].strip()
         if stripped == "":
             return None
-    # Pure integer? Treat 0 as preserve, anything else as a Brightfire fork PR.
     try:
         n = int(stripped)
     except ValueError:
         # Non-numeric, non-URL — return as-is. Lets callers pass through
-        # unusual values (e.g. multi-PR composites) without mangling them,
-        # though in practice the workflow only feeds bare numbers and URLs.
+        # unusual values without mangling, though in practice the workflow
+        # only feeds bare numbers and URLs.
         return stripped
     if n == 0:
         return None
     return f"{_DEFAULT_PR_REPO_URL}/pull/{n}"
 
 
-def main():
-    parser = argparse.ArgumentParser(
-        description="Update an existing patch entry in BRIGHTFIRE_PATCHES.md.",
-    )
-    parser.add_argument(
-        "-f", "--file",
-        required=True,
-        metavar="PATCHES_FILE",
-        help="Path to BRIGHTFIRE_PATCHES.md.",
-    )
-    parser.add_argument(
-        "-p", "--patch",
-        required=True,
-        metavar="PATCH_NAME",
-        help="Patch name (without brightfire/ prefix, e.g. sessions-history-archived).",
-    )
-    parser.add_argument(
-        "-c", "--commit-sha",
-        required=True,
-        metavar="COMMIT_SHORT",
-        help="Short (10-char) Branch HEAD commit SHA.",
-    )
-    parser.add_argument(
-        "--pr",
-        default=None,
-        metavar="PR_REF",
-        help=(
-            "Source PR ref. Accepts a bare number (24), #N form (#24), or a "
-            "full URL. Bare/\\#N is resolved to the Brightfire fork URL. "
-            "Omit (or pass empty/0/#0) to preserve the existing Source PR."
-        ),
-    )
-    args = parser.parse_args()
+def _parse_active_patches(content):
+    """Return list of active patch names (no `brightfire/` prefix).
 
-    patches_file = args.file
-    patch_name = args.patch
-    commit_short = args.commit_sha
-    pr_number = args.pr  # None when --pr is omitted; str (possibly "") when provided
+    Mirrors scripts/bf/parse-patches.py's active-list semantics: a patch is
+    active when Status=active and Reapply!=no. parse-patches.py is still
+    the source of truth for bf-build-stable.yml; this in-process copy
+    exists so update-patch-entry.py is self-contained for `--refresh --all`.
+    """
+    active = []
+    current_patch = None
+    current_status = "active"
+    current_reapply = None
+
+    for line in content.split("\n"):
+        if re.match(r"^\s*##\s+[A-Z]", line):
+            if current_patch and current_status == "active" and current_reapply != "no":
+                active.append(current_patch)
+            current_patch = None
+            current_status = "active"
+            current_reapply = None
+
+        m = re.match(r"\s*-\s*\*\*Canonical branch:\*\*\s*`brightfire/([^`]+)`", line)
+        if m:
+            current_patch = m.group(1)
+
+        m = re.match(r"\s*-\s*\*\*Status:\*\*\s*(\w+)", line)
+        if m:
+            current_status = m.group(1)
+
+        m = re.match(r"\s*-\s*\*\*Reapply:\*\*\s*(\w+)", line)
+        if m:
+            current_reapply = m.group(1)
+
+    if current_patch and current_status == "active" and current_reapply != "no":
+        active.append(current_patch)
+
+    return active
+
+
+def _resolve_branch_head(patch_name):
+    """Resolve the HEAD short SHA of `brightfire/<patch_name>` on origin.
+
+    Uses `git ls-remote origin refs/heads/brightfire/<patch>` — no fetch.
+    Returns the 10-char short SHA. Raises RuntimeError when the branch
+    isn't on origin or git fails.
+    """
+    ref = f"refs/heads/brightfire/{patch_name}"
+    try:
+        result = subprocess.run(
+            ["git", "ls-remote", "origin", ref],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError(
+            f"git ls-remote failed for {ref}: {exc.stderr.strip() or exc}"
+        ) from exc
+    out = result.stdout.strip()
+    if not out:
+        raise RuntimeError(f"brightfire/{patch_name} not found on origin (ls-remote empty)")
+    first_line = out.splitlines()[0]
+    sha = first_line.split()[0]
+    return sha[:10]
+
+
+def _strip_conventional_prefix(title):
+    """Strip a leading `feat:` / `fix:` / `doc:` / `docs:` from a PR title."""
+    if not title:
+        return ""
+    return re.sub(r"^(feat|fix|docs?)\s*:\s*", "", title)
+
+
+# ---------------------------------------------------------------------------
+# Entry-level mutators
+# ---------------------------------------------------------------------------
+
+
+def _update_entry(content, patch_name, commit_short, pr_value):
+    """Update an existing patch entry's Branch HEAD / Source PR / Last updated.
+
+    Args:
+        content: full manifest text.
+        patch_name: patch name without the `brightfire/` prefix.
+        commit_short: 10-char short SHA to record.
+        pr_value: raw --pr value (may be None for 'preserve'). Normalized
+            via `_normalize_pr_ref()`; only written when non-None.
+
+    Returns:
+        (new_content, did_change, found_entry)
+          new_content: rewritten manifest text (== content when nothing changed).
+          did_change: True when at least one field was rewritten.
+          found_entry: True when a matching section was located in the file.
+    """
     today = date.today().isoformat()
     branch_pattern = f"brightfire/{patch_name}"
 
-    with open(patches_file, "r") as f:
-        content = f.read()
-
-    # Split on top-level "## " section boundaries (preserve leading text before first ##)
     parts = re.split(r"(?=^## )", content, flags=re.MULTILINE)
-
-    updated = False
-    noop = False
+    found = False
+    did_change = False
     new_parts = []
+
     for part in parts:
         if branch_pattern in part and "**Canonical branch:**" in part:
-            # Extract the currently recorded Branch HEAD SHA for idempotency check.
+            found = True
             existing_sha_match = re.search(
                 r"\*\*Branch HEAD commit:\*\*\s*`([^`]*)`",
                 part,
             )
             existing_sha = existing_sha_match.group(1) if existing_sha_match else None
 
-            if existing_sha == commit_short:
-                # SHA already matches — skip all mutations to keep the entry
-                # byte-identical (no Last updated bump, no Source PR overwrite).
-                # This makes the bulk refresh_branch_heads mode truly no-op
-                # when all patch tips are current.
-                updated = True
-                noop = True
+            normalized_pr = _normalize_pr_ref(pr_value)
+
+            # Idempotency: same SHA AND no Source PR change → leave the
+            # entry byte-identical (no Last updated bump either).
+            if existing_sha == commit_short and normalized_pr is None:
                 new_parts.append(part)
-                print(f"No changes for {branch_pattern}: commit={commit_short} already recorded")
                 continue
 
-            # Update Squashed commit (source)
+            # Branch HEAD commit
             part = re.sub(
                 r"(\*\*Branch HEAD commit:\*\*\s*)(`[^`]*`|[^\n]*)",
                 lambda m: m.group(1) + f"`{commit_short}`",
                 part,
             )
-            # Update Source PR — but only when pr_number is non-empty AND
-            # non-zero. The catch-up sync flow passes an empty string and the
-            # historical workflow_dispatch default of 0 both mean 'preserve'
-            # so we don't clobber the historical Source PR with stale data.
-            #
-            # Short refs (bare `N` / `#N`) are normalized to a full Brightfire
-            # fork URL so the manifest always shows where the PR lives. Full
-            # URLs (cross-repo refs) are written through unchanged.
-            normalized_pr = _normalize_pr_ref(pr_number)
+            # Source PR — only when caller actually provided one.
             if normalized_pr is not None:
                 part = re.sub(
                     r"(\*\*Source PR:\*\*\s*)([^\n]*)",
                     lambda m: m.group(1) + normalized_pr,
                     part,
                 )
-            elif pr_number is not None and pr_number.strip() not in ("", "#"):
-                # Caller passed something (e.g. "0" / "#0") that resolved to
-                # preserve — emit a debug line so the workflow log explains why
-                # Source PR didn't change. Empty/omitted is the normal catch-up
-                # path and stays silent.
+            elif pr_value is not None and pr_value.strip() not in ("", "#"):
+                # Caller passed something (e.g. "0"/"#0") that resolved to
+                # preserve — emit a debug line so the log explains why
+                # Source PR didn't change. Empty/omitted stays silent.
                 print(
-                    f"DEBUG: pr={pr_number!r} treated as preserve; Source PR for {branch_pattern} left unchanged",
+                    f"DEBUG: pr={pr_value!r} treated as preserve; Source PR for {branch_pattern} left unchanged",
                     file=sys.stderr,
                 )
-            # Update or insert Last updated
+            # Last updated
             if "**Last updated:**" in part:
                 part = re.sub(
                     r"(\*\*Last updated:\*\*\s*)([^\n]*)",
@@ -208,26 +257,233 @@ def main():
                     lambda m: m.group(0) + f"- **Last updated:** {today}\n",
                     part,
                 )
-            updated = True
+            did_change = True
         new_parts.append(part)
 
-    if not updated:
-        print(f"ERROR: Could not find section for {branch_pattern}", file=sys.stderr)
-        sys.exit(1)
+    return "".join(new_parts), did_change, found
 
-    with open(patches_file, "w") as f:
-        f.write("".join(new_parts))
 
-    if noop:
-        # Message already printed inside the loop; nothing more to emit.
-        return
+def _append_new_entry(content, patch_name, commit_short, pr_value, pr_title):
+    """Append a fresh manifest section for a brand-new patch."""
+    title = _strip_conventional_prefix(pr_title) or "Manual registration"
+    normalized_pr = _normalize_pr_ref(pr_value)
+    source_pr_field = normalized_pr if normalized_pr is not None else "—"
 
-    normalized_pr = _normalize_pr_ref(pr_number)
-    if normalized_pr is None:
-        print(f"Updated entry for {branch_pattern}: commit={commit_short} (Source PR unchanged)")
+    # The manifest's existing sections end without a trailing blank line in
+    # some places, so we always inject a leading newline to play safe.
+    block_lines = [
+        "",
+        f"## {title}",
+        "",
+        "- **Status:** active",
+        "- **Reapply:** yes",
+        "- **Stable branch first merged into:** TBD",
+        f"- **Canonical branch:** `brightfire/{patch_name}`",
+        f"- **Branch HEAD commit:** `{commit_short}`",
+        f"- **Source PR:** {source_pr_field}",
+        "",
+        "### Rationale",
+        "",
+        "_Add description of what this patch does and why._",
+        "",
+        "### Files touched",
+        "",
+        "TBD — update after first stable merge",
+        "",
+        "### Upgrade guidance",
+        "",
+        "_Add known conflict notes or `git cherry-pick` command here._",
+        "",
+    ]
+    return content + "\n".join(block_lines)
+
+
+def _refresh_one(content, patch_name):
+    """Resolve the patch's HEAD via ls-remote and update the manifest entry.
+
+    Source PR is always preserved (this is the refresh contract).
+
+    Returns:
+        (new_content, did_change, short_sha)
+    """
+    short_sha = _resolve_branch_head(patch_name)
+    new_content, did_change, found = _update_entry(
+        content, patch_name, short_sha, pr_value=None
+    )
+    if not found:
+        raise RuntimeError(
+            f"--refresh --patch {patch_name}: no entry found in manifest"
+        )
+    return new_content, did_change, short_sha
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+
+
+def _build_parser():
+    parser = argparse.ArgumentParser(
+        description="Mutate BRIGHTFIRE_PATCHES.md (the only writer for the patch manifest).",
+    )
+    parser.add_argument(
+        "-f", "--file",
+        required=True,
+        metavar="PATCHES_FILE",
+        help="Path to BRIGHTFIRE_PATCHES.md.",
+    )
+    parser.add_argument(
+        "-p", "--patch",
+        metavar="PATCH_NAME",
+        help="Patch name without the brightfire/ prefix (e.g. sessions-history-archived). "
+             "Required in single-entry modes and in `--refresh --patch`. Mutually exclusive with --all.",
+    )
+    parser.add_argument(
+        "-c", "--commit-sha",
+        metavar="COMMIT_SHORT",
+        help="Short (10-char) Branch HEAD commit SHA. Omit to resolve via "
+             "`git ls-remote origin refs/heads/brightfire/<patch>`.",
+    )
+    parser.add_argument(
+        "--pr",
+        default=None,
+        metavar="PR_REF",
+        help="Source PR ref. Accepts a bare number (24), #N form (#24), or full URL. "
+             "Bare/#N is resolved to the Brightfire fork URL. Omit (or pass empty/0/#0) "
+             "to preserve the existing Source PR. Not accepted in --refresh modes.",
+    )
+    parser.add_argument(
+        "--pr-title",
+        default=None,
+        metavar="PR_TITLE",
+        help="PR title used when creating a NEW entry. Ignored when updating an "
+             "existing entry. Conventional-commit prefixes (feat:/fix:/docs:) are stripped.",
+    )
+    parser.add_argument(
+        "--refresh",
+        action="store_true",
+        help="Refresh mode: resolve Branch HEAD via `git ls-remote` instead of "
+             "taking it from --commit-sha. Source PR is always preserved. Requires "
+             "either --patch <name> or --all.",
+    )
+    parser.add_argument(
+        "--all",
+        action="store_true",
+        help="With --refresh: walk EVERY active entry in the manifest and refresh "
+             "each via ls-remote. Mutually exclusive with --patch.",
+    )
+    return parser
+
+
+def _validate_args(args, parser):
+    if args.all and not args.refresh:
+        parser.error("--all requires --refresh")
+    if args.refresh:
+        if args.commit_sha is not None:
+            parser.error("--refresh cannot be combined with --commit-sha (HEAD is resolved via ls-remote)")
+        if args.pr is not None:
+            parser.error("--refresh cannot be combined with --pr (Source PR is always preserved)")
+        if args.all and args.patch:
+            parser.error("--all and --patch are mutually exclusive")
+        if not args.all and not args.patch:
+            parser.error("--refresh requires either --patch <name> or --all")
     else:
-        print(f"Updated entry for {branch_pattern}: commit={commit_short}, PR={normalized_pr}")
+        # Single-entry update / new-entry path.
+        if not args.patch:
+            parser.error("--patch <name> is required (or use --refresh --all)")
+        # --commit-sha is optional: when omitted, the SHA is resolved via
+        # `git ls-remote origin refs/heads/brightfire/<patch>` — same as
+        # `--refresh --patch`. Lets manual workflow_dispatch (no merge SHA)
+        # invoke the same code path.
+
+
+def _run_refresh_all(content, patches_file):
+    patches = _parse_active_patches(content)
+    if not patches:
+        print("refresh-all: no active patches found in manifest; nothing to do.")
+        return 0
+    updated = []
+    skipped = []
+    for p in patches:
+        try:
+            content, did_change, short = _refresh_one(content, p)
+        except RuntimeError as exc:
+            print(f"::warning::{exc}", file=sys.stderr)
+            continue
+        if did_change:
+            updated.append(f"{p}->{short}")
+        else:
+            skipped.append(p)
+    with open(patches_file, "w") as f:
+        f.write(content)
+    if updated:
+        print(f"refresh-all: updated {len(updated)} entries: {', '.join(updated)}")
+    if skipped:
+        print(f"refresh-all: {len(skipped)} entries already current (no-op).")
+    if not updated and not skipped:
+        print("refresh-all: nothing refreshed.")
+    return 0
+
+
+def main():
+    parser = _build_parser()
+    args = parser.parse_args()
+    _validate_args(args, parser)
+
+    patches_file = args.file
+    with open(patches_file, "r") as f:
+        content = f.read()
+
+    # --refresh --all
+    if args.refresh and args.all:
+        return _run_refresh_all(content, patches_file)
+
+    # --refresh --patch X
+    if args.refresh and args.patch:
+        new_content, did_change, short = _refresh_one(content, args.patch)
+        with open(patches_file, "w") as f:
+            f.write(new_content)
+        if did_change:
+            print(f"Refreshed entry for brightfire/{args.patch}: commit={short} (Source PR preserved)")
+        else:
+            print(f"No changes for brightfire/{args.patch}: commit={short} already recorded")
+        return 0
+
+    # Single-entry update; auto-fall-through to new-entry append when missing.
+    patch_name = args.patch
+    pr_value = args.pr
+    pr_title = args.pr_title
+
+    if args.commit_sha:
+        commit_short = args.commit_sha
+    else:
+        # --patch X with no --commit-sha → resolve via ls-remote. This
+        # behaves like `--refresh --patch X` except that --pr can still
+        # be supplied (the refresh mode forbids --pr; this mode does not).
+        commit_short = _resolve_branch_head(patch_name)
+
+    new_content, did_change, found = _update_entry(content, patch_name, commit_short, pr_value)
+    if found:
+        with open(patches_file, "w") as f:
+            f.write(new_content)
+        normalized_pr = _normalize_pr_ref(pr_value)
+        if not did_change:
+            print(f"No changes for brightfire/{patch_name}: commit={commit_short} already recorded")
+        elif normalized_pr is None:
+            print(f"Updated entry for brightfire/{patch_name}: commit={commit_short} (Source PR unchanged)")
+        else:
+            print(f"Updated entry for brightfire/{patch_name}: commit={commit_short}, PR={normalized_pr}")
+        return 0
+
+    # No existing entry → append a new one.
+    new_content = _append_new_entry(content, patch_name, commit_short, pr_value, pr_title)
+    with open(patches_file, "w") as f:
+        f.write(new_content)
+    normalized_pr = _normalize_pr_ref(pr_value)
+    source_pr = normalized_pr if normalized_pr is not None else "—"
+    print(f"Created new entry for brightfire/{patch_name}: commit={commit_short}, Source PR={source_pr}")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main() or 0)
