@@ -41,11 +41,11 @@ describe("buildArchiveStoreEntry", () => {
     const { archiveKey, archiveEntry } = buildArchiveStoreEntry(
       "agent:main:explicit:xyz",
       entry,
-      "rollover",
+      "reset",
     );
 
     expect(archiveKey).toBe("agent:main:explicit:xyz:archived:def-456");
-    expect(archiveEntry.archivedReason).toBe("rollover");
+    expect(archiveEntry.archivedReason).toBe("reset");
   });
 
   it("preserves all original entry fields", () => {
@@ -152,7 +152,7 @@ describe("updateSessionStore automatic archiving", () => {
     const archiveKey = "agent:main:main:archived:active-session";
     expect(raw[archiveKey]).toBeDefined();
     expect(raw[archiveKey].archived).toBe(true);
-    expect(raw[archiveKey].archivedReason).toBe("rollover");
+    expect(raw[archiveKey].archivedReason).toBe("reset");
     expect(raw[archiveKey].sessionId).toBe("active-session");
     // New entry should be present
     expect(raw["agent:main:main"].sessionId).toBe("new-session");
@@ -197,7 +197,7 @@ describe("updateSessionStore automatic archiving", () => {
     // Should have the old archive entry untouched and a new one for "current"
     expect(raw["agent:main:main:archived:old"]).toBeDefined();
     expect(raw["agent:main:main:archived:current"]).toBeDefined();
-    expect(raw["agent:main:main:archived:current"].archivedReason).toBe("rollover");
+    expect(raw["agent:main:main:archived:current"].archivedReason).toBe("reset");
     // Should NOT have created a double-archive entry
     const doubleArchiveKeys = Object.keys(raw).filter(
       (k) => (k.match(/:archived:/g) || []).length > 1,

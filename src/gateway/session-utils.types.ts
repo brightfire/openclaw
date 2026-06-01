@@ -95,7 +95,7 @@ export type GatewaySessionRow = {
   /** True when this row represents an archived (reset/deleted/bak) session transcript. */
   archived?: true;
   /** The reason the session was archived. */
-  archiveReason?: "reset" | "deleted" | "bak" | "rollover";
+  archiveReason?: "reset" | "deleted" | "bak";
   /** Epoch-ms timestamp when the session was archived. */
   archiveTimestamp?: number;
 };

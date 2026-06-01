@@ -462,8 +462,6 @@ export async function updateSessionStore<T>(
         // - "deleted": the entry is being marked as archived (explicit deletion)
         // - "reset": the entry still exists with a new sessionId and is not
         //   archived (e.g. daily auto-reset or session rollover)
-        // - "reset" is not produced here; explicit resets go through their own
-        //   code path. The centralized hook only sees delete vs reset.
         const reason = newEntry.archived ? "deleted" : "reset";
         const { archiveKey, archiveEntry } = buildArchiveStoreEntry(key, oldEntry, reason);
         if (!store[archiveKey]) {
