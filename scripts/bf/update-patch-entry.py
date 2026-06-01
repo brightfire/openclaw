@@ -9,12 +9,18 @@ commit_short, no fields are rewritten (SHA, Source PR, Last updated are all
 left unchanged) and the script exits 0 with a no-op message.
 
 Usage:
-    python3 update-patch-entry.py <patches_file> <patch_name> <commit_short> <pr_number>
+    python3 update-patch-entry.py \\
+        --file BRIGHTFIRE_PATCHES.md \\
+        --patch sessions-history-archived \\
+        --commit-sha 93987583f9 \\
+        [--pr 39 | --pr "#39" | --pr https://github.com/brightfire/openclaw/pull/39]
 
-If <pr_number> is empty ("") OR "0" (or any integer-zero form), the Source PR
-field is left untouched. This is the 'catch-up sync' mode — brings the recorded
-SHA current after a direct push to the patch branch without overwriting the
-historical PR audit trail.
+    Short forms: -f / -p / -c for --file / --patch / --commit-sha.
+
+If --pr is omitted, empty (""), or "0" (or any integer-zero form), the Source
+PR field is left untouched. This is the 'catch-up sync' mode — brings the
+recorded SHA current after a direct push to the patch branch without
+overwriting the historical PR audit trail.
 
 The '0'/empty conflation exists because workflow_dispatch defaulted `pr_number`
 to 0 historically, and re-dispatching with that default would silently wipe
@@ -30,6 +36,7 @@ are written through unchanged so cross-repo refs (e.g. upstream openclaw PRs)
 are honoured. See `_normalize_pr_ref()`.
 """
 
+import argparse
 import re
 import sys
 from datetime import date
@@ -110,14 +117,43 @@ def _is_preserve_pr(pr_number: str) -> bool:
 
 
 def main():
-    if len(sys.argv) != 5:
-        print(f"Usage: {sys.argv[0]} <patches_file> <patch_name> <commit_short> <pr_number>", file=sys.stderr)
-        sys.exit(1)
+    parser = argparse.ArgumentParser(
+        description="Update an existing patch entry in BRIGHTFIRE_PATCHES.md.",
+    )
+    parser.add_argument(
+        "-f", "--file",
+        required=True,
+        metavar="PATCHES_FILE",
+        help="Path to BRIGHTFIRE_PATCHES.md.",
+    )
+    parser.add_argument(
+        "-p", "--patch",
+        required=True,
+        metavar="PATCH_NAME",
+        help="Patch name (without brightfire/ prefix, e.g. sessions-history-archived).",
+    )
+    parser.add_argument(
+        "-c", "--commit-sha",
+        required=True,
+        metavar="COMMIT_SHORT",
+        help="Short (10-char) Branch HEAD commit SHA.",
+    )
+    parser.add_argument(
+        "--pr",
+        default=None,
+        metavar="PR_REF",
+        help=(
+            "Source PR ref. Accepts a bare number (24), #N form (#24), or a "
+            "full URL. Bare/\\#N is resolved to the Brightfire fork URL. "
+            "Omit (or pass empty/0/#0) to preserve the existing Source PR."
+        ),
+    )
+    args = parser.parse_args()
 
-    patches_file = sys.argv[1]
-    patch_name = sys.argv[2]
-    commit_short = sys.argv[3]
-    pr_number = sys.argv[4]
+    patches_file = args.file
+    patch_name = args.patch
+    commit_short = args.commit_sha
+    pr_number = args.pr  # None when --pr is omitted; str (possibly "") when provided
     today = date.today().isoformat()
     branch_pattern = f"brightfire/{patch_name}"
 
@@ -175,7 +211,7 @@ def main():
                 # workflow run log explains why Source PR didn't change.
                 # Empty pr_number is the normal catch-up path and stays silent.
                 print(
-                    f"DEBUG: pr_number={pr_number!r} treated as preserve; Source PR for {branch_pattern} left unchanged",
+                    f"DEBUG: pr={pr_number!r} treated as preserve; Source PR for {branch_pattern} left unchanged",
                     file=sys.stderr,
                 )
             # Update or insert Last updated

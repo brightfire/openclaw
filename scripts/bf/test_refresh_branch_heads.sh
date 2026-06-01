@@ -136,7 +136,7 @@ for p in "${PATCHES[@]}"; do
   fi
   TIP=$(echo "$LS_LINE" | awk '{print $1}')
   SHORT="${TIP:0:10}"
-  if python3 scripts/bf/update-patch-entry.py "$PATCHES_FILE" "$p" "$SHORT" ""; then
+  if python3 scripts/bf/update-patch-entry.py --file "$PATCHES_FILE" --patch "$p" --commit-sha "$SHORT"; then
     UPDATED_COUNT=$((UPDATED_COUNT + 1))
     UPDATED_LIST="${UPDATED_LIST}${UPDATED_LIST:+, }$p->$SHORT"
   fi

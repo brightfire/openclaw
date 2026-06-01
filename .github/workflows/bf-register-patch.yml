@@ -113,7 +113,7 @@ jobs:
               TIP=$(echo "$LS_LINE" | awk '{print $1}')
               SHORT="${TIP:0:10}"
               # pr_number = "" -> preserve existing Source PR.
-              if python3 scripts/bf/update-patch-entry.py "$PATCHES_FILE" "$p" "$SHORT" ""; then
+              if python3 scripts/bf/update-patch-entry.py --file "$PATCHES_FILE" --patch "$p" --commit-sha "$SHORT"; then
                 UPDATED_COUNT=$((UPDATED_COUNT + 1))
                 UPDATED_LIST="${UPDATED_LIST}${UPDATED_LIST:+, }$p->$SHORT"
               fi
@@ -155,7 +155,7 @@ jobs:
               fi
               SHORT="${TIP:0:10}"
               # pr_number = "" -> preserve existing Source PR.
-              if python3 scripts/bf/update-patch-entry.py "$PATCHES_FILE" "$p" "$SHORT" ""; then
+              if python3 scripts/bf/update-patch-entry.py --file "$PATCHES_FILE" --patch "$p" --commit-sha "$SHORT"; then
                 UPDATED_COUNT=$((UPDATED_COUNT + 1))
                 UPDATED_LIST="${UPDATED_LIST}${UPDATED_LIST:+, }$p->$SHORT"
               fi
@@ -217,7 +217,7 @@ jobs:
             # ----------------------------------------------------------------
             echo "Existing patch detected: $PATCH_NAME — updating entry"
 
-            python3 scripts/bf/update-patch-entry.py "$PATCHES_FILE" "$PATCH_NAME" "$COMMIT_SHORT" "$PR_NUMBER"
+            python3 scripts/bf/update-patch-entry.py --file "$PATCHES_FILE" --patch "$PATCH_NAME" --commit-sha "$COMMIT_SHORT"${PR_NUMBER:+ --pr "$PR_NUMBER"}
 
             git add "$PATCHES_FILE"
             if git diff --cached --quiet; then
