@@ -22,7 +22,8 @@ For each patch:
 
 1. **Status**: `active`, `deferred`, `upstreamed`, or `superseded`
 2. **Canonical branch**: `brightfire/<name>` — carries the patch's own commits **plus** merge commits from each upstream tag the patch has been brought current with. The `brightfire/ci` build flow squash-merges this branch onto stable.
-3. **Upgrade guidance**: notes on which upstream changes have historically conflicted and how they were resolved, to help future upgrades.
+3. **Source PR**: Full URL to the PR (e.g. `https://github.com/brightfire/openclaw/pull/N`). For cross-repo refs (upstream `openclaw/openclaw`, etc.) use the appropriate full URL. Use `—` when there is no PR. Tooling that receives a bare `N` or `#N` will default to `https://github.com/brightfire/openclaw/pull/N`.
+4. **Upgrade guidance**: notes on which upstream changes have historically conflicted and how they were resolved, to help future upgrades.
 
 ## Brightfire patches use **merge**, not rebase, to absorb upstream
 
@@ -81,7 +82,7 @@ git cherry-pick 8b472f2555
 - **Stable branch first merged into:** `stable/v2026.5.3`
 - **Canonical branch:** `brightfire/xgw`
 - **Branch HEAD commit:** `caabb461f2`
-- **Source PR:** #19, #20, #21 (v2026.4.15); ported to v2026.5.3 as single commit
+- **Source PR:** https://github.com/brightfire/openclaw/pull/19, https://github.com/brightfire/openclaw/pull/20, https://github.com/brightfire/openclaw/pull/21 (v2026.4.15); ported to v2026.5.3 as single commit
 
 ### Rationale
 
@@ -136,7 +137,7 @@ git cherry-pick ee129e4c2a
 - **Stable branch first merged into:** `stable/v2026.5.3`
 - **Canonical branch:** `brightfire/cache-write-ttl-cost`
 - **Branch HEAD commit:** `b88dbad357`
-- **Source PR:** #24
+- **Source PR:** https://github.com/brightfire/openclaw/pull/24
 - **Last updated:** 2026-05-29
 
 ### Rationale
@@ -173,7 +174,7 @@ git cherry-pick f7aa4fdc7b
 - **Stable branch first merged into:** `stable/v2026.5.3`
 - **Canonical branch:** `brightfire/context-window-min-cap`
 - **Branch HEAD commit:** `68203b417d`
-- **Source PR:** #31
+- **Source PR:** https://github.com/brightfire/openclaw/pull/31
 - **Last updated:** 2026-05-29
 
 ### Rationale
@@ -204,7 +205,7 @@ git cherry-pick 02cf7b6a4f
 - **Stable branch first merged into:** `stable/v2026.5.3`
 - **Canonical branch:** `brightfire/session-reset-prompt`
 - **Branch HEAD commit:** `88504fce32`
-- **Source PR:** #30
+- **Source PR:** https://github.com/brightfire/openclaw/pull/30
 - **Last updated:** 2026-05-29
 
 ### Rationale
@@ -281,7 +282,7 @@ git cherry-pick 030d2bbc0c
 - **Stable branch first merged into:** TBD
 - **Canonical branch:** `brightfire/sessions-history-archived`
 - **Branch HEAD commit:** `1fc52459d4`
-- **Source PR:** #39
+- **Source PR:** https://github.com/brightfire/openclaw/pull/39
 
 ### Rationale
 
