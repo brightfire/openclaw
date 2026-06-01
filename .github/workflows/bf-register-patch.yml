@@ -17,26 +17,21 @@ on:
       - 'brightfire/*'
   workflow_dispatch:
     inputs:
-      sync_all:
-        description: 'Bulk-sync mode: refresh Branch HEAD commit for ALL active patches in the manifest via local fetch + rev-parse (ignores patch_branch / pr_number / pr_title). Use after a catch-up batch.'
-        required: false
-        type: boolean
-        default: false
       refresh_branch_heads:
-        description: 'Like sync_all, but queries every canonical branch HEAD via git ls-remote (no local fetch). Source PR is left untouched. Ignores patch_branch / pr_number / pr_title.'
+        description: 'Bulk-refresh mode: refresh Branch HEAD commit for ALL active patches in the manifest via git ls-remote against origin (no local fetch). Source PR is left untouched per entry. One commit, one push. Ignores patch_branch / pr_number / pr_title. Use after a catch-up batch.'
         required: false
         type: boolean
         default: false
       patch_branch:
-        description: 'Patch branch (e.g. brightfire/sessions-history-archived). Ignored when sync_all=true.'
+        description: 'Patch branch (e.g. brightfire/sessions-history-archived). Ignored when refresh_branch_heads=true.'
         required: false
         type: string
       pr_number:
-        description: 'Source PR ref. Accepts a bare number (`24`), a `#N` form (`#24`), or a full URL (`https://github.com/brightfire/openclaw/pull/24`). Bare/`#N` defaults to the Brightfire fork (`brightfire/openclaw`). For cross-repo refs (e.g. upstream `openclaw/openclaw`) pass the full URL. Leave EMPTY (or `0`/`#0`) to preserve the existing Source PR (use for catch-up syncs). Ignored when sync_all=true.'
+        description: 'Source PR ref. Accepts a bare number (`24`), a `#N` form (`#24`), or a full URL (`https://github.com/brightfire/openclaw/pull/24`). Bare/`#N` defaults to the Brightfire fork (`brightfire/openclaw`). For cross-repo refs (e.g. upstream `openclaw/openclaw`) pass the full URL. Leave EMPTY (or `0`/`#0`) to preserve the existing Source PR (use for catch-up syncs). Ignored when refresh_branch_heads=true.'
         required: false
         type: string
       pr_title:
-        description: 'PR title (used for new entries). Ignored when sync_all=true.'
+        description: 'PR title (used for new entries). Ignored when refresh_branch_heads=true.'
         required: false
         type: string
         default: 'Manual registration'
@@ -72,7 +67,6 @@ jobs:
       - name: Update patch manifest
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
-          SYNC_ALL: ${{ inputs.sync_all }}
           REFRESH_BRANCH_HEADS: ${{ inputs.refresh_branch_heads }}
           PATCH_BRANCH: ${{ inputs.patch_branch || github.event.pull_request.base.ref }}
           PR_TITLE: ${{ inputs.pr_title || github.event.pull_request.title }}
@@ -80,217 +74,11 @@ jobs:
           MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha || '' }}
           HEAD_SHA: ${{ github.sha }}
         run: |
-          PATCHES_FILE="BRIGHTFIRE_PATCHES.md"
-
           git config user.name "brightfire-ci"
           git config user.email "ci@brightfire.net"
 
-          # ------------------------------------------------------------
-          # refresh_branch_heads mode: like sync_all but uses git ls-remote
-          # to query every canonical branch HEAD directly, without a local
-          # fetch. Source PR is preserved per-entry. One commit, one push.
-          # ------------------------------------------------------------
           if [ "$REFRESH_BRANCH_HEADS" = "true" ]; then
-            echo "refresh_branch_heads mode: refreshing HEAD commits via git ls-remote (no fetch)"
-
-            # Parse active patches from manifest.
-            python3 scripts/bf/parse-patches.py "$PATCHES_FILE" /tmp/parse-out
-            ACTIVE_CSV=$(awk -F= '/^list=/{print substr($0,6)}' /tmp/parse-out)
-            IFS=',' read -ra PATCHES <<< "$ACTIVE_CSV"
-
-            REMOTE_URL=$(git config --get remote.origin.url)
-            UPDATED_COUNT=0
-            UPDATED_LIST=""
-            for p in "${PATCHES[@]}"; do
-              p=$(echo "$p" | xargs)
-              [ -z "$p" ] && continue
-              # git ls-remote prints `<sha>\t<ref>` for the matched ref.
-              LS_LINE=$(git ls-remote "$REMOTE_URL" "refs/heads/brightfire/$p" 2>/dev/null | head -n1)
-              if [ -z "$LS_LINE" ]; then
-                echo "::warning::brightfire/$p not on remote (ls-remote returned nothing); skipping"
-                continue
-              fi
-              TIP=$(echo "$LS_LINE" | awk '{print $1}')
-              SHORT="${TIP:0:10}"
-              # pr_number = "" -> preserve existing Source PR.
-              if python3 scripts/bf/update-patch-entry.py --file "$PATCHES_FILE" --patch "$p" --commit-sha "$SHORT"; then
-                UPDATED_COUNT=$((UPDATED_COUNT + 1))
-                UPDATED_LIST="${UPDATED_LIST}${UPDATED_LIST:+, }$p->$SHORT"
-              fi
-            done
-
-            git add "$PATCHES_FILE"
-            if git diff --cached --quiet; then
-              echo "refresh_branch_heads: all active-patch HEADs already current in manifest; nothing to push."
-              exit 0
-            fi
-            git commit -m "ci: refresh manifest patch HEADs via ls-remote ($UPDATED_LIST)"
-            git push origin brightfire/ci
-            echo "refresh_branch_heads: refreshed $UPDATED_COUNT entries and pushed brightfire/ci."
-            exit 0
-          fi
-
-          # ------------------------------------------------------------
-          # sync_all mode: refresh Branch HEAD commit for every active
-          # patch in the manifest. One run, one push, no Source PR churn.
-          # Use after a catch-up batch (per openclaw-dev runbook step 3a).
-          # ------------------------------------------------------------
-          if [ "$SYNC_ALL" = "true" ]; then
-            echo "sync_all mode: refreshing HEAD commits for all active patches"
-            git fetch origin '+refs/heads/brightfire/*:refs/remotes/origin/brightfire/*'
-
-            # Parse active patches from manifest.
-            python3 scripts/bf/parse-patches.py "$PATCHES_FILE" /tmp/parse-out
-            ACTIVE_CSV=$(awk -F= '/^list=/{print substr($0,6)}' /tmp/parse-out)
-            IFS=',' read -ra PATCHES <<< "$ACTIVE_CSV"
-
-            UPDATED_COUNT=0
-            UPDATED_LIST=""
-            for p in "${PATCHES[@]}"; do
-              p=$(echo "$p" | xargs)
-              [ -z "$p" ] && continue
-              if ! TIP=$(git rev-parse "origin/brightfire/$p" 2>/dev/null); then
-                echo "::warning::brightfire/$p not on remote; skipping"
-                continue
-              fi
-              SHORT="${TIP:0:10}"
-              # pr_number = "" -> preserve existing Source PR.
-              if python3 scripts/bf/update-patch-entry.py --file "$PATCHES_FILE" --patch "$p" --commit-sha "$SHORT"; then
-                UPDATED_COUNT=$((UPDATED_COUNT + 1))
-                UPDATED_LIST="${UPDATED_LIST}${UPDATED_LIST:+, }$p->$SHORT"
-              fi
-            done
-
-            git add "$PATCHES_FILE"
-            if git diff --cached --quiet; then
-              echo "sync_all: all active-patch HEADs already current in manifest; nothing to push."
-              exit 0
-            fi
-            git commit -m "ci: sync manifest patch HEADs ($UPDATED_LIST)"
-            git push origin brightfire/ci
-            echo "sync_all: refreshed $UPDATED_COUNT entries and pushed brightfire/ci."
-            exit 0
-          fi
-
-          # ------------------------------------------------------------
-          # Single-patch mode (PR-close event OR manual dispatch with a
-          # specific patch_branch). Unchanged behavior, except that an
-          # empty OR zero pr_number means 'preserve existing Source PR'
-          # (catch-up sync semantic for one branch).
-          # ------------------------------------------------------------
-
-          # Treat 0 / "0" / "#0" / whitespace as empty so that the historical
-          # workflow_dispatch default of `0` does not clobber Source PR on
-          # catch-up dispatches. Also strip a leading `#` from `#N` inputs so
-          # downstream code (commit messages, new-entry append) sees a clean
-          # value; `update-patch-entry.py` normalizes either form to a full URL.
-          PR_NUMBER_RAW="$PR_NUMBER"
-          PR_NUMBER_STRIPPED="$(printf '%s' "$PR_NUMBER" | tr -d '[:space:]')"
-          # Strip a single leading `#`.
-          PR_NUMBER_STRIPPED="${PR_NUMBER_STRIPPED#'#'}"
-          if [ -z "$PR_NUMBER_STRIPPED" ] || [ "$PR_NUMBER_STRIPPED" = "0" ]; then
-            if [ -n "$PR_NUMBER_RAW" ]; then
-              echo "DEBUG: PR_NUMBER='$PR_NUMBER_RAW' treated as preserve"
-            fi
-            PR_NUMBER=""
+            bash scripts/bf/refresh-branch-heads.sh
           else
-            PR_NUMBER="$PR_NUMBER_STRIPPED"
+            bash scripts/bf/register-patch.sh
           fi
-
-          # Resolve the commit SHA:
-          # - PR event: use the merge commit SHA
-          # - Manual dispatch: resolve HEAD of the patch branch from git
-          if [ -n "$MERGE_SHA" ]; then
-            RAW_SHA="$MERGE_SHA"
-          else
-            git fetch origin "$PATCH_BRANCH" 2>/dev/null || true
-            RAW_SHA=$(git rev-parse "origin/$PATCH_BRANCH" 2>/dev/null || echo "$HEAD_SHA")
-          fi
-          COMMIT_SHORT="${RAW_SHA:0:10}"
-
-          # Extract patch name from branch (strip brightfire/ prefix)
-          PATCH_NAME=$(echo "$PATCH_BRANCH" | sed 's|^brightfire/||')
-
-          if grep -q "brightfire/${PATCH_NAME}" "$PATCHES_FILE"; then
-            # ----------------------------------------------------------------
-            # EXISTING PATCH — update commit SHA, source PR, and last-updated
-            # ----------------------------------------------------------------
-            echo "Existing patch detected: $PATCH_NAME — updating entry"
-
-            python3 scripts/bf/update-patch-entry.py --file "$PATCHES_FILE" --patch "$PATCH_NAME" --commit-sha "$COMMIT_SHORT"${PR_NUMBER:+ --pr "$PR_NUMBER"}
-
-            git add "$PATCHES_FILE"
-            if git diff --cached --quiet; then
-              # No-op update: the manifest already has this SHA (and PR, if
-              # one was provided) for this patch. Treat as success and skip
-              # the push — there is nothing for bf-build-stable to react to.
-              # If a rebuild is desired anyway, dispatch bf-build-stable manually.
-              if [ -z "$PR_NUMBER" ]; then
-                echo "No manifest changes for $PATCH_NAME (commit=$COMMIT_SHORT already recorded; Source PR preserved); skipping push."
-              else
-                echo "No manifest changes for $PATCH_NAME (commit=$COMMIT_SHORT, PR=${PR_NUMBER} already recorded); skipping push."
-              fi
-              exit 0
-            fi
-            if [ -z "$PR_NUMBER" ]; then
-              git commit -m "ci: update patch entry for brightfire/${PATCH_NAME} (sync, ${COMMIT_SHORT})"
-            else
-              # Commit message uses the (now de-#'d, non-zero) ref as-is. For
-              # bare/`#N` this is a plain number; for full URLs it's the URL.
-              git commit -m "ci: update patch entry for brightfire/${PATCH_NAME} (PR ${PR_NUMBER}, ${COMMIT_SHORT})"
-            fi
-
-          else
-            # ----------------------------------------------------------------
-            # NEW PATCH — append a full manifest entry
-            # ----------------------------------------------------------------
-            echo "New patch detected: $PATCH_NAME — creating entry"
-
-            # Strip common conventional commit prefixes from the PR title
-            TITLE=$(echo "$PR_TITLE" | sed 's/^feat\s*:\s*//; s/^fix\s*:\s*//; s/^doc\s*:\s*//; s/^docs\s*:\s*//')
-
-            # Normalize Source PR to a full URL via the Python helper so the
-            # new entry matches the convention used by `update-patch-entry.py`
-            # for existing entries. Falls back to `—` when there is no PR
-            # (PR_NUMBER would have been emptied above).
-            if [ -z "$PR_NUMBER" ]; then
-              SOURCE_PR_FIELD="—"
-            else
-              SOURCE_PR_FIELD=$(python3 -c "import importlib.util,sys; s=importlib.util.spec_from_file_location('u','scripts/bf/update-patch-entry.py'); m=importlib.util.module_from_spec(s); s.loader.exec_module(m); v=m._normalize_pr_ref(sys.argv[1]); print(v if v is not None else '—')" "$PR_NUMBER")
-            fi
-
-            {
-              echo ""
-              echo "## $TITLE"
-              echo ""
-              echo "- **Status:** active"
-              echo "- **Reapply:** yes"
-              echo "- **Stable branch first merged into:** TBD"
-              echo "- **Canonical branch:** \`brightfire/${PATCH_NAME}\`"
-              echo "- **Branch HEAD commit:** \`${COMMIT_SHORT}\`"
-              echo "- **Source PR:** ${SOURCE_PR_FIELD}"
-              echo ""
-              echo "### Rationale"
-              echo ""
-              echo "_Add description of what this patch does and why._"
-              echo ""
-              echo "### Files touched"
-              echo ""
-              echo "TBD — update after first stable merge"
-              echo ""
-              echo "### Upgrade guidance"
-              echo ""
-              echo "_Add known conflict notes or \`git cherry-pick\` command here._"
-            } >> "$PATCHES_FILE"
-
-            git add "$PATCHES_FILE"
-            if [ -z "$PR_NUMBER" ]; then
-              git commit -m "ci: register new patch brightfire/${PATCH_NAME} (no PR)"
-            else
-              git commit -m "ci: register new patch brightfire/${PATCH_NAME} (PR ${PR_NUMBER})"
-            fi
-          fi
-
-          # Always push to brightfire/ci — this triggers BF: Build Stable
-          git push origin brightfire/ci
-          echo "Pushed updated manifest to brightfire/ci"

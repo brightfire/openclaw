@@ -157,7 +157,8 @@ def main():
             if existing_sha == commit_short:
                 # SHA already matches — skip all mutations to keep the entry
                 # byte-identical (no Last updated bump, no Source PR overwrite).
-                # This makes sync_all truly no-op when all patch tips are current.
+                # This makes the bulk refresh_branch_heads mode truly no-op
+                # when all patch tips are current.
                 updated = True
                 noop = True
                 new_parts.append(part)
