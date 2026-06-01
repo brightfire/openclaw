@@ -16,7 +16,7 @@ is maintained, the merge-not-rebase philosophy, and the new-entry template.
 | Cache Write TTL Cost | `brightfire/cache-write-ttl-cost` | `b88dbad357` | <https://github.com/brightfire/openclaw/pull/24> | 2026-05-29 |
 | Context Window Min Cap | `brightfire/context-window-min-cap` | `68203b417d` | <https://github.com/brightfire/openclaw/pull/31> | 2026-05-29 |
 | Session Reset Prompt | `brightfire/session-reset-prompt` | `88504fce32` | <https://github.com/brightfire/openclaw/pull/30> | 2026-05-29 |
-| Control UI Title | `brightfire/control-ui-title` | `0027e9c8fd` | <https://github.com/openclaw/openclaw/pull/51067> | 2026-05-29 |
+| Control UI Title | `brightfire/control-ui-title` | `85a2c07c36` | <https://github.com/openclaw/openclaw/pull/51067> | 2026-06-01 |
 | Store-Based Session Archiving | `brightfire/sessions-history-archived` | `1fc52459d4` | <https://github.com/brightfire/openclaw/pull/39> | 2026-06-01 |
 | CLI HTTP Health Fallback | `brightfire/cli-http-fallback` | `3340721625` | — | 2026-06-01 |
 
