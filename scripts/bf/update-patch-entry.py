@@ -21,11 +21,71 @@ to 0 historically, and re-dispatching with that default would silently wipe
 every patch's real Source PR to `#0`. Empty and zero both now mean 'preserve';
 the script emits a single debug line to stderr noting the preserve, and the
 caller can pass a non-zero PR number to actually update the field.
+
+Source PR refs are written as full URLs to keep the manifest unambiguous about
+which repo a PR belongs to (Brightfire fork vs. upstream openclaw vs. anything
+else). When the caller passes a bare `N` or `#N`, it is defaulted to
+`https://github.com/brightfire/openclaw/pull/N`. Full URLs (http:// or https://)
+are written through unchanged so cross-repo refs (e.g. upstream openclaw PRs)
+are honoured. See `_normalize_pr_ref()`.
 """
 
 import re
 import sys
 from datetime import date
+
+# Default repo for bare PR numbers. Brightfire fork is the assumed owner of
+# any short ref (`123` or `#123`) since that's where canonical patch branches
+# live. Cross-repo refs MUST be passed as full URLs by the caller.
+_DEFAULT_PR_REPO_URL = "https://github.com/brightfire/openclaw"
+
+
+def _normalize_pr_ref(value):
+    """Normalize a Source PR ref for writing into BRIGHTFIRE_PATCHES.md.
+
+    Returns:
+        None when the value should be treated as 'preserve existing Source PR'
+        (empty, missing, `0`, `#0`, `#`, whitespace, or any integer-zero form).
+        The original value unchanged when it's already a full http(s) URL
+        (so cross-repo refs like upstream openclaw PRs are honoured).
+        `https://github.com/brightfire/openclaw/pull/<N>` for bare `N` or `#N`
+        (the Brightfire fork is the default owner of short refs).
+
+    Examples:
+        _normalize_pr_ref("")    -> None
+        _normalize_pr_ref("0")   -> None
+        _normalize_pr_ref("#0")  -> None
+        _normalize_pr_ref("#")   -> None
+        _normalize_pr_ref("24")  -> "https://github.com/brightfire/openclaw/pull/24"
+        _normalize_pr_ref("#24") -> "https://github.com/brightfire/openclaw/pull/24"
+        _normalize_pr_ref("https://github.com/openclaw/openclaw/pull/51067")
+            -> "https://github.com/openclaw/openclaw/pull/51067"
+    """
+    if value is None:
+        return None
+    stripped = value.strip()
+    if stripped == "" or stripped == "#":
+        return None
+    # Full URLs (http:// or https://) — pass through unchanged so cross-repo
+    # refs like upstream openclaw PRs survive.
+    if stripped.startswith("http://") or stripped.startswith("https://"):
+        return stripped
+    # Strip a single leading `#` for `#N` form.
+    if stripped.startswith("#"):
+        stripped = stripped[1:].strip()
+        if stripped == "":
+            return None
+    # Pure integer? Treat 0 as preserve, anything else as a Brightfire fork PR.
+    try:
+        n = int(stripped)
+    except ValueError:
+        # Non-numeric, non-URL — return as-is. Lets callers pass through
+        # unusual values (e.g. multi-PR composites) without mangling them,
+        # though in practice the workflow only feeds bare numbers and URLs.
+        return stripped
+    if n == 0:
+        return None
+    return f"{_DEFAULT_PR_REPO_URL}/pull/{n}"
 
 
 def _is_preserve_pr(pr_number: str) -> bool:
@@ -99,10 +159,15 @@ def main():
             # non-zero. The catch-up sync flow passes an empty string and the
             # historical workflow_dispatch default of 0 both mean 'preserve'
             # so we don't clobber the historical Source PR with stale data.
-            if not _is_preserve_pr(pr_number):
+            #
+            # Short refs (bare `N` / `#N`) are normalized to a full Brightfire
+            # fork URL so the manifest always shows where the PR lives. Full
+            # URLs (cross-repo refs) are written through unchanged.
+            normalized_pr = _normalize_pr_ref(pr_number)
+            if normalized_pr is not None:
                 part = re.sub(
                     r"(\*\*Source PR:\*\*\s*)([^\n]*)",
-                    lambda m: m.group(1) + f"#{pr_number}",
+                    lambda m: m.group(1) + normalized_pr,
                     part,
                 )
             elif pr_number is not None and pr_number.strip() != "":
@@ -140,10 +205,11 @@ def main():
         # Message already printed inside the loop; nothing more to emit.
         return
 
-    if _is_preserve_pr(pr_number):
+    normalized_pr = _normalize_pr_ref(pr_number)
+    if normalized_pr is None:
         print(f"Updated entry for {branch_pattern}: commit={commit_short} (Source PR unchanged)")
     else:
-        print(f"Updated entry for {branch_pattern}: commit={commit_short}, PR=#{pr_number}")
+        print(f"Updated entry for {branch_pattern}: commit={commit_short}, PR={normalized_pr}")
 
 
 if __name__ == "__main__":

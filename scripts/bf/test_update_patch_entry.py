@@ -172,6 +172,8 @@ class UpdatePatchEntry_Issue1(unittest.TestCase):
             self.assertNotIn("treated as preserve", err)
 
     def test_nonzero_pr_number_writes_through(self):
+        # Bare PR numbers now default to a full Brightfire fork URL so the
+        # manifest unambiguously identifies which repo the PR lives in.
         with tempfile.TemporaryDirectory() as td:
             tmp = Path(td)
             mf = _write_manifest(tmp, slack_pr="#42")
@@ -181,8 +183,10 @@ class UpdatePatchEntry_Issue1(unittest.TestCase):
             self.assertEqual(rc, 0)
             text = mf.read_text()
             self.assertIn("**Branch HEAD commit:** `cccccccccc`", text)
-            self.assertIn("**Source PR:** #99", text)
+            self.assertIn("**Source PR:** https://github.com/brightfire/openclaw/pull/99", text)
             self.assertNotIn("**Source PR:** #42", text)
+            # Stdout summary now shows the normalized URL.
+            self.assertIn("PR=https://github.com/brightfire/openclaw/pull/99", out)
 
     def test_pr_number_zero_does_not_touch_other_entries(self):
         with tempfile.TemporaryDirectory() as td:
@@ -196,6 +200,139 @@ class UpdatePatchEntry_Issue1(unittest.TestCase):
             # XGW section untouched
             self.assertIn("**Branch HEAD commit:** `bbbbbbbbbb`", text)
             self.assertIn("**Source PR:** #17", text)
+
+
+class NormalizePRRef(unittest.TestCase):
+    """PART 3: Source PR ref normalization — short refs default to the
+    Brightfire fork URL, full URLs pass through, preserve forms return None."""
+
+    BF_URL = "https://github.com/brightfire/openclaw/pull/"
+
+    def test_none_is_preserve(self):
+        self.assertIsNone(upe._normalize_pr_ref(None))
+
+    def test_empty_is_preserve(self):
+        self.assertIsNone(upe._normalize_pr_ref(""))
+        self.assertIsNone(upe._normalize_pr_ref("   "))
+
+    def test_zero_forms_are_preserve(self):
+        self.assertIsNone(upe._normalize_pr_ref("0"))
+        self.assertIsNone(upe._normalize_pr_ref("00"))
+        self.assertIsNone(upe._normalize_pr_ref(" 0 "))
+        self.assertIsNone(upe._normalize_pr_ref("#0"))
+        self.assertIsNone(upe._normalize_pr_ref("#00"))
+        self.assertIsNone(upe._normalize_pr_ref(" #0 "))
+
+    def test_bare_hash_is_preserve(self):
+        # `#` with no number means "empty PR ref" — catch-up sync semantic.
+        self.assertIsNone(upe._normalize_pr_ref("#"))
+        self.assertIsNone(upe._normalize_pr_ref(" # "))
+
+    def test_bare_number_becomes_brightfire_url(self):
+        self.assertEqual(upe._normalize_pr_ref("24"), self.BF_URL + "24")
+        self.assertEqual(upe._normalize_pr_ref("1"), self.BF_URL + "1")
+        self.assertEqual(upe._normalize_pr_ref("123456"), self.BF_URL + "123456")
+
+    def test_hash_number_becomes_brightfire_url(self):
+        self.assertEqual(upe._normalize_pr_ref("#24"), self.BF_URL + "24")
+        self.assertEqual(upe._normalize_pr_ref("#31"), self.BF_URL + "31")
+        # Leading/trailing whitespace and #-prefix coexist.
+        self.assertEqual(upe._normalize_pr_ref(" #24 "), self.BF_URL + "24")
+
+    def test_https_url_passes_through_unchanged(self):
+        # Cross-repo refs (e.g. upstream openclaw) MUST be honoured verbatim.
+        upstream = "https://github.com/openclaw/openclaw/pull/51067"
+        self.assertEqual(upe._normalize_pr_ref(upstream), upstream)
+        # Brightfire fork full URL also passes through unchanged.
+        bf_full = "https://github.com/brightfire/openclaw/pull/24"
+        self.assertEqual(upe._normalize_pr_ref(bf_full), bf_full)
+
+    def test_http_url_passes_through_unchanged(self):
+        # Tolerate http:// even though we expect https:// in practice.
+        url = "http://example.com/pr/1"
+        self.assertEqual(upe._normalize_pr_ref(url), url)
+
+    def test_url_with_surrounding_whitespace_is_stripped(self):
+        self.assertEqual(
+            upe._normalize_pr_ref("  https://github.com/openclaw/openclaw/pull/51067  "),
+            "https://github.com/openclaw/openclaw/pull/51067",
+        )
+
+    def test_non_numeric_non_url_returned_unchanged(self):
+        # Tolerant of unusual values (e.g. multi-PR composites). Workflow
+        # only feeds bare numbers and URLs in practice, but the helper
+        # never mangles arbitrary strings.
+        self.assertEqual(upe._normalize_pr_ref("abc"), "abc")
+
+
+class UpdatePatchEntry_FullURL(unittest.TestCase):
+    """PART 3: End-to-end behavior for the URL normalization integration."""
+
+    def test_bare_number_writes_brightfire_fork_url(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            mf = _write_manifest(tmp, slack_pr="#42")
+            rc, out, err = _run_main([
+                "update-patch-entry.py", str(mf), "slack-mrkdwn", "cccccccccc", "24",
+            ])
+            self.assertEqual(rc, 0)
+            self.assertIn(
+                "**Source PR:** https://github.com/brightfire/openclaw/pull/24",
+                mf.read_text(),
+            )
+
+    def test_hash_prefixed_number_writes_brightfire_fork_url(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            mf = _write_manifest(tmp, slack_pr="#42")
+            rc, out, err = _run_main([
+                "update-patch-entry.py", str(mf), "slack-mrkdwn", "cccccccccc", "#31",
+            ])
+            self.assertEqual(rc, 0)
+            self.assertIn(
+                "**Source PR:** https://github.com/brightfire/openclaw/pull/31",
+                mf.read_text(),
+            )
+
+    def test_full_url_writes_through_unchanged(self):
+        # Cross-repo refs MUST survive verbatim (e.g. upstream openclaw PR).
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            mf = _write_manifest(tmp, slack_pr="#42")
+            upstream = "https://github.com/openclaw/openclaw/pull/51067"
+            rc, out, err = _run_main([
+                "update-patch-entry.py", str(mf), "slack-mrkdwn", "cccccccccc", upstream,
+            ])
+            self.assertEqual(rc, 0)
+            self.assertIn(f"**Source PR:** {upstream}", mf.read_text())
+            self.assertIn(f"PR={upstream}", out)
+
+    def test_hash_zero_preserves_source_pr(self):
+        # `#0` is the legacy clobber form; must be treated as preserve and
+        # never written to the manifest as a URL.
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            mf = _write_manifest(tmp, slack_pr="https://github.com/brightfire/openclaw/pull/24")
+            rc, out, err = _run_main([
+                "update-patch-entry.py", str(mf), "slack-mrkdwn", "cccccccccc", "#0",
+            ])
+            self.assertEqual(rc, 0)
+            text = mf.read_text()
+            self.assertIn("**Source PR:** https://github.com/brightfire/openclaw/pull/24", text)
+            self.assertNotIn("pull/0", text)
+
+    def test_existing_full_url_preserved_on_empty(self):
+        # Catch-up sync path: bumps SHA, leaves the existing full-URL ref alone.
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            mf = _write_manifest(tmp, slack_pr="https://github.com/openclaw/openclaw/pull/51067")
+            rc, out, err = _run_main([
+                "update-patch-entry.py", str(mf), "slack-mrkdwn", "cccccccccc", "",
+            ])
+            self.assertEqual(rc, 0)
+            text = mf.read_text()
+            self.assertIn("**Branch HEAD commit:** `cccccccccc`", text)
+            self.assertIn("**Source PR:** https://github.com/openclaw/openclaw/pull/51067", text)
 
 
 class UpdatePatchEntry_Existing(unittest.TestCase):

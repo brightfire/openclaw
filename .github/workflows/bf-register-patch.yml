@@ -32,7 +32,7 @@ on:
         required: false
         type: string
       pr_number:
-        description: 'Source PR number. Leave EMPTY to preserve the existing Source PR (use for catch-up syncs). Ignored when sync_all=true.'
+        description: 'Source PR ref. Accepts a bare number (`24`), a `#N` form (`#24`), or a full URL (`https://github.com/brightfire/openclaw/pull/24`). Bare/`#N` defaults to the Brightfire fork (`brightfire/openclaw`). For cross-repo refs (e.g. upstream `openclaw/openclaw`) pass the full URL. Leave EMPTY (or `0`/`#0`) to preserve the existing Source PR (use for catch-up syncs). Ignored when sync_all=true.'
         required: false
         type: string
       pr_title:
@@ -179,12 +179,22 @@ jobs:
           # (catch-up sync semantic for one branch).
           # ------------------------------------------------------------
 
-          # Treat 0 / "0" / whitespace as empty so that the historical
-          # workflow_dispatch default of `0` does not clobber Source PR
-          # on catch-up dispatches.
-          if [ -n "$PR_NUMBER" ] && [ "$(printf '%s' "$PR_NUMBER" | tr -d '[:space:]')" = "0" ]; then
-            echo "DEBUG: PR_NUMBER='$PR_NUMBER' treated as preserve"
+          # Treat 0 / "0" / "#0" / whitespace as empty so that the historical
+          # workflow_dispatch default of `0` does not clobber Source PR on
+          # catch-up dispatches. Also strip a leading `#` from `#N` inputs so
+          # downstream code (commit messages, new-entry append) sees a clean
+          # value; `update-patch-entry.py` normalizes either form to a full URL.
+          PR_NUMBER_RAW="$PR_NUMBER"
+          PR_NUMBER_STRIPPED="$(printf '%s' "$PR_NUMBER" | tr -d '[:space:]')"
+          # Strip a single leading `#`.
+          PR_NUMBER_STRIPPED="${PR_NUMBER_STRIPPED#'#'}"
+          if [ -z "$PR_NUMBER_STRIPPED" ] || [ "$PR_NUMBER_STRIPPED" = "0" ]; then
+            if [ -n "$PR_NUMBER_RAW" ]; then
+              echo "DEBUG: PR_NUMBER='$PR_NUMBER_RAW' treated as preserve"
+            fi
             PR_NUMBER=""
+          else
+            PR_NUMBER="$PR_NUMBER_STRIPPED"
           fi
 
           # Resolve the commit SHA:
@@ -218,14 +228,16 @@ jobs:
               if [ -z "$PR_NUMBER" ]; then
                 echo "No manifest changes for $PATCH_NAME (commit=$COMMIT_SHORT already recorded; Source PR preserved); skipping push."
               else
-                echo "No manifest changes for $PATCH_NAME (commit=$COMMIT_SHORT, PR=#$PR_NUMBER already recorded); skipping push."
+                echo "No manifest changes for $PATCH_NAME (commit=$COMMIT_SHORT, PR=${PR_NUMBER} already recorded); skipping push."
               fi
               exit 0
             fi
             if [ -z "$PR_NUMBER" ]; then
               git commit -m "ci: update patch entry for brightfire/${PATCH_NAME} (sync, ${COMMIT_SHORT})"
             else
-              git commit -m "ci: update patch entry for brightfire/${PATCH_NAME} (PR #${PR_NUMBER}, ${COMMIT_SHORT})"
+              # Commit message uses the (now de-#'d, non-zero) ref as-is. For
+              # bare/`#N` this is a plain number; for full URLs it's the URL.
+              git commit -m "ci: update patch entry for brightfire/${PATCH_NAME} (PR ${PR_NUMBER}, ${COMMIT_SHORT})"
             fi
 
           else
@@ -237,6 +249,16 @@ jobs:
             # Strip common conventional commit prefixes from the PR title
             TITLE=$(echo "$PR_TITLE" | sed 's/^feat\s*:\s*//; s/^fix\s*:\s*//; s/^doc\s*:\s*//; s/^docs\s*:\s*//')
 
+            # Normalize Source PR to a full URL via the Python helper so the
+            # new entry matches the convention used by `update-patch-entry.py`
+            # for existing entries. Falls back to `—` when there is no PR
+            # (PR_NUMBER would have been emptied above).
+            if [ -z "$PR_NUMBER" ]; then
+              SOURCE_PR_FIELD="—"
+            else
+              SOURCE_PR_FIELD=$(python3 -c "import importlib.util,sys; s=importlib.util.spec_from_file_location('u','scripts/bf/update-patch-entry.py'); m=importlib.util.module_from_spec(s); s.loader.exec_module(m); v=m._normalize_pr_ref(sys.argv[1]); print(v if v is not None else '—')" "$PR_NUMBER")
+            fi
+
             {
               echo ""
               echo "## $TITLE"
@@ -246,7 +268,7 @@ jobs:
               echo "- **Stable branch first merged into:** TBD"
               echo "- **Canonical branch:** \`brightfire/${PATCH_NAME}\`"
               echo "- **Branch HEAD commit:** \`${COMMIT_SHORT}\`"
-              echo "- **Source PR:** #${PR_NUMBER}"
+              echo "- **Source PR:** ${SOURCE_PR_FIELD}"
               echo ""
               echo "### Rationale"
               echo ""
@@ -262,7 +284,11 @@ jobs:
             } >> "$PATCHES_FILE"
 
             git add "$PATCHES_FILE"
-            git commit -m "ci: register new patch brightfire/${PATCH_NAME} (PR #${PR_NUMBER})"
+            if [ -z "$PR_NUMBER" ]; then
+              git commit -m "ci: register new patch brightfire/${PATCH_NAME} (no PR)"
+            else
+              git commit -m "ci: register new patch brightfire/${PATCH_NAME} (PR ${PR_NUMBER})"
+            fi
           fi
 
           # Always push to brightfire/ci — this triggers BF: Build Stable
