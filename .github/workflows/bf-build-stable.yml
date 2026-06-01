@@ -223,6 +223,14 @@ jobs:
       - name: Pre-push checks
         run: pnpm prepush:ci 2>/dev/null || pnpm tsgo
 
+      - name: Build tarball
+        id: tarball
+        run: |
+          NODE_OPTIONS="--max-old-space-size=12000" pnpm build
+          pnpm ui:build
+          npm pack --ignore-scripts
+          echo "tarball=$(ls openclaw-*.tgz | head -1)" >> "$GITHUB_OUTPUT"
+
       - name: Run tests
         run: pnpm vitest run --reporter=basic 2>/dev/null || echo "Tests step completed (non-blocking)"
 
@@ -250,16 +258,4 @@ jobs:
           name: "Brightfire ${{ steps.version.outputs.version }}"
           target_commitish: stable/${{ steps.upstream-tag.outputs.version }}
           draft: false
-
-      - name: Build and attach tarball
-        env:
-          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
-        run: |
-          NODE_OPTIONS="--max-old-space-size=6000" pnpm build
-          pnpm ui:build
-          npm pack --ignore-scripts
-          TARBALL=$(ls openclaw-*.tgz 2>/dev/null | head -1)
-          if [ -n "$TARBALL" ]; then
-            gh release upload "${{ steps.version.outputs.tag }}" "$TARBALL"
-            echo "Uploaded: $TARBALL"
-          fi
+          files: ${{ steps.tarball.outputs.tarball }}
