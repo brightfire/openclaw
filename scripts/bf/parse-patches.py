@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Parse BRIGHTFIRE_PATCHES.md and emit active branches for CI workflows.
+"""Parse BRIGHTFIRE_PATCHES.md and emit patch branches for CI workflows.
 
 Reads the patches manifest file and outputs a comma-separated list of
-canonical branch names that have Status=active and Reapply!=no, in the
-order they appear in the `## Patches` table.
+canonical branch names, in the order they appear in the `## Patches` table.
+Presence in the table is the apply signal — every row is included.
 
 Usage: parse-patches.py [patches-file] [github-output-file]
   patches-file defaults to BRIGHTFIRE_PATCHES.md
@@ -49,11 +49,11 @@ def _is_separator_row(cells: list[str]) -> bool:
 
 
 def parse_patches(patches_file: str) -> list[str]:
-    """Parse BRIGHTFIRE_PATCHES.md and return active patch branch names.
+    """Parse BRIGHTFIRE_PATCHES.md and return patch branch names to apply.
 
-    Walks the `## Patches` table; a row is active iff its Status cell is
-    'active' (case-insensitive) and its Reapply cell is not 'no'. Rows
-    whose Canonical branch cell doesn't match `brightfire/<name>` are
+    Walks the `## Patches` table; presence in the table is the apply signal.
+    Every row with a valid `brightfire/<name>` Canonical branch cell is
+    included. Rows whose Canonical branch cell doesn't match that shape are
     skipped silently (separator row, malformed entries).
     """
     try:
@@ -90,8 +90,6 @@ def parse_patches(patches_file: str) -> list[str]:
 
     try:
         canonical_col = _col("Canonical branch")
-        status_col = _col("Status")
-        reapply_col = _col("Reapply")
     except RuntimeError as exc:
         print(f"::error::{exc}", file=sys.stderr)
         sys.exit(1)
@@ -113,14 +111,10 @@ def parse_patches(patches_file: str) -> list[str]:
         if not stripped.startswith("|"):
             break
         cells = _split_row(line)
-        if len(cells) <= max(canonical_col, status_col, reapply_col):
+        if len(cells) <= canonical_col:
             continue
         m = _CANONICAL_BRANCH_RE.search(cells[canonical_col])
         if not m:
-            continue
-        if cells[status_col].strip().lower() != "active":
-            continue
-        if cells[reapply_col].strip().lower() == "no":
             continue
         active.append(m.group(1))
 

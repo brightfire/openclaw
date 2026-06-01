@@ -126,9 +126,6 @@ _TABLE_COLS = [
     "Canonical branch",
     "Branch HEAD",
     "Source PR",
-    "Stable since",
-    "Status",
-    "Reapply",
     "Last updated",
 ]
 
@@ -243,14 +240,6 @@ def _row_branch_name(row):
     if not m:
         return None
     return m.group(1)
-
-
-def _row_status(row):
-    return row.get("Status", "").strip().lower()
-
-
-def _row_reapply(row):
-    return row.get("Reapply", "").strip().lower()
 
 
 def _row_head_sha(row):
@@ -509,18 +498,15 @@ def _refresh_one(content, patch_name):
 
 
 def _list_active_patches(content):
-    """Return list of active patch names (no `brightfire/` prefix) from the
-    Patches table. Active = Status==active AND Reapply!='no'.
+    """Return list of patch names (no `brightfire/` prefix) from the
+    Patches table. Presence in the table IS the apply signal — every row
+    is active by definition.
     """
     rows, _bounds, _lines = _parse_table(content)
     active = []
     for row in rows:
         name = _row_branch_name(row)
         if not name:
-            continue
-        if _row_status(row) != "active":
-            continue
-        if _row_reapply(row) == "no":
             continue
         active.append(name)
     return active

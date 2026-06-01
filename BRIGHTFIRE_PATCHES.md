@@ -9,16 +9,16 @@ is maintained, the merge-not-rebase philosophy, and the new-entry template.
 
 ## Patches
 
-| Name | Canonical branch | Branch HEAD | Source PR | Stable since | Status | Reapply | Last updated |
-| ---- | ---------------- | ----------- | --------- | ------------ | ------ | ------- | ------------ |
-| Slack Markdown | `brightfire/slack-mrkdwn` | `d60b00265d` | — | `stable/v2026.5.3` | active | yes | 2026-05-29 |
-| XGW Cross-Gateway | `brightfire/xgw` | `93987583f9` | <https://github.com/brightfire/openclaw/pull/19>, <https://github.com/brightfire/openclaw/pull/20>, <https://github.com/brightfire/openclaw/pull/21> | `stable/v2026.5.3` | active | yes | 2026-06-01 |
-| Cache Write TTL Cost | `brightfire/cache-write-ttl-cost` | `b88dbad357` | <https://github.com/brightfire/openclaw/pull/24> | `stable/v2026.5.3` | active | yes | 2026-05-29 |
-| Context Window Min Cap | `brightfire/context-window-min-cap` | `68203b417d` | <https://github.com/brightfire/openclaw/pull/31> | `stable/v2026.5.3` | active | yes | 2026-05-29 |
-| Session Reset Prompt | `brightfire/session-reset-prompt` | `88504fce32` | <https://github.com/brightfire/openclaw/pull/30> | `stable/v2026.5.3` | active | yes | 2026-05-29 |
-| Control UI Title | `brightfire/control-ui-title` | `0027e9c8fd` | <https://github.com/openclaw/openclaw/pull/51067> | `stable/v2026.5.3` | active | yes | 2026-05-29 |
-| Store-Based Session Archiving | `brightfire/sessions-history-archived` | `1fc52459d4` | <https://github.com/brightfire/openclaw/pull/39> | `stable/v2026.5.7` | active | yes | 2026-06-01 |
-| CLI HTTP Health Fallback | `brightfire/cli-http-fallback` | `3340721625` | — | `stable/v2026.5.7` | active | yes | 2026-06-01 |
+| Name | Canonical branch | Branch HEAD | Source PR | Last updated |
+| ---- | ---------------- | ----------- | --------- | ------------ |
+| Slack Markdown | `brightfire/slack-mrkdwn` | `d60b00265d` | — | 2026-05-29 |
+| XGW Cross-Gateway | `brightfire/xgw` | `93987583f9` | <https://github.com/brightfire/openclaw/pull/19>, <https://github.com/brightfire/openclaw/pull/20>, <https://github.com/brightfire/openclaw/pull/21> | 2026-06-01 |
+| Cache Write TTL Cost | `brightfire/cache-write-ttl-cost` | `b88dbad357` | <https://github.com/brightfire/openclaw/pull/24> | 2026-05-29 |
+| Context Window Min Cap | `brightfire/context-window-min-cap` | `68203b417d` | <https://github.com/brightfire/openclaw/pull/31> | 2026-05-29 |
+| Session Reset Prompt | `brightfire/session-reset-prompt` | `88504fce32` | <https://github.com/brightfire/openclaw/pull/30> | 2026-05-29 |
+| Control UI Title | `brightfire/control-ui-title` | `0027e9c8fd` | <https://github.com/openclaw/openclaw/pull/51067> | 2026-05-29 |
+| Store-Based Session Archiving | `brightfire/sessions-history-archived` | `1fc52459d4` | <https://github.com/brightfire/openclaw/pull/39> | 2026-06-01 |
+| CLI HTTP Health Fallback | `brightfire/cli-http-fallback` | `3340721625` | — | 2026-06-01 |
 
 ## Slack Markdown
 

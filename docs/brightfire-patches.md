@@ -23,8 +23,7 @@ patch branches, and the procedure for adding a new entry.
    [`BF: Build Stable`](../.github/workflows/bf-build-stable.yml) rebuilds
    against.
 2. A `## Patches` table that is **the** source of truth for every tool-edited
-   field on every patch (Branch HEAD, Source PR, Stable since, Status,
-   Reapply, Last updated).
+   field on every patch (Branch HEAD, Source PR, Last updated).
 3. One `## <Patch name>` section per patch, carrying human prose only:
    Rationale, Files touched, Upgrade guidance.
 
@@ -39,10 +38,12 @@ per-patch sections below the table are hand-edited.
 | `Canonical branch` | `brightfire/<name>` — the patch's own branch on `origin`. Carries the patch's commits plus merge commits from each upstream tag the patch has been brought current with. |
 | `Branch HEAD` | 10-char short SHA of the canonical branch's tip on `origin`. Auto-refreshed by `BF: Register Patch`. |
 | `Source PR` | Full URL to the PR (e.g. `https://github.com/brightfire/openclaw/pull/N`). Cross-repo refs use the appropriate full URL. `—` when there is no PR. Cells may list multiple comma-separated URLs (e.g. for XGW). |
-| `Stable since` | The `stable/vX.Y.Z` branch the patch first landed on. Hand-edited. |
-| `Status` | `active`, `deferred`, `upstreamed`, or `superseded`. Hand-edited. |
-| `Reapply` | `yes` or `no`. Drives whether `BF: Build Stable` includes this patch. Hand-edited. |
 | `Last updated` | ISO date. Auto-bumped whenever Branch HEAD or Source PR changes. |
+
+**Presence in the table is the apply signal.** Every row is included by
+`BF: Build Stable` on the next rebuild. To stop applying a patch, remove its
+row from the table (and delete or archive its section). Record the reason in
+the git commit message or a separate notes file.
 
 Each patch's per-section binding to its table row is the `(canonical:
 brightfire/<name>)` line under the section heading. The tooling locates a
@@ -56,8 +57,7 @@ heading text itself can drift freely without breaking automation.
 manifest. The flow:
 
 1. Reset to the upstream tag in `_meta.Upstream version`.
-2. Walk every active (`Status=active`, `Reapply!=no`) row in the Patches
-   table, in table order.
+2. Walk every row in the Patches table, in table order.
 3. For each row, `git merge --squash <Canonical branch>` and commit, producing
    one squash-merge commit per patch on `stable/*`.
 4. Tag the result and publish a GitHub release with the built tarball.
@@ -127,10 +127,7 @@ What you write by hand:
 
 - New entries: the per-patch `## <Name>` section bodies (Rationale, Files
   touched, Upgrade guidance).
-- Per-row Status changes (`active` → `deferred` / `upstreamed` /
-  `superseded`).
-- Per-row `Reapply` toggles.
-- The `Stable since` cell when first landing a patch on a new `stable/*`
-  branch.
+- Removing a patch: delete its row from the table and its `## <Name>` section.
+  Record the reason in the git commit message or a separate notes file.
 - Anywhere a Source PR cell carries multiple URLs or a non-default repo
   ref (the workflow only writes single Brightfire-fork URLs).

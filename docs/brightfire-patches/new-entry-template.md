@@ -10,12 +10,21 @@ Two pieces are appended in this exact order:
 1. A new row in the `## Patches` table.
 2. A new `## <Patch name>` section below all existing per-patch sections.
 
+## Presence-in-file is the apply signal
+
+Every row in the Patches table is applied by `bf-build-stable`. There is no
+`Status` or `Reapply` column — the row existing in the file means it will be
+included on the next rebuild. To stop applying a patch, **remove its row from
+the table and delete (or archive) its section**. If you want to track _why_
+you dropped it, record that decision in the git commit message or in a
+separate notes file.
+
 ## Field reference
 
 These are the columns in the Patches table and the placeholders the script
 substitutes when registering a new patch. Every field is hand-editable later
-either by maintainers (prose fields, status changes) or by the
-register-patch workflow (Branch HEAD, Source PR, Last updated).
+either by maintainers (prose fields) or by the register-patch workflow
+(Branch HEAD, Source PR, Last updated).
 
 | Field | What it means | Who edits it | Allowed values |
 | ----- | ------------- | ------------ | -------------- |
@@ -23,9 +32,6 @@ register-patch workflow (Branch HEAD, Source PR, Last updated).
 | **Canonical branch** (`{CANONICAL}`) | The `brightfire/<name>` branch that holds the canonical commits for this patch. `bf-build-stable` reads this column to know which branch to squash-merge onto stable. | Hand-edited only (renaming a branch requires a manual edit). | Branch name **without** the `brightfire/` prefix in the placeholder; the template wraps it as `` `brightfire/{CANONICAL}` ``. |
 | **Branch HEAD** (`{COMMIT}`) | 10-character short SHA of the canonical branch tip. Tracked so reviewers can see what state stable was built from without consulting GitHub. | Auto-refreshed by `update-patch-entry.py` on every patch-PR merge (the register-patch workflow) and on `--refresh --all` sweeps. | 10 hex chars wrapped in backticks. |
 | **Source PR** (`{SOURCE_PR}`) | URL of the PR (or PRs) that introduced or last touched this patch. Audit trail for "why does this patch exist." | Auto-written by `update-patch-entry.py` when a `--pr` is provided. Preserved on catch-up syncs (omitted / empty / `0` / `#0`). | Full URL (e.g. `https://github.com/brightfire/openclaw/pull/N`), comma-separated list of URLs for multi-PR patches, or `—` if there is no PR. Bare `N` / `#N` is normalized by the tool to the Brightfire fork URL. Cross-repo refs must be passed as full URLs. |
-| **Stable since** | First `stable/vX.Y.Z` release this patch shipped in. Helps trace when a fix went live. | Hand-edited when the patch first lands on a stable tag. | `TBD` for unmerged stubs, otherwise `` `stable/vX.Y.Z` ``. |
-| **Status** | Lifecycle state of the patch. | Hand-edited. The script never changes it. | `active` (currently reapplied on every stable rebuild) / `deferred` (skipped but kept for reference) / `upstreamed` (no longer needed; upstream landed an equivalent) / `superseded` (replaced by another patch). |
-| **Reapply** | Whether `bf-build-stable` should include this patch on the next rebuild. Decoupled from Status so `deferred` patches can be re-enabled without changing Status semantics. | Hand-edited. | `yes` / `no`. |
 | **Last updated** (`{TODAY}`) | ISO date of the most recent change to this row. Useful as a "is this stale?" hint. | Auto-bumped by `update-patch-entry.py` when Branch HEAD or Source PR changes (and never bumped when the row is byte-identical). | `YYYY-MM-DD`. |
 
 The per-patch section below the table carries the **prose** for each patch:
@@ -39,7 +45,7 @@ The per-patch section below the table carries the **prose** for each patch:
 ## Table row template
 
 ```
-| {NAME} | `brightfire/{CANONICAL}` | `{COMMIT}` | {SOURCE_PR} | TBD | active | yes | {TODAY} |
+| {NAME} | `brightfire/{CANONICAL}` | `{COMMIT}` | {SOURCE_PR} | {TODAY} |
 ```
 
 ## Section template
