@@ -263,7 +263,7 @@ jobs:
         env:
           NODE_OPTIONS: "--max-old-space-size=4096"
           OPENCLAW_VITEST_MAX_WORKERS: "6"
-        run: pnpm vitest run --reporter=default
+        run: pnpm test
 
       - name: Package tarball
         id: tarball
