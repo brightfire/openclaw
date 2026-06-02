@@ -38,8 +38,8 @@ concurrency:
 jobs:
   rebuild-stable:
     name: Rebuild stable
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+    runs-on: ubuntu-latest-m
+    timeout-minutes: 45
     steps:
       - name: Generate app token
         uses: actions/create-github-app-token@v3
