@@ -15,7 +15,7 @@ is maintained, the merge-not-rebase philosophy, and the new-entry template.
 | XGW Cross-Gateway | `brightfire/xgw` | `93987583f9` | <https://github.com/brightfire/openclaw/pull/19>, <https://github.com/brightfire/openclaw/pull/20>, <https://github.com/brightfire/openclaw/pull/21> | 2026-06-01 |
 | Cache Write TTL Cost | `brightfire/cache-write-ttl-cost` | `fe383828b4` | <https://github.com/brightfire/openclaw/pull/24> | 2026-06-01 |
 | Context Window Min Cap | `brightfire/context-window-min-cap` | `42995a61af` | <https://github.com/brightfire/openclaw/pull/31> | 2026-06-01 |
-| Session Reset Prompt | `brightfire/session-reset-prompt` | `1f55b3b54f` | <https://github.com/brightfire/openclaw/pull/30> | 2026-06-01 |
+| Session Reset Prompt | `brightfire/session-reset-prompt` | `88830f1cfd` | https://github.com/brightfire/openclaw/pull/67 | 2026-06-02 |
 | Control UI Title | `brightfire/control-ui-title` | `85a2c07c36` | <https://github.com/openclaw/openclaw/pull/51067> | 2026-06-01 |
 | Store-Based Session Archiving | `brightfire/sessions-history-archived` | `7d54b068c2` | <https://github.com/brightfire/openclaw/pull/39> | 2026-06-01 |
 | CLI HTTP Health Fallback | `brightfire/cli-http-fallback` | `3340721625` | — | 2026-06-01 |
