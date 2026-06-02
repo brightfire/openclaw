@@ -64,6 +64,12 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: '22'
+          # setup-node v5 enables package-manager-cache by default, which
+          # tries to invoke pnpm to compute a cache key — but pnpm is not
+          # installed until the next "Install tools" step. We also handle
+          # the pnpm store cache explicitly via actions/cache below, so this
+          # auto-cache is unnecessary regardless.
+          package-manager-cache: false
 
       - name: Install tools
         run: npm install -g pnpm
