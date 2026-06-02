@@ -68,6 +68,10 @@ jobs:
       - name: Install tools
         run: npm install -g pnpm
 
+      - name: Get pnpm store path
+        id: pnpm-store
+        run: echo "path=$(pnpm store path)" >> "$GITHUB_OUTPUT"
+
       - name: Stage patch parser
         run: cp scripts/bf/parse-patches.py /tmp/parse-patches.py
 
@@ -186,6 +190,15 @@ jobs:
             fi
           done
 
+      - name: Restore pnpm store cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: upstream-${{ steps.upstream-tag.outputs.tag }}-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            upstream-${{ steps.upstream-tag.outputs.tag }}-pnpm-
+            upstream-pnpm-
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile || pnpm install
 
@@ -220,8 +233,26 @@ jobs:
             echo "No regenerated-artifact drift; nothing to commit."
           fi
 
+      - name: Restore tsgo incremental cache
+        uses: actions/cache@v4
+        with:
+          path: .artifacts/tsgo-cache/
+          key: upstream-${{ steps.upstream-tag.outputs.tag }}-tsgo-${{ hashFiles('BRIGHTFIRE_PATCHES.md', 'tsconfig.core.json') }}
+          restore-keys: |
+            upstream-${{ steps.upstream-tag.outputs.tag }}-tsgo-
+
       - name: Pre-push checks
         run: pnpm prepush:ci 2>/dev/null || pnpm tsgo
+
+      - name: Restore Vite UI build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ui/node_modules/.vite/
+            ui/dist/.vite/
+          key: upstream-${{ steps.upstream-tag.outputs.tag }}-vite-${{ hashFiles('ui/package.json', 'pnpm-lock.yaml', 'ui/vite.config.ts') }}
+          restore-keys: |
+            upstream-${{ steps.upstream-tag.outputs.tag }}-vite-
 
       - name: Build tarball
         id: tarball
