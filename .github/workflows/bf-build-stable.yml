@@ -254,16 +254,19 @@ jobs:
           restore-keys: |
             upstream-${{ steps.upstream-tag.outputs.tag }}-vite-
 
-      - name: Build tarball
-        id: tarball
+      - name: Build
         run: |
           NODE_OPTIONS="--max-old-space-size=12000" pnpm build
           pnpm ui:build
-          npm pack --ignore-scripts
-          echo "tarball=$(ls openclaw-*.tgz | head -1)" >> "$GITHUB_OUTPUT"
 
       - name: Run tests
-        run: pnpm vitest run --reporter=basic 2>/dev/null || echo "Tests step completed (non-blocking)"
+        run: pnpm vitest run --reporter=default
+
+      - name: Package tarball
+        id: tarball
+        run: |
+          npm pack --ignore-scripts
+          echo "tarball=$(ls openclaw-*.tgz | head -1)" >> "$GITHUB_OUTPUT"
 
       - name: Push stable branch
         env:
