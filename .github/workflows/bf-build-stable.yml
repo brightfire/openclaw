@@ -263,6 +263,16 @@ jobs:
         env:
           NODE_OPTIONS: "--max-old-space-size=4096"
           OPENCLAW_VITEST_MAX_WORKERS: "6"
+          # Without this, `pnpm test` in CI runs the 12 grouped shard configs
+          # serially in a SHARED vitest process tree — modules and worker heap
+          # state accumulate across the entire suite, which is what caused the
+          # OOM in runs 26823240605 and 26826674026.
+          #
+          # LEAF_SHARDS=1 expands the 12 shards into ~77 leaf configs, each
+          # run in its own vitest process. Per-config heap isolation, no
+          # cross-config leak accumulation. Codex flagged this gap on PR #64;
+          # see scripts/test-projects.test-support.mjs:buildFullSuiteVitestRunPlans.
+          OPENCLAW_TEST_PROJECTS_LEAF_SHARDS: "1"
         run: pnpm test
 
       - name: Package tarball
