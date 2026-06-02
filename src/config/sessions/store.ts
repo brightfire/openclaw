@@ -454,10 +454,35 @@ export async function updateSessionStore<T>(
 
     const result = await mutator(store);
 
+    // Collect sessionIds that belonged to keys removed by the mutator. These
+    // are typically legacy/ghost aliases (e.g. "agent:ops:MAIN" being pruned
+    // by migrateAndPruneGatewaySessionStoreKey) and their sessionIds are
+    // effectively duplicates rather than real history — we should not archive
+    // them when a sibling canonical entry rotates away from the same
+    // sessionId in the same mutation.
+    const ghostPrunedSessionIds = new Set<string>();
+    for (const [key, oldEntry] of previousEntries) {
+      if (!oldEntry.sessionId) {
+        continue;
+      }
+      if (!store[key]) {
+        // Key disappeared entirely (deleted by mutator). Common for ghost
+        // alias pruning by migrateAndPruneGatewaySessionStoreKey.
+        ghostPrunedSessionIds.add(oldEntry.sessionId);
+      }
+    }
+
     // Detect sessionId changes and create archive entries for old sessions.
     for (const [key, oldEntry] of previousEntries) {
       const newEntry = store[key];
       if (newEntry?.sessionId && newEntry.sessionId !== oldEntry.sessionId) {
+        // Skip archiving when the old sessionId was a ghost-derived duplicate
+        // (the same sessionId existed under a now-pruned legacy alias). Those
+        // entries were never authoritative history and should not surface as
+        // archived sessions.
+        if (ghostPrunedSessionIds.has(oldEntry.sessionId)) {
+          continue;
+        }
         // Determine the archive reason:
         // - "deleted": the entry is being marked as archived (explicit deletion)
         // - "reset": the entry still exists with a new sessionId and is not
