@@ -12,7 +12,7 @@ is maintained, the merge-not-rebase philosophy, and the new-entry template.
 | Name | Canonical branch | Branch HEAD | Source PR | Last updated |
 | ---- | ---------------- | ----------- | --------- | ------------ |
 | Slack Markdown | `brightfire/slack-mrkdwn` | `3b009de181` | — | 2026-06-01 |
-| XGW Cross-Gateway | `brightfire/xgw` | `93987583f9` | <https://github.com/brightfire/openclaw/pull/19>, <https://github.com/brightfire/openclaw/pull/20>, <https://github.com/brightfire/openclaw/pull/21> | 2026-06-01 |
+| XGW Cross-Gateway | `brightfire/xgw` | `69f000eded` | https://github.com/brightfire/openclaw/pull/70 | 2026-06-02 |
 | Cache Write TTL Cost | `brightfire/cache-write-ttl-cost` | `fe383828b4` | <https://github.com/brightfire/openclaw/pull/24> | 2026-06-01 |
 | Context Window Min Cap | `brightfire/context-window-min-cap` | `42995a61af` | <https://github.com/brightfire/openclaw/pull/31> | 2026-06-01 |
 | Session Reset Prompt | `brightfire/session-reset-prompt` | `88830f1cfd` | https://github.com/brightfire/openclaw/pull/67 | 2026-06-02 |
