@@ -13,8 +13,8 @@ import {
   isReplySkip,
   resolvePingPongTurns,
 } from "../../agents/tools/sessions-send-helpers.js";
-import { loadConfig } from "../../config/io.js";
 import { resolveMainSessionKey } from "../../config/sessions.js";
+import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { normalizeOptionalString } from "../../shared/string-coerce.js";
 import { errorShape } from "../protocol/index.js";
 import { ErrorCodes } from "../protocol/index.js";
@@ -65,7 +65,7 @@ export async function handleCrossGatewayDispatch(params: {
     return;
   }
 
-  const activeCfg = loadConfig();
+  const activeCfg = params.context.getRuntimeConfig();
   const xgwCfg = getXgwConfig(activeCfg);
   if (!xgwCfg.enabled) {
     params.respond(
@@ -270,7 +270,7 @@ async function runCrossGatewayMultiTurnLoop(params: {
   firstReply: string;
   callerSessionKey: string;
   callerChannel: string;
-  cfg: ReturnType<typeof loadConfig>;
+  cfg: OpenClawConfig;
   timeoutSeconds: number;
 }): Promise<void> {
   const maxTurns = resolvePingPongTurns(params.cfg);
@@ -308,12 +308,13 @@ async function runCrossGatewayMultiTurnLoop(params: {
     }
 
     // Step 3: POST local reply back to remote worker session (direct dispatch)
-    const activeCfg = loadConfig();
+    // Reuse the cfg snapshot captured at handler entry rather than re-reading
+    // ambient config inside the multi-turn loop.
     const remoteResult = await xgwOutboundDispatch(
       params.gwName,
       params.remoteSessionKey,
       localReply,
-      activeCfg,
+      params.cfg,
       { timeoutSeconds: params.timeoutSeconds },
     );
 
