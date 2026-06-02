@@ -10,7 +10,7 @@
 
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { loadConfig } from "../../config/config.js";
+import { getRuntimeConfig } from "../../config/io.js";
 import { formatErrorMessage } from "../../infra/errors.js";
 import type {
   SubagentGetSessionMessagesResult,
@@ -78,7 +78,7 @@ function getSubagent(): SubagentRuntime | null {
 
 function getXgwConfig(): XgwConfig {
   try {
-    const cfg = loadConfig() as { fleet?: { crossGateway?: XgwConfig } } | undefined;
+    const cfg = getRuntimeConfig() as { fleet?: { crossGateway?: XgwConfig } } | undefined;
     return cfg?.fleet?.crossGateway ?? {};
   } catch {
     return {};
@@ -87,7 +87,7 @@ function getXgwConfig(): XgwConfig {
 
 function getAcceptedTokens(): Record<string, string> {
   try {
-    const cfg = loadConfig() as { fleet?: { crossGateway?: XgwConfig } } | undefined;
+    const cfg = getRuntimeConfig() as { fleet?: { crossGateway?: XgwConfig } } | undefined;
     return cfg?.fleet?.crossGateway?.acceptedTokens ?? {};
   } catch {
     return {};

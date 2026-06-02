@@ -16,6 +16,16 @@ vi.mock("../../config/config.js", async () => {
   return {
     ...actual,
     loadConfig: mockLoadConfig,
+    getRuntimeConfig: mockLoadConfig,
+  };
+});
+
+vi.mock("../../config/io.js", async () => {
+  const actual = await vi.importActual<typeof import("../../config/io.js")>("../../config/io.js");
+  return {
+    ...actual,
+    loadConfig: mockLoadConfig,
+    getRuntimeConfig: mockLoadConfig,
   };
 });
 

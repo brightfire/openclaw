@@ -64,7 +64,7 @@ describe("handleCrossGatewayDispatch", () => {
     await handleCrossGatewayDispatch({
       params: { key: "@bad", message: "hello" },
       respond,
-      context: {} as never,
+      context: { getRuntimeConfig: mockLoadConfig } as never,
     });
 
     expect(mockXgwOutboundDispatch).not.toHaveBeenCalled();
@@ -92,7 +92,7 @@ describe("handleCrossGatewayDispatch", () => {
         idempotencyKey: "idem-1",
       },
       respond,
-      context: {} as never,
+      context: { getRuntimeConfig: mockLoadConfig } as never,
     });
 
     // Without an explicit callerSessionKey, falls back to resolveMainSessionKey
@@ -138,7 +138,7 @@ describe("handleCrossGatewayDispatch", () => {
         callerChannel: "slack",
       },
       respond,
-      context: {} as never,
+      context: { getRuntimeConfig: mockLoadConfig } as never,
     });
 
     expect(mockXgwOutboundDispatch).toHaveBeenCalledWith(
@@ -172,7 +172,7 @@ describe("handleCrossGatewayDispatch", () => {
         idempotencyKey: "local-idem-key",
       },
       respond,
-      context: {} as never,
+      context: { getRuntimeConfig: mockLoadConfig } as never,
     });
 
     expect(respond).toHaveBeenCalledWith(
@@ -195,7 +195,7 @@ describe("handleCrossGatewayDispatch", () => {
     await handleCrossGatewayDispatch({
       params: { key: "@ember/receptionist", message: "seq test" },
       respond,
-      context: {} as never,
+      context: { getRuntimeConfig: mockLoadConfig } as never,
     });
 
     expect(respond).toHaveBeenCalledWith(
@@ -217,7 +217,7 @@ describe("handleCrossGatewayDispatch", () => {
     await handleCrossGatewayDispatch({
       params: { key: "@ember/receptionist", message: "no seq" },
       respond,
-      context: {} as never,
+      context: { getRuntimeConfig: mockLoadConfig } as never,
     });
 
     const call = (respond as ReturnType<typeof vi.fn>).mock.calls[0];
@@ -236,7 +236,7 @@ describe("handleCrossGatewayDispatch", () => {
     await handleCrossGatewayDispatch({
       params: { key: "@ember/receptionist", message: "ping" },
       respond,
-      context: {} as never,
+      context: { getRuntimeConfig: mockLoadConfig } as never,
     });
 
     expect(respond).toHaveBeenCalledWith(
@@ -268,7 +268,7 @@ describe("handleCrossGatewayDispatch", () => {
         callerChannel: "slack",
       },
       respond,
-      context: {} as never,
+      context: { getRuntimeConfig: mockLoadConfig } as never,
     });
 
     // Caller must have created the pending record BEFORE dispatching
@@ -330,7 +330,7 @@ describe("handleCrossGatewayDispatch", () => {
         callerChannel: "slack",
       },
       respond,
-      context: {} as never,
+      context: { getRuntimeConfig: mockLoadConfig } as never,
     });
 
     // The pending record must store the real caller session key (no xgw: prefix).
@@ -353,7 +353,7 @@ describe("handleCrossGatewayDispatch", () => {
     await handleCrossGatewayDispatch({
       params: { key: "@ember/receptionist", message: "overflow", async: true },
       respond,
-      context: {} as never,
+      context: { getRuntimeConfig: mockLoadConfig } as never,
     });
 
     expect(mockSetPendingCallback).not.toHaveBeenCalled();
@@ -420,7 +420,7 @@ describe("handleCrossGatewayDispatch", () => {
     await handleCrossGatewayDispatch({
       params: { key: "@ember/receptionist", message: "ping" },
       respond,
-      context: {} as never,
+      context: { getRuntimeConfig: mockLoadConfig } as never,
     });
 
     expect(mockXgwOutboundDispatch).not.toHaveBeenCalled();
@@ -447,7 +447,7 @@ describe("handleCrossGatewayDispatch", () => {
     await handleCrossGatewayDispatch({
       params: { key: "@ember/receptionist", message: "ping" },
       respond,
-      context: {} as never,
+      context: { getRuntimeConfig: mockLoadConfig } as never,
     });
 
     expect(mockXgwOutboundDispatch).not.toHaveBeenCalled();
@@ -466,7 +466,7 @@ describe("handleCrossGatewayDispatch", () => {
     await handleCrossGatewayDispatch({
       params: { key: "@ember/receptionist", message: "ping", multiTurn: true, async: true },
       respond,
-      context: {} as never,
+      context: { getRuntimeConfig: mockLoadConfig } as never,
     });
 
     expect(mockXgwOutboundDispatch).not.toHaveBeenCalled();
@@ -513,7 +513,7 @@ describe("handleCrossGatewayDispatch", () => {
     await handleCrossGatewayDispatch({
       params: { key: "@ember/receptionist", message: "start", multiTurn: true },
       respond,
-      context: {} as never,
+      context: { getRuntimeConfig: mockLoadConfig } as never,
     });
 
     // First reply is returned immediately
@@ -556,7 +556,7 @@ describe("handleCrossGatewayDispatch", () => {
     await handleCrossGatewayDispatch({
       params: { key: "@ember/receptionist", message: "start", multiTurn: true },
       respond,
-      context: {} as never,
+      context: { getRuntimeConfig: mockLoadConfig } as never,
     });
 
     await new Promise((r) => setImmediate(r));
@@ -587,7 +587,7 @@ describe("handleCrossGatewayDispatch", () => {
     await handleCrossGatewayDispatch({
       params: { key: "@ember/receptionist", message: "start", multiTurn: true },
       respond,
-      context: {} as never,
+      context: { getRuntimeConfig: mockLoadConfig } as never,
     });
 
     await new Promise((r) => setImmediate(r));
@@ -612,7 +612,7 @@ describe("handleCrossGatewayDispatch", () => {
     await handleCrossGatewayDispatch({
       params: { key: "@ember/receptionist", message: "start", multiTurn: true },
       respond,
-      context: {} as never,
+      context: { getRuntimeConfig: mockLoadConfig } as never,
     });
 
     await new Promise((r) => setImmediate(r));
@@ -642,7 +642,7 @@ describe("handleCrossGatewayDispatch", () => {
     await handleCrossGatewayDispatch({
       params: { key: "@ember/receptionist", message: "start", multiTurn: true },
       respond,
-      context: {} as never,
+      context: { getRuntimeConfig: mockLoadConfig } as never,
     });
 
     await new Promise((r) => setImmediate(r));
@@ -667,7 +667,7 @@ describe("handleCrossGatewayDispatch", () => {
     await handleCrossGatewayDispatch({
       params: { key: "@ember/receptionist", message: "start", multiTurn: true },
       respond,
-      context: {} as never,
+      context: { getRuntimeConfig: mockLoadConfig } as never,
     });
 
     await new Promise((r) => setImmediate(r));
@@ -692,7 +692,7 @@ describe("handleCrossGatewayDispatch", () => {
     await handleCrossGatewayDispatch({
       params: { key: "@ember/receptionist", message: "start", multiTurn: true },
       respond,
-      context: {} as never,
+      context: { getRuntimeConfig: mockLoadConfig } as never,
     });
 
     await new Promise((r) => setImmediate(r));
@@ -722,7 +722,7 @@ describe("handleCrossGatewayDispatch", () => {
     await handleCrossGatewayDispatch({
       params: { key: "@ember/receptionist", message: "start", multiTurn: true },
       respond,
-      context: {} as never,
+      context: { getRuntimeConfig: mockLoadConfig } as never,
     });
 
     await new Promise((r) => setImmediate(r));
