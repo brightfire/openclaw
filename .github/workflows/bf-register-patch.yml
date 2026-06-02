@@ -60,11 +60,11 @@ jobs:
         uses: actions/create-github-app-token@v3
         id: app-token
         with:
-          app-id: ${{ vars.BF_CI_APP_ID }}
+          client-id: ${{ vars.BF_CI_APP_CLIENT_ID }}
           private-key: ${{ secrets.BF_CI_APP_PRIVATE_KEY }}
 
       - name: Checkout brightfire/ci
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: brightfire/ci
           fetch-depth: 0
