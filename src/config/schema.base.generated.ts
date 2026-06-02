@@ -3746,6 +3746,7 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
               sessionResetPrompt: {
                 type: "string",
                 minLength: 1,
+                title: "Session Reset Prompt",
                 description:
                   "Custom greeting prompt injected on bare /new and /reset commands. Replaces the built-in default session reset prompt. Must be a non-empty string. If unset, OpenClaw uses the default prompt that instructs the agent to greet the user in their configured persona.",
               },
@@ -26430,6 +26431,11 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
       help: "Optional repository root shown in the system prompt runtime line (overrides auto-detect).",
       tags: ["advanced"],
     },
+    "agents.defaults.sessionResetPrompt": {
+      label: "Session Reset Prompt",
+      help: "Custom greeting prompt injected on bare /new and /reset commands. Replaces the built-in default session reset prompt. Must be a non-empty string. If unset, OpenClaw uses the default prompt that instructs the agent to greet the user in their configured persona.",
+      tags: ["storage"],
+    },
     "agents.defaults.promptOverlays": {
       label: "Prompt Overlays",
       help: "Provider-independent prompt overlays applied by model family before provider-specific prompt hooks.",
@@ -29007,10 +29013,6 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
       label: "Plugin Config",
       help: "Plugin-defined configuration payload interpreted by that plugin's own schema and validation rules. Use only documented fields from the plugin to prevent ignored or invalid settings.",
       tags: ["advanced"],
-    },
-    "agents.defaults.sessionResetPrompt": {
-      help: "Custom greeting prompt injected on bare /new and /reset commands. Replaces the built-in default session reset prompt. Must be a non-empty string. If unset, OpenClaw uses the default prompt that instructs the agent to greet the user in their configured persona.",
-      tags: ["storage"],
     },
     "models.providers.*.headers.*": {
       sensitive: true,
