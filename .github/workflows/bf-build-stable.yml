@@ -38,7 +38,7 @@ concurrency:
 jobs:
   rebuild-stable:
     name: Rebuild stable
-    runs-on: ubuntu-latest-m
+    runs-on: ubuntu-latest-l
     timeout-minutes: 45
     steps:
       - name: Generate app token
@@ -260,6 +260,9 @@ jobs:
           pnpm ui:build
 
       - name: Run tests
+        env:
+          NODE_OPTIONS: "--max-old-space-size=4096"
+          OPENCLAW_VITEST_MAX_WORKERS: "6"
         run: pnpm vitest run --reporter=default
 
       - name: Package tarball
