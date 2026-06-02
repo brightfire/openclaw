@@ -267,18 +267,32 @@ jobs:
 
       - name: Run tests
         env:
+          # Per-worker heap budget (V8 old-generation limit). 2 workers × ~6 GB
+          # RSS × 4 parallel leaves = ~48 GB envelope, fits comfortably in the
+          # 32 GB runner since not every worker hits peak RSS simultaneously
+          # and many tests are I/O-bound rather than CPU-bound.
           NODE_OPTIONS: "--max-old-space-size=4096"
-          OPENCLAW_VITEST_MAX_WORKERS: "6"
-          # Without this, `pnpm test` in CI runs the 12 grouped shard configs
-          # serially in a SHARED vitest process tree — modules and worker heap
-          # state accumulate across the entire suite, which is what caused the
-          # OOM in runs 26823240605 and 26826674026.
-          #
-          # LEAF_SHARDS=1 expands the 12 shards into ~77 leaf configs, each
-          # run in its own vitest process. Per-config heap isolation, no
-          # cross-config leak accumulation. Codex flagged this gap on PR #64;
-          # see scripts/test-projects.test-support.mjs:buildFullSuiteVitestRunPlans.
+
+          # Workers per leaf shard. Reduced from 6 → 2 because LEAF_SHARDS
+          # expansion makes most leaves small enough that they don't benefit
+          # from 6 internal workers — we get more wall-clock benefit from
+          # running multiple leaves concurrently (PARALLEL=4) than from
+          # over-parallelizing each individual leaf.
+          OPENCLAW_VITEST_MAX_WORKERS: "2"
+
+          # Expand the 12 grouped shard configs into ~77 leaf configs, each
+          # run as its own vitest process. Per-config heap isolation, no
+          # cross-config leak accumulation. Without this, CI mode runs the
+          # 12 grouped shards serially in one shared vitest process tree,
+          # which caused the OOM in runs 26823240605 and 26826674026.
+          # See scripts/test-projects.test-support.mjs:buildFullSuiteVitestRunPlans.
           OPENCLAW_TEST_PROJECTS_LEAF_SHARDS: "1"
+
+          # Run 4 leaves in parallel (instead of the CI default of 1).
+          # Combined with MAX_WORKERS=2, that's 4 × 2 = 8 worker procs total,
+          # an exact match to the 8 vCPU runner. Expected ~40-60% wall-clock
+          # reduction vs the prior serial-leaves baseline.
+          OPENCLAW_TEST_PROJECTS_PARALLEL: "4"
         run: pnpm test
 
       - name: Package tarball
