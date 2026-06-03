@@ -19,6 +19,7 @@ is maintained, the merge-not-rebase philosophy, and the new-entry template.
 | Control UI Title | `brightfire/control-ui-title` | `85a2c07c36` | <https://github.com/openclaw/openclaw/pull/51067> | 2026-06-01 |
 | Store-Based Session Archiving | `brightfire/sessions-history-archived` | `f9d648f34b` | https://github.com/brightfire/openclaw/pull/73 | 2026-06-02 |
 | CLI HTTP Health Fallback | `brightfire/cli-http-fallback` | `3340721625` | — | 2026-06-01 |
+| test: fix/skip upstream tests flaky or broken in CI | `brightfire/upstream-test-fixes` | `e836cf9713` | https://github.com/brightfire/openclaw/pull/76 | 2026-06-03 |
 
 ## Slack Markdown
 
@@ -256,3 +257,22 @@ label stays correct on both code paths.
 
 **Drop when:** upstream lands an equivalent CLI HTTP fallback, or upstream
 stops rejecting loopback connections in `trusted-proxy` mode entirely.
+
+## test: fix/skip upstream tests flaky or broken in CI
+
+(canonical: `brightfire/upstream-test-fixes`)
+
+### Rationale
+
+_Add description of what this patch does and why._
+
+### Files touched
+
+TBD — update after first stable merge
+
+### Upgrade guidance
+
+_Describe upstream changes that have historically conflicted and how they
+were resolved. Patches are absorbed by `bf-build-stable` via squash-merge of
+the canonical branch — do **not** prescribe `git cherry-pick` here. Describe
+what tends to conflict and how to resolve it._
