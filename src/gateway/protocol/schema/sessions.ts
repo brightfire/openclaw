@@ -60,6 +60,15 @@ export const SessionsListParamsSchema = Type.Object(
     spawnedBy: Type.Optional(NonEmptyString),
     agentId: Type.Optional(NonEmptyString),
     search: Type.Optional(Type.String()),
+    /**
+     * When true, also scan the sessions directory for archived (reset/deleted)
+     * transcript files and return them as synthetic rows with `archived: true`.
+     */
+    includeArchived: Type.Optional(Type.Boolean()),
+    /** Only include archived sessions whose archive timestamp is >= this epoch-ms value. */
+    archivedFrom: Type.Optional(Type.Integer()),
+    /** Only include archived sessions whose archive timestamp is <= this epoch-ms value. */
+    archivedTo: Type.Optional(Type.Integer()),
   },
   { additionalProperties: false },
 );

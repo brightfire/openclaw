@@ -11,6 +11,7 @@ import {
 } from "../../utils/delivery-context.shared.js";
 import type { DeliveryContext } from "../../utils/delivery-context.types.js";
 import { getFileStatSnapshot } from "../cache-utils.js";
+import { buildArchiveStoreEntry } from "./archive-entry.js";
 import { enforceSessionDiskBudget, type SessionDiskBudgetSweepResult } from "./disk-budget.js";
 import { deriveSessionMetaPatch } from "./metadata.js";
 import {
@@ -440,7 +441,60 @@ export async function updateSessionStore<T>(
   return await runExclusiveSessionStoreWrite(storePath, async () => {
     const store = loadMutableSessionStoreForWriter(storePath);
     const previousAcpByKey = collectAcpMetadataSnapshot(store);
+
+    // Snapshot entries with sessionIds before the mutator runs so we can
+    // detect sessionId changes and archive the old entry automatically.
+    // Skip archive keys themselves (they contain `:archived:`).
+    const previousEntries = new Map<string, SessionEntry>();
+    for (const [key, entry] of Object.entries(store)) {
+      if (entry?.sessionId && !key.includes(":archived:")) {
+        previousEntries.set(key, { ...entry });
+      }
+    }
+
     const result = await mutator(store);
+
+    // Collect sessionIds that belonged to keys removed by the mutator. These
+    // are typically legacy/ghost aliases (e.g. "agent:ops:MAIN" being pruned
+    // by migrateAndPruneGatewaySessionStoreKey) and their sessionIds are
+    // effectively duplicates rather than real history — we should not archive
+    // them when a sibling canonical entry rotates away from the same
+    // sessionId in the same mutation.
+    const ghostPrunedSessionIds = new Set<string>();
+    for (const [key, oldEntry] of previousEntries) {
+      if (!oldEntry.sessionId) {
+        continue;
+      }
+      if (!store[key]) {
+        // Key disappeared entirely (deleted by mutator). Common for ghost
+        // alias pruning by migrateAndPruneGatewaySessionStoreKey.
+        ghostPrunedSessionIds.add(oldEntry.sessionId);
+      }
+    }
+
+    // Detect sessionId changes and create archive entries for old sessions.
+    for (const [key, oldEntry] of previousEntries) {
+      const newEntry = store[key];
+      if (newEntry?.sessionId && newEntry.sessionId !== oldEntry.sessionId) {
+        // Skip archiving when the old sessionId was a ghost-derived duplicate
+        // (the same sessionId existed under a now-pruned legacy alias). Those
+        // entries were never authoritative history and should not surface as
+        // archived sessions.
+        if (ghostPrunedSessionIds.has(oldEntry.sessionId)) {
+          continue;
+        }
+        // Determine the archive reason:
+        // - "deleted": the entry is being marked as archived (explicit deletion)
+        // - "reset": the entry still exists with a new sessionId and is not
+        //   archived (e.g. daily auto-reset or session rollover)
+        const reason = newEntry.archived ? "deleted" : "reset";
+        const { archiveKey, archiveEntry } = buildArchiveStoreEntry(key, oldEntry, reason);
+        if (!store[archiveKey]) {
+          store[archiveKey] = archiveEntry;
+        }
+      }
+    }
+
     preserveExistingAcpMetadata({
       previousAcpByKey,
       nextStore: store,
@@ -523,6 +577,12 @@ async function persistResolvedSessionEntry(params: {
   return params.next;
 }
 
+/**
+ * Patch metadata on an existing session entry without participating in
+ * archive snapshotting. This bypasses the sessionId-change detection in
+ * `updateSessionStore` — which is fine because callers only patch
+ * metadata fields (label, model, thinkingLevel, etc.), never sessionIds.
+ */
 export async function updateSessionStoreEntry(params: {
   storePath: string;
   sessionKey: string;

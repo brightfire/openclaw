@@ -27,6 +27,7 @@ const SessionsHistoryToolSchema = Type.Object({
   sessionKey: Type.String(),
   limit: Type.Optional(Type.Number({ minimum: 1 })),
   includeTools: Type.Optional(Type.Boolean()),
+  includeArchived: Type.Optional(Type.Boolean()),
 });
 
 const SESSIONS_HISTORY_MAX_BYTES = 80 * 1024;
@@ -205,6 +206,9 @@ export function createSessionsHistoryTool(opts?: {
         requesterInternalKey: effectiveRequesterKey,
         restrictToSpawned,
       });
+
+      let resolvedKey: string;
+      let displayKey: string;
       if (!resolvedSession.ok) {
         return jsonResult({ status: resolvedSession.status, error: resolvedSession.error });
       }
@@ -221,8 +225,8 @@ export function createSessionsHistoryTool(opts?: {
         });
       }
       // From here on, use the canonical key (sessionId inputs already resolved).
-      const resolvedKey = visibleSession.key;
-      const displayKey = visibleSession.displayKey;
+      resolvedKey = visibleSession.key;
+      displayKey = visibleSession.displayKey;
 
       const a2aPolicy = createAgentToAgentPolicy(cfg);
       const visibility = resolveEffectiveSessionToolsVisibility({
@@ -248,11 +252,12 @@ export function createSessionsHistoryTool(opts?: {
           ? Math.max(1, Math.floor(params.limit))
           : undefined;
       const includeTools = Boolean(params.includeTools);
-      const result = await gatewayCall<{ messages: Array<unknown> }>({
+      const result = await gatewayCall<{ messages: Array<unknown>; archived?: boolean }>({
         method: "chat.history",
         params: { sessionKey: resolvedKey, limit },
       });
       const rawMessages = Array.isArray(result?.messages) ? result.messages : [];
+      const isArchived = result?.archived === true;
       const selectedMessages = includeTools ? rawMessages : stripToolMessages(rawMessages);
       const sanitizedMessages = selectedMessages.map((message) => sanitizeHistoryMessage(message));
       const contentTruncated = sanitizedMessages.some((entry) => entry.truncated);
@@ -275,6 +280,7 @@ export function createSessionsHistoryTool(opts?: {
         contentTruncated,
         contentRedacted,
         bytes: hardened.bytes,
+        ...(isArchived ? { archived: true } : {}),
       });
     },
   };
