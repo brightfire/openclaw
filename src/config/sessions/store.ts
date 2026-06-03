@@ -454,21 +454,48 @@ export async function updateSessionStore<T>(
 
     const result = await mutator(store);
 
-    // Collect sessionIds that belonged to keys removed by the mutator. These
-    // are typically legacy/ghost aliases (e.g. "agent:ops:MAIN" being pruned
-    // by migrateAndPruneGatewaySessionStoreKey) and their sessionIds are
-    // effectively duplicates rather than real history — we should not archive
-    // them when a sibling canonical entry rotates away from the same
-    // sessionId in the same mutation.
-    const ghostPrunedSessionIds = new Set<string>();
+    // Detect ghost promotions: a sessionId X is "ghost-promoted" into a
+    // canonical key when a legacy alias (e.g. "agent:ops:MAIN") and the
+    // canonical key ("agent:ops:work") simultaneously carry X — typically
+    // produced by `migrateAndPruneGatewaySessionStoreKey` mid-transition.
+    // When the mutator prunes the alias AND rotates the canonical key in the
+    // same transaction, the canonical key never owned X as real history;
+    // archiving it would surface a duplicate ghost rather than a real prior
+    // session.
+    //
+    // To distinguish ghost promotion from a legitimate rollover that happens
+    // to coincide with unrelated alias cleanup, we require BOTH conditions
+    // per sessionId: (1) the sessionId appeared in `previousEntries` under at
+    // least TWO distinct keys, and (2) at least one of those keys was pruned
+    // by the mutator. In real lazy rollover, the predecessor sessionId
+    // belongs only to the rotating canonical key — no other key carried it —
+    // so this set stays empty and archive fires normally.
+    const previousKeysBySessionId = new Map<string, Set<string>>();
     for (const [key, oldEntry] of previousEntries) {
       if (!oldEntry.sessionId) {
         continue;
       }
-      if (!store[key]) {
-        // Key disappeared entirely (deleted by mutator). Common for ghost
-        // alias pruning by migrateAndPruneGatewaySessionStoreKey.
-        ghostPrunedSessionIds.add(oldEntry.sessionId);
+      let keys = previousKeysBySessionId.get(oldEntry.sessionId);
+      if (!keys) {
+        keys = new Set<string>();
+        previousKeysBySessionId.set(oldEntry.sessionId, keys);
+      }
+      keys.add(key);
+    }
+    const ghostPromotedSessionIds = new Set<string>();
+    for (const [sessionId, keys] of previousKeysBySessionId) {
+      if (keys.size < 2) {
+        continue;
+      }
+      let prunedAny = false;
+      for (const key of keys) {
+        if (!store[key]) {
+          prunedAny = true;
+          break;
+        }
+      }
+      if (prunedAny) {
+        ghostPromotedSessionIds.add(sessionId);
       }
     }
 
@@ -476,11 +503,11 @@ export async function updateSessionStore<T>(
     for (const [key, oldEntry] of previousEntries) {
       const newEntry = store[key];
       if (newEntry?.sessionId && newEntry.sessionId !== oldEntry.sessionId) {
-        // Skip archiving when the old sessionId was a ghost-derived duplicate
-        // (the same sessionId existed under a now-pruned legacy alias). Those
-        // entries were never authoritative history and should not surface as
+        // Skip archiving when the old sessionId was ghost-promoted (shared by
+        // a now-pruned legacy alias and the canonical key). Those entries
+        // were never authoritative history and should not surface as
         // archived sessions.
-        if (ghostPrunedSessionIds.has(oldEntry.sessionId)) {
+        if (ghostPromotedSessionIds.has(oldEntry.sessionId)) {
           continue;
         }
         // Determine the archive reason:
