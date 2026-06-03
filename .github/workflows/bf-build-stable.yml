@@ -214,11 +214,14 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           FORCE_RELEASE: ${{ inputs.force_release || 'false' }}
           UPSTREAM_TAG_INPUT: ${{ inputs.upstream_tag || '' }}
-          # Pinned to the manifest staged at the top of the workflow so the
-          # gate compares against the manifest that actually drove the build,
-          # not whatever origin/brightfire/ci has advanced to since.
-          PINNED_MANIFEST_PATH: ${{ env.PINNED_MANIFEST_PATH }}
-          PINNED_MANIFEST_SHA256: ${{ env.PINNED_MANIFEST_SHA256 }}
+          # PINNED_MANIFEST_PATH and PINNED_MANIFEST_SHA256 are inherited from
+          # the runner environment, written via $GITHUB_ENV in the "Pin manifest
+          # source" step above. Do NOT re-declare them here via ${{ env.* }} —
+          # the workflow `env` context does not include vars set through
+          # $GITHUB_ENV, so doing so would overwrite the inherited values with
+          # empty strings and force check-release-needed.sh into its
+          # origin/brightfire/ci fallback, defeating the whole point of
+          # pinning the manifest source.
         run: /tmp/bf-build-stable/check-release-needed.sh
 
       # Tarball is built unconditionally. `npm pack` is cheap (~10s) and
