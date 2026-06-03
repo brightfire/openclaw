@@ -3746,6 +3746,13 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
                 description:
                   "Provider-independent prompt overlays applied by model family before provider-specific prompt hooks.",
               },
+              sessionResetPrompt: {
+                type: "string",
+                minLength: 1,
+                title: "Session Reset Prompt",
+                description:
+                  "Custom greeting prompt injected on bare /new and /reset commands. Replaces the built-in default session reset prompt. Must be a non-empty string. If unset, OpenClaw uses the default prompt that instructs the agent to greet the user in their configured persona.",
+              },
               skipBootstrap: {
                 type: "boolean",
               },
@@ -26489,6 +26496,11 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
       label: "Repo Root",
       help: "Optional repository root shown in the system prompt runtime line (overrides auto-detect).",
       tags: ["advanced"],
+    },
+    "agents.defaults.sessionResetPrompt": {
+      label: "Session Reset Prompt",
+      help: "Custom greeting prompt injected on bare /new and /reset commands. Replaces the built-in default session reset prompt. Must be a non-empty string. If unset, OpenClaw uses the default prompt that instructs the agent to greet the user in their configured persona.",
+      tags: ["storage"],
     },
     "agents.defaults.promptOverlays": {
       label: "Prompt Overlays",
