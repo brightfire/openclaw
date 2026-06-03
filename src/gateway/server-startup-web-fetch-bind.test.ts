@@ -4,7 +4,6 @@ import type { OpenClawConfig } from "../config/config.js";
 import {
   getFreePort,
   installGatewayTestHooks,
-  startGatewayServer,
   startGatewayServerWithRetries,
 } from "./test-helpers.js";
 
@@ -84,7 +83,9 @@ describe("gateway startup web fetch config", () => {
   it("binds HTTP with credential-free tools.web.fetch config without fetch provider discovery", async () => {
     const previousMinimal = process.env.OPENCLAW_TEST_MINIMAL_GATEWAY;
     process.env.OPENCLAW_TEST_MINIMAL_GATEWAY = "0";
-    let server: Awaited<ReturnType<typeof startGatewayServer>> | undefined;
+    let server:
+      | Awaited<ReturnType<typeof startGatewayServerWithRetries>>["server"]
+      | undefined;
     try {
       await writeConfig({
         gateway: {
