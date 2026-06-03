@@ -45,6 +45,12 @@ const SessionsListToolSchema = Type.Object({
   search: Type.Optional(Type.String({ minLength: 1 })),
   includeDerivedTitles: Type.Optional(Type.Boolean()),
   includeLastMessage: Type.Optional(Type.Boolean()),
+  /** Include archived (reset/deleted) sessions from transcript files on disk. */
+  includeArchived: Type.Optional(Type.Boolean()),
+  /** Only include archived sessions archived at or after this epoch-ms timestamp. */
+  archivedFrom: Type.Optional(Type.Number()),
+  /** Only include archived sessions archived at or before this epoch-ms timestamp. */
+  archivedTo: Type.Optional(Type.Number()),
 });
 
 type GatewayCaller = typeof callGateway;
@@ -114,6 +120,15 @@ export function createSessionsListTool(opts?: {
       const search = readStringParam(params, "search");
       const includeDerivedTitles = params.includeDerivedTitles === true;
       const includeLastMessage = params.includeLastMessage === true;
+      const includeArchived = params.includeArchived === true;
+      const archivedFrom =
+        typeof params.archivedFrom === "number" && Number.isFinite(params.archivedFrom)
+          ? Math.floor(params.archivedFrom)
+          : undefined;
+      const archivedTo =
+        typeof params.archivedTo === "number" && Number.isFinite(params.archivedTo)
+          ? Math.floor(params.archivedTo)
+          : undefined;
       const gatewayCall = opts?.callGateway ?? callGateway;
       const a2aPolicy = createAgentToAgentPolicy(cfg);
       const hydrateTranscriptFieldsAfterFiltering = includeDerivedTitles || includeLastMessage;
@@ -131,6 +146,9 @@ export function createSessionsListTool(opts?: {
           includeGlobal: !restrictToSpawned,
           includeUnknown: !restrictToSpawned,
           spawnedBy: restrictToSpawned ? effectiveRequesterKey : undefined,
+          includeArchived: includeArchived || undefined,
+          archivedFrom,
+          archivedTo,
         },
       });
 
