@@ -26,11 +26,18 @@
 #   - Latest release has no asset    -> needs_release=true (backfill run)
 #   - gh release view fails (other)  -> fail loudly (no silent skip)
 #
+# Manifest source: read directly from `origin/brightfire/ci:BRIGHTFIRE_PATCHES.md`
+# via `git show`. At this point in the build-stable workflow the working tree
+# is the merged stable/<version> branch, which does not contain the manifest.
+# `brightfire/ci` is the only branch that ever has it.
+#
 # Inputs (env):
 #   GITHUB_REPOSITORY    — owner/repo (set by GHA runtime)
 #   GITHUB_TOKEN         — used implicitly by gh
 #   GITHUB_OUTPUT        — path to GitHub Actions output file
-#   PATCHES_FILE         — manifest path (default: BRIGHTFIRE_PATCHES.md)
+#   MANIFEST_REF         — git ref to read manifest from (default:
+#                          origin/brightfire/ci); override only for local
+#                          testing
 #   FORCE_RELEASE        — "true" forces needs_release=true (from workflow_dispatch)
 #   UPSTREAM_TAG_INPUT   — non-empty value forces needs_release=true (from
 #                          workflow_dispatch upstream_tag input)
@@ -41,21 +48,24 @@
 
 set -euo pipefail
 
-PATCHES_FILE="${PATCHES_FILE:-BRIGHTFIRE_PATCHES.md}"
+MANIFEST_REF="${MANIFEST_REF:-origin/brightfire/ci}"
 FORCE_RELEASE="${FORCE_RELEASE:-false}"
 UPSTREAM_TAG_INPUT="${UPSTREAM_TAG_INPUT:-}"
-
-if [ ! -f "$PATCHES_FILE" ]; then
-  echo "::error::Manifest not found: $PATCHES_FILE"
-  exit 2
-fi
 
 if [ -z "${GITHUB_OUTPUT:-}" ]; then
   echo "::error::GITHUB_OUTPUT not set"
   exit 2
 fi
 
-MANIFEST_SHA=$(sha256sum "$PATCHES_FILE" | awk '{print $1}')
+if ! git rev-parse --verify "$MANIFEST_REF:BRIGHTFIRE_PATCHES.md" >/dev/null 2>&1; then
+  echo "::error::BRIGHTFIRE_PATCHES.md not found at $MANIFEST_REF"
+  exit 2
+fi
+
+# Pipe git-show through sha256sum so the trailing newline is preserved
+# byte-for-byte (sha must match `sha256sum BRIGHTFIRE_PATCHES.md` taken
+# elsewhere, e.g. by write-build-fingerprint.sh).
+MANIFEST_SHA=$(git show "$MANIFEST_REF:BRIGHTFIRE_PATCHES.md" | sha256sum | awk '{print $1}')
 echo "Current manifest sha256: $MANIFEST_SHA"
 echo "manifest_sha256=$MANIFEST_SHA" >> "$GITHUB_OUTPUT"
 
