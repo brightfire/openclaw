@@ -11,6 +11,7 @@ is maintained, the merge-not-rebase philosophy, and the new-entry template.
 
 | Name | Canonical branch | Branch HEAD | Source PR | Last updated |
 | ---- | ---------------- | ----------- | --------- | ------------ |
+| Upstream Test Fixes | `brightfire/upstream-test-fixes` | `e836cf9713` | https://github.com/brightfire/openclaw/pull/76 | 2026-06-03 |
 | Slack Markdown | `brightfire/slack-mrkdwn` | `3b009de181` | — | 2026-06-01 |
 | XGW Cross-Gateway | `brightfire/xgw` | `af9878c9bc` | https://github.com/brightfire/openclaw/pull/72 | 2026-06-02 |
 | Cache Write TTL Cost | `brightfire/cache-write-ttl-cost` | `fe383828b4` | <https://github.com/brightfire/openclaw/pull/24> | 2026-06-01 |
@@ -19,7 +20,6 @@ is maintained, the merge-not-rebase philosophy, and the new-entry template.
 | Control UI Title | `brightfire/control-ui-title` | `85a2c07c36` | <https://github.com/openclaw/openclaw/pull/51067> | 2026-06-01 |
 | Store-Based Session Archiving | `brightfire/sessions-history-archived` | `f9d648f34b` | https://github.com/brightfire/openclaw/pull/73 | 2026-06-02 |
 | CLI HTTP Health Fallback | `brightfire/cli-http-fallback` | `3340721625` | — | 2026-06-01 |
-| test: fix/skip upstream tests flaky or broken in CI | `brightfire/upstream-test-fixes` | `e836cf9713` | https://github.com/brightfire/openclaw/pull/76 | 2026-06-03 |
 
 ## Slack Markdown
 
@@ -258,21 +258,28 @@ label stays correct on both code paths.
 **Drop when:** upstream lands an equivalent CLI HTTP fallback, or upstream
 stops rejecting loopback connections in `trusted-proxy` mode entirely.
 
-## test: fix/skip upstream tests flaky or broken in CI
+## Upstream Test Fixes
 
 (canonical: `brightfire/upstream-test-fixes`)
 
 ### Rationale
 
-_Add description of what this patch does and why._
+Fixes/skips upstream tests that are flaky or broken in our CI environment.
+Pure test-file changes only — never product code. Applies before any product
+patch so subsequent patches inherit a green baseline.
 
 ### Files touched
 
-TBD — update after first stable merge
+- `src/gateway/server-startup-web-fetch-bind.test.ts` (migrate to `startGatewayServerWithRetries` to dodge EADDRINUSE under PARALLEL≥5)
+- `src/gateway/server.minimal-channel-pin.test.ts` (same migration, same race exposure)
+- `src/config/doc-baseline.integration.test.ts` (testTimeout 240_000 → 360_000 for CPU-bound double-render)
+- `test/scripts/prompt-snapshots.test.ts` (`it.skip` the committed-Codex-prompt-snapshot case — known upstream snapshot drift)
 
 ### Upgrade guidance
 
-_Describe upstream changes that have historically conflicted and how they
-were resolved. Patches are absorbed by `bf-build-stable` via squash-merge of
-the canonical branch — do **not** prescribe `git cherry-pick` here. Describe
-what tends to conflict and how to resolve it._
+On each upstream upgrade, re-check whether each skipped/patched test now
+passes upstream as-is; drop entries that no longer apply. Conflicts here
+are expected to be trivial since all changes are test-file-only and small.
+If upstream renames or restructures one of these files, the merge will
+surface it and the corresponding fix should be re-applied (or dropped if
+upstream fixed the underlying issue).
