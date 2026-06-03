@@ -1,6 +1,7 @@
 # Branch Prune
 #
-# Prunes feature/* and fix/* branches after their PR is closed/merged.
+# Prunes ephemeral PR head branches after their PR is closed/merged.
+# Matches: feature/*, fix/*, claw/*/* (e.g. claw/vash/<topic>).
 # Does NOT touch brightfire/* or stable/* branches.
 #
 # This replaces GitHub's "auto-prune head branches" setting since we need
@@ -37,7 +38,7 @@ jobs:
           BRANCH="$HEAD_REF"
 
           case "$BRANCH" in
-            feature/*|fix/*)
+            feature/*|fix/*|claw/*/*)
               echo "PR #${{ github.event.pull_request.number }} merged — deleting head branch: $BRANCH"
               gh api -X DELETE repos/${{ github.repository }}/git/refs/heads/"$BRANCH" || true
               ;;
@@ -45,6 +46,6 @@ jobs:
               echo "Skipping branch: $BRANCH (permanent branches are not pruned)"
               ;;
             *)
-              echo "Skipping branch: $BRANCH (not feature/* or fix/*)"
+              echo "Skipping branch: $BRANCH (no match for feature/*, fix/*, or claw/*/*)"
               ;;
           esac
