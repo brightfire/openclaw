@@ -1,7 +1,12 @@
 import http from "node:http";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { OpenClawConfig } from "../config/config.js";
-import { getFreePort, installGatewayTestHooks, startGatewayServer } from "./test-helpers.js";
+import {
+  getFreePort,
+  installGatewayTestHooks,
+  startGatewayServer,
+  startGatewayServerWithRetries,
+} from "./test-helpers.js";
 
 const webFetchProviderDiscovery = vi.hoisted(() => ({
   resolveBundledWebFetchProvidersFromPublicArtifactsMock: vi.fn(() => {
@@ -103,10 +108,13 @@ describe("gateway startup web fetch config", () => {
         },
       } as OpenClawConfig);
 
-      const port = await getFreePort();
-      server = await startGatewayServer(port, {
-        auth: { mode: "none" },
+      // Retry on EADDRINUSE — deterministic port allocator collides under PARALLEL>=5.
+      const started = await startGatewayServerWithRetries({
+        port: await getFreePort(),
+        opts: { auth: { mode: "none" } },
       });
+      server = started.server;
+      const port = started.port;
 
       const response = await requestHealthz(port);
       expect(response.status).toBe(200);
