@@ -70,78 +70,22 @@ jobs:
 
       - name: Determine upstream tag
         id: upstream-tag
-        run: |
-          # Resolution order (no auto-detect, no silent fallbacks):
-          #   1. workflow_dispatch input  (ad-hoc test build during an upgrade)
-          #   2. BRIGHTFIRE_PATCHES.md _meta `Upstream version` pin
-          # If neither is set, fail loudly. Bumping the pin is the job of the
-          # BF: Upgrade workflow — build-stable never decides the target version.
-          INPUT_TAG="${{ inputs.upstream_tag }}"
-          MANIFEST_TAG="${{ steps.patches.outputs.upstream_version }}"
-          if [ -n "$INPUT_TAG" ]; then
-            TAG="$INPUT_TAG"
-            SOURCE="workflow_dispatch input"
-          elif [ -n "$MANIFEST_TAG" ]; then
-            TAG="$MANIFEST_TAG"
-            SOURCE="BRIGHTFIRE_PATCHES.md _meta pin"
-          else
-            echo "::error::No upstream tag resolved. Add an `Upstream version` to the _meta section of BRIGHTFIRE_PATCHES.md, or pass inputs.upstream_tag explicitly."
-            exit 1
-          fi
-          if ! echo "$TAG" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
-            echo "::error::Resolved upstream tag '$TAG' (from $SOURCE) is not vX.Y.Z; refusing to continue."
-            exit 1
-          fi
-          VERSION="${TAG#v}"
-          echo "Resolved upstream tag: $TAG (version=$VERSION, source=$SOURCE)"
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+        env:
+          INPUT_TAG: ${{ inputs.upstream_tag }}
+          MANIFEST_TAG: ${{ steps.patches.outputs.upstream_version }}
+        run: scripts/bf/build-stable/determine-upstream-tag.sh
 
-      - name: Ensure upstream remote
-        run: |
-          ORIGIN_URL=$(git remote get-url origin 2>/dev/null || echo "")
-          if echo "$ORIGIN_URL" | grep -q brightfire; then
-            UPSTREAM_URL=$( echo "$ORIGIN_URL" | sed 's|brightfire/openclaw|openclaw/openclaw|' )
-            git remote add upstream "$UPSTREAM_URL" 2>/dev/null || git remote set-url upstream "$UPSTREAM_URL"
-            git fetch --force --tags upstream
-          fi
+      - name: Prepare stable branch
+        env:
+          TAG: ${{ steps.upstream-tag.outputs.tag }}
+          VERSION: ${{ steps.upstream-tag.outputs.version }}
+        run: scripts/bf/build-stable/prepare-stable-branch.sh
 
       - name: Compute version suffix
         id: version
-        run: |
-          VERSION="${{ steps.upstream-tag.outputs.version }}"
-          # Tag format: bf/v{VERSION}-bf{N}
-          # The bf/ prefix prevents upstream workflows (e.g. docker-release.yml)
-          # from triggering on our tags — they match on `v*` which would fire
-          # on bare v{VERSION}-bf{N} tags. The -bf{N} suffix is kept to match
-          # the package.json version.
-          BF_NUM=$(git tag -l "bf/v${VERSION}-bf*" | sed -E 's/.*-bf([0-9]+)/\1/' | sort -n | tail -1)
-          if [ -z "$BF_NUM" ]; then
-            BF_NUM=1
-          else
-            BF_NUM=$((BF_NUM + 1))
-          fi
-          echo "bf=bf${BF_NUM}" >> "$GITHUB_OUTPUT"
-          echo "version=${VERSION}-bf${BF_NUM}" >> "$GITHUB_OUTPUT"
-          echo "tag=bf/v${VERSION}-bf${BF_NUM}" >> "$GITHUB_OUTPUT"
-
-      - name: Create stable branch from upstream tag
-        run: |
-          TAG="${{ steps.upstream-tag.outputs.tag }}"
-          STABLE_BRANCH="stable/${{ steps.upstream-tag.outputs.version }}"
-
-          if git ls-remote --exit-code --heads upstream "$STABLE_BRANCH" 2>/dev/null; then
-            git checkout -b "$STABLE_BRANCH" "upstream/$STABLE_BRANCH" 2>/dev/null || \
-            git checkout -b "$STABLE_BRANCH" "$TAG"
-          else
-            git checkout -b "$STABLE_BRANCH" "$TAG"
-          fi
-
-          if git ls-remote --exit-code --heads origin "$STABLE_BRANCH" 2>/dev/null; then
-            git push origin --delete "$STABLE_BRANCH" || true
-          fi
-
-          echo "Created stable branch: $STABLE_BRANCH"
+        env:
+          VERSION: ${{ steps.upstream-tag.outputs.version }}
+        run: scripts/bf/build-stable/compute-bf-version.sh
 
       - name: Configure git
         run: |
@@ -152,31 +96,10 @@ jobs:
         run: git fetch origin '+refs/heads/brightfire/*:refs/remotes/origin/brightfire/*'
 
       - name: Merge patches in order
-        run: |
-          IFS=',' read -ra PATCHES <<< "${{ steps.patches.outputs.list }}"
-          STABLE_BRANCH="stable/${{ steps.upstream-tag.outputs.version }}"
-
-          for PATCH in "${PATCHES[@]}"; do
-            PATCH=$(echo "$PATCH" | xargs)
-            PATCH_BRANCH="brightfire/$PATCH"
-
-            echo ""
-            echo "=== Merging $PATCH_BRANCH ==="
-
-            if ! git ls-remote --exit-code --heads origin "$PATCH_BRANCH" 2>/dev/null; then
-              echo "::warning::$PATCH_BRANCH not found on remote — skipping"
-              continue
-            fi
-
-            if git merge --squash "origin/$PATCH_BRANCH" 2>&1; then
-              git commit --no-verify -m "ci: apply $PATCH_BRANCH" 2>&1
-              echo "SUCCESS: $PATCH_BRANCH"
-            else
-              git reset --hard HEAD
-              echo "::error::Merge conflict applying $PATCH_BRANCH"
-              exit 1
-            fi
-          done
+        env:
+          PATCHES: ${{ steps.patches.outputs.list }}
+          VERSION: ${{ steps.upstream-tag.outputs.version }}
+        run: scripts/bf/build-stable/merge-patches.sh
 
       # Reuse upstream's composite so pnpm install + store-cache run the same
       # way upstream CI does. cache-key-suffix is namespaced by Node major
@@ -190,35 +113,12 @@ jobs:
           cache-key-suffix: 'node22'
 
       - name: Update package.json version
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          node -e "
-            const fs = require('fs');
-            const pkg = JSON.parse(fs.readFileSync('package.json','utf8'));
-            pkg.version = '$VERSION';
-            fs.writeFileSync('package.json', JSON.stringify(pkg,null,2)+'\n');
-          "
-          git add package.json
-          git commit --no-verify -m "ci: bump version to $VERSION"
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: scripts/bf/build-stable/bump-package-version.sh
 
       - name: Regenerate build artifacts
-        # Generated files are build output, not source. Patches must never
-        # hand-edit them, and a clean-but-stale generated file on a patch
-        # branch would otherwise ship in the tarball. Regenerate canonical
-        # outputs from the merged sources here so the build is deterministic
-        # regardless of what any patch branch contains. See SKILL.md "Patch
-        # Discipline" rule 6 in the openclaw-dev skill for the full policy.
-        run: |
-          pnpm config:schema:gen
-          pnpm protocol:gen
-          pnpm protocol:gen:swift
-          if ! git diff --quiet; then
-            git add -A
-            git commit --no-verify -m "ci: regenerate build artifacts on stable"
-            echo "Regenerated build artifacts committed."
-          else
-            echo "No regenerated-artifact drift; nothing to commit."
-          fi
+        run: scripts/bf/build-stable/regenerate-artifacts.sh
 
       - name: Restore tsgo incremental cache
         uses: actions/cache@v5
