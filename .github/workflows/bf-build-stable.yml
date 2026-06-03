@@ -60,24 +60,6 @@ jobs:
           git show origin/brightfire/ci:BRIGHTFIRE_PATCHES.md > BRIGHTFIRE_PATCHES.md
           echo "Loaded patch manifest from brightfire/ci"
 
-      - name: Install Node.js
-        uses: actions/setup-node@v5
-        with:
-          node-version: '22'
-          # setup-node v5 enables package-manager-cache by default, which
-          # tries to invoke pnpm to compute a cache key — but pnpm is not
-          # installed until the next "Install tools" step. We also handle
-          # the pnpm store cache explicitly via actions/cache below, so this
-          # auto-cache is unnecessary regardless.
-          package-manager-cache: false
-
-      - name: Install tools
-        run: npm install -g pnpm
-
-      - name: Get pnpm store path
-        id: pnpm-store
-        run: echo "path=$(pnpm store path)" >> "$GITHUB_OUTPUT"
-
       - name: Stage patch parser
         run: cp scripts/bf/parse-patches.py /tmp/parse-patches.py
 
@@ -196,17 +178,16 @@ jobs:
             fi
           done
 
-      - name: Restore pnpm store cache
-        uses: actions/cache@v5
+      # Reuse upstream's composite so pnpm install + store-cache run the same
+      # way upstream CI does. cache-key-suffix is namespaced by Node major
+      # because native modules don't survive a Node ABI swap.
+      - name: Setup Node environment
+        uses: ./.github/actions/setup-node-env
         with:
-          path: ${{ steps.pnpm-store.outputs.path }}
-          key: upstream-${{ steps.upstream-tag.outputs.tag }}-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
-          restore-keys: |
-            upstream-${{ steps.upstream-tag.outputs.tag }}-pnpm-
-            upstream-pnpm-
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile || pnpm install
+          node-version: '22'
+          pnpm-version: '10.33.2'
+          install-bun: 'false'
+          cache-key-suffix: 'node22'
 
       - name: Update package.json version
         run: |
