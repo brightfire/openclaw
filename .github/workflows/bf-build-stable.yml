@@ -202,7 +202,6 @@ jobs:
         id: release-check
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PATCHES_FILE: ${{ env.PATCHES_FILE }}
           FORCE_RELEASE: ${{ inputs.force_release || 'false' }}
           UPSTREAM_TAG_INPUT: ${{ inputs.upstream_tag || '' }}
         run: /tmp/bf-build-stable/check-release-needed.sh
