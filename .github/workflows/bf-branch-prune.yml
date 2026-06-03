@@ -24,9 +24,13 @@ permissions:
 
 jobs:
   prune:
+    # Only prune same-repo head branches. Fork PRs (head.repo != base repo)
+    # would otherwise let a colliding branch name (e.g. claw/vash/foo on a fork)
+    # delete the unrelated branch of the same name in the base repo.
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      github.event.pull_request.merged == true
+      (github.event.pull_request.merged == true &&
+       github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     steps:
       - name: Prune head branch
