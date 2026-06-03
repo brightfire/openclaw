@@ -10,6 +10,7 @@ import { createSubsystemLogger } from "../logging/subsystem.js";
 import { closePluginStateSqliteStore } from "../plugin-state/plugin-state-store.js";
 import type { PluginServicesHandle } from "../plugins/services.js";
 import { normalizeOptionalString } from "../shared/string-coerce.js";
+import { shutdownXgw } from "./xgw/inbound.js";
 
 const shutdownLog = createSubsystemLogger("gateway/shutdown");
 const GATEWAY_SHUTDOWN_HOOK_TIMEOUT_MS = 1_000;
@@ -264,6 +265,11 @@ export function createGatewayCloseHandler(params: {
       }
       if (params.tailscaleCleanup) {
         await shutdownStep("tailscale", () => params.tailscaleCleanup!(), warnings);
+      }
+      try {
+        shutdownXgw();
+      } catch {
+        /* ignore */
       }
       if (params.canvasHost) {
         await shutdownStep("canvas-host", () => params.canvasHost!.close(), warnings);
