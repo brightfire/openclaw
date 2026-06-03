@@ -1,7 +1,11 @@
 import http from "node:http";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { OpenClawConfig } from "../config/config.js";
-import { getFreePort, installGatewayTestHooks, startGatewayServer } from "./test-helpers.js";
+import {
+  getFreePort,
+  installGatewayTestHooks,
+  startGatewayServerWithRetries,
+} from "./test-helpers.js";
 
 const webFetchProviderDiscovery = vi.hoisted(() => ({
   resolveBundledWebFetchProvidersFromPublicArtifactsMock: vi.fn(() => {
@@ -79,7 +83,9 @@ describe("gateway startup web fetch config", () => {
   it("binds HTTP with credential-free tools.web.fetch config without fetch provider discovery", async () => {
     const previousMinimal = process.env.OPENCLAW_TEST_MINIMAL_GATEWAY;
     process.env.OPENCLAW_TEST_MINIMAL_GATEWAY = "0";
-    let server: Awaited<ReturnType<typeof startGatewayServer>> | undefined;
+    let server:
+      | Awaited<ReturnType<typeof startGatewayServerWithRetries>>["server"]
+      | undefined;
     try {
       await writeConfig({
         gateway: {
@@ -103,10 +109,13 @@ describe("gateway startup web fetch config", () => {
         },
       } as OpenClawConfig);
 
-      const port = await getFreePort();
-      server = await startGatewayServer(port, {
-        auth: { mode: "none" },
+      // Retry on EADDRINUSE — deterministic port allocator collides under PARALLEL>=5.
+      const started = await startGatewayServerWithRetries({
+        port: await getFreePort(),
+        opts: { auth: { mode: "none" } },
       });
+      server = started.server;
+      const port = started.port;
 
       const response = await requestHealthz(port);
       expect(response.status).toBe(200);
