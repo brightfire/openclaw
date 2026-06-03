@@ -67,10 +67,20 @@ jobs:
           token: ${{ steps.app-token.outputs.token }}
           persist-credentials: true
 
-      - name: Fetch patch manifest from brightfire/ci
+      # Pin the manifest used by this run: stage it to the working tree AND
+      # save a frozen copy under /tmp + record its sha256 to GITHUB_ENV. Every
+      # later step (parse, fingerprint gate, fingerprint writer) reads from
+      # the pinned copy, not origin/brightfire/ci, so concurrent pushes to
+      # brightfire/ci during build/test can't move the gate out from under us.
+      - name: Fetch patch manifest from brightfire/ci (pinned)
+        id: pin-manifest
         run: |
           git show origin/brightfire/ci:BRIGHTFIRE_PATCHES.md > BRIGHTFIRE_PATCHES.md
-          echo "Loaded patch manifest from brightfire/ci"
+          cp BRIGHTFIRE_PATCHES.md /tmp/BRIGHTFIRE_PATCHES.pinned.md
+          MANIFEST_SHA=$(sha256sum /tmp/BRIGHTFIRE_PATCHES.pinned.md | awk '{print $1}')
+          echo "Pinned manifest sha256: $MANIFEST_SHA"
+          echo "PINNED_MANIFEST_PATH=/tmp/BRIGHTFIRE_PATCHES.pinned.md" >> "$GITHUB_ENV"
+          echo "PINNED_MANIFEST_SHA256=$MANIFEST_SHA" >> "$GITHUB_ENV"
 
       - name: Stage patch parser
         run: cp scripts/bf/parse-patches.py /tmp/parse-patches.py
@@ -202,9 +212,16 @@ jobs:
         id: release-check
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PATCHES_FILE: ${{ env.PATCHES_FILE }}
           FORCE_RELEASE: ${{ inputs.force_release || 'false' }}
           UPSTREAM_TAG_INPUT: ${{ inputs.upstream_tag || '' }}
+          # PINNED_MANIFEST_PATH and PINNED_MANIFEST_SHA256 are inherited from
+          # the runner environment, written via $GITHUB_ENV in the "Pin manifest
+          # source" step above. Do NOT re-declare them here via ${{ env.* }} —
+          # the workflow `env` context does not include vars set through
+          # $GITHUB_ENV, so doing so would overwrite the inherited values with
+          # empty strings and force check-release-needed.sh into its
+          # origin/brightfire/ci fallback, defeating the whole point of
+          # pinning the manifest source.
         run: /tmp/bf-build-stable/check-release-needed.sh
 
       # Tarball is built unconditionally. `npm pack` is cheap (~10s) and

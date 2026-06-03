@@ -26,36 +26,78 @@
 #   - Latest release has no asset    -> needs_release=true (backfill run)
 #   - gh release view fails (other)  -> fail loudly (no silent skip)
 #
+# Manifest source (preferred): a pinned file path + pre-computed sha256
+# staged by the workflow's "Fetch patch manifest from brightfire/ci (pinned)"
+# step. Pinning matters because origin/brightfire/ci can advance between the
+# moment the build started and the moment this gate runs — concurrent pushes
+# happen during the ~30+ min build/test window, and several intervening
+# `git fetch` calls update the remote tracking ref. Reading the moving ref
+# here would gate (and fingerprint) on a manifest that did NOT drive this
+# build, letting newly-registered patches sneak into a fingerprint that
+# claims to represent only the older set.
+#
+# Fallback: read from a git ref (default origin/brightfire/ci). This keeps
+# local invocations working and provides a graceful degradation if the
+# workflow ever ran this script without staging the pinned copy.
+#
 # Inputs (env):
-#   GITHUB_REPOSITORY    — owner/repo (set by GHA runtime)
-#   GITHUB_TOKEN         — used implicitly by gh
-#   GITHUB_OUTPUT        — path to GitHub Actions output file
-#   PATCHES_FILE         — manifest path (default: BRIGHTFIRE_PATCHES.md)
-#   FORCE_RELEASE        — "true" forces needs_release=true (from workflow_dispatch)
-#   UPSTREAM_TAG_INPUT   — non-empty value forces needs_release=true (from
-#                          workflow_dispatch upstream_tag input)
+#   GITHUB_REPOSITORY        — owner/repo (set by GHA runtime)
+#   GITHUB_TOKEN             — used implicitly by gh
+#   GITHUB_OUTPUT            — path to GitHub Actions output file
+#   PINNED_MANIFEST_PATH     — path to the staged pinned manifest; preferred
+#                              source when present and readable
+#   PINNED_MANIFEST_SHA256   — sha256 of the pinned manifest, computed at
+#                              staging time; used directly when set so the
+#                              fingerprint writer and the gate share the
+#                              exact same value byte-for-byte
+#   MANIFEST_REF             — git ref fallback (default:
+#                              origin/brightfire/ci); override only for
+#                              local testing
+#   FORCE_RELEASE            — "true" forces needs_release=true (from
+#                              workflow_dispatch)
+#   UPSTREAM_TAG_INPUT       — non-empty value forces needs_release=true
+#                              (from workflow_dispatch upstream_tag input)
 #
 # Outputs (written to $GITHUB_OUTPUT):
 #   needs_release     — "true" | "false"
-#   manifest_sha256   — sha256 of the current manifest
+#   manifest_sha256   — sha256 of the manifest that drove this build
 
 set -euo pipefail
 
-PATCHES_FILE="${PATCHES_FILE:-BRIGHTFIRE_PATCHES.md}"
+MANIFEST_REF="${MANIFEST_REF:-origin/brightfire/ci}"
 FORCE_RELEASE="${FORCE_RELEASE:-false}"
 UPSTREAM_TAG_INPUT="${UPSTREAM_TAG_INPUT:-}"
-
-if [ ! -f "$PATCHES_FILE" ]; then
-  echo "::error::Manifest not found: $PATCHES_FILE"
-  exit 2
-fi
+PINNED_MANIFEST_PATH="${PINNED_MANIFEST_PATH:-}"
+PINNED_MANIFEST_SHA256="${PINNED_MANIFEST_SHA256:-}"
 
 if [ -z "${GITHUB_OUTPUT:-}" ]; then
   echo "::error::GITHUB_OUTPUT not set"
   exit 2
 fi
 
-MANIFEST_SHA=$(sha256sum "$PATCHES_FILE" | awk '{print $1}')
+if [ -n "$PINNED_MANIFEST_PATH" ] && [ -r "$PINNED_MANIFEST_PATH" ]; then
+  # Preferred path: pinned file + pre-computed sha.
+  if [ -n "$PINNED_MANIFEST_SHA256" ]; then
+    MANIFEST_SHA="$PINNED_MANIFEST_SHA256"
+  else
+    MANIFEST_SHA=$(sha256sum "$PINNED_MANIFEST_PATH" | awk '{print $1}')
+  fi
+  echo "Manifest source: pinned ($PINNED_MANIFEST_PATH)"
+else
+  if [ -n "$PINNED_MANIFEST_PATH" ]; then
+    echo "::warning::PINNED_MANIFEST_PATH set but not readable ($PINNED_MANIFEST_PATH); falling back to $MANIFEST_REF"
+  fi
+  if ! git rev-parse --verify "$MANIFEST_REF:BRIGHTFIRE_PATCHES.md" >/dev/null 2>&1; then
+    echo "::error::BRIGHTFIRE_PATCHES.md not found at $MANIFEST_REF"
+    exit 2
+  fi
+  # Pipe git-show through sha256sum so the trailing newline is preserved
+  # byte-for-byte (sha must match `sha256sum BRIGHTFIRE_PATCHES.md` taken
+  # elsewhere, e.g. by write-build-fingerprint.sh).
+  MANIFEST_SHA=$(git show "$MANIFEST_REF:BRIGHTFIRE_PATCHES.md" | sha256sum | awk '{print $1}')
+  echo "Manifest source: $MANIFEST_REF (fallback)"
+fi
+
 echo "Current manifest sha256: $MANIFEST_SHA"
 echo "manifest_sha256=$MANIFEST_SHA" >> "$GITHUB_OUTPUT"
 

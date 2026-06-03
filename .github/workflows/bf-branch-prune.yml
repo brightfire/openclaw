@@ -1,6 +1,7 @@
 # Branch Prune
 #
-# Prunes feature/* and fix/* branches after their PR is closed/merged.
+# Prunes ephemeral PR head branches after their PR is closed/merged.
+# Matches: feature/*, fix/*, claw/*/* (e.g. claw/vash/<topic>).
 # Does NOT touch brightfire/* or stable/* branches.
 #
 # This replaces GitHub's "auto-prune head branches" setting since we need
@@ -23,9 +24,13 @@ permissions:
 
 jobs:
   prune:
+    # Only prune same-repo head branches. Fork PRs (head.repo != base repo)
+    # would otherwise let a colliding branch name (e.g. claw/vash/foo on a fork)
+    # delete the unrelated branch of the same name in the base repo.
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      github.event.pull_request.merged == true
+      (github.event.pull_request.merged == true &&
+       github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     steps:
       - name: Prune head branch
@@ -37,7 +42,7 @@ jobs:
           BRANCH="$HEAD_REF"
 
           case "$BRANCH" in
-            feature/*|fix/*)
+            feature/*|fix/*|claw/*/*)
               echo "PR #${{ github.event.pull_request.number }} merged — deleting head branch: $BRANCH"
               gh api -X DELETE repos/${{ github.repository }}/git/refs/heads/"$BRANCH" || true
               ;;
@@ -45,6 +50,6 @@ jobs:
               echo "Skipping branch: $BRANCH (permanent branches are not pruned)"
               ;;
             *)
-              echo "Skipping branch: $BRANCH (not feature/* or fix/*)"
+              echo "Skipping branch: $BRANCH (no match for feature/*, fix/*, or claw/*/*)"
               ;;
           esac
