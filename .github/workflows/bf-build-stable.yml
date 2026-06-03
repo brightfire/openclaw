@@ -2,7 +2,14 @@
 #
 # Rebuilds the stable branch by creating it fresh from an upstream tag
 # and merging all active brightfire/* patch branches in manifest order.
-# Then tags the result and creates a GitHub Release with the built tarball.
+#
+# Build + test ALWAYS run (so we keep getting signal on patches still
+# merging cleanly and tests still passing, and to keep upstream caches
+# warm). Only the PUBLISH steps (push stable, tag, write fingerprint,
+# create GitHub Release) gate on the manifest fingerprint: when the
+# current BRIGHTFIRE_PATCHES.md sha256 matches the bf-build-fingerprint.json
+# asset on the latest bf/v* release, publishing is skipped because the
+# release would be byte-identical.
 #
 # Triggered automatically on push to brightfire/ci when BRIGHTFIRE_PATCHES.md
 # or this workflow changes. Manual dispatch otherwise.
@@ -24,6 +31,11 @@ on:
         description: 'Upstream tag to build from (e.g. v2026.5.7). Defaults to latest.'
         required: false
         type: string
+      force_release:
+        description: 'Tag and release even if manifest is unchanged'
+        required: false
+        type: boolean
+        default: false
 
 env:
   PATCHES_FILE: BRIGHTFIRE_PATCHES.md
@@ -181,6 +193,23 @@ jobs:
           OPENCLAW_TEST_PROJECTS_PARALLEL: "4"
         run: pnpm test
 
+      # Decide whether the publish steps below should run. Compares sha256 of
+      # BRIGHTFIRE_PATCHES.md against the bf-build-fingerprint.json asset on
+      # the latest bf/v* release. Always emits manifest_sha256 (used by the
+      # fingerprint writer step). force_release=true and a non-empty
+      # upstream_tag input both force needs_release=true.
+      - name: Check whether release is needed
+        id: release-check
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PATCHES_FILE: ${{ env.PATCHES_FILE }}
+          FORCE_RELEASE: ${{ inputs.force_release || 'false' }}
+          UPSTREAM_TAG_INPUT: ${{ inputs.upstream_tag || '' }}
+        run: /tmp/bf-build-stable/check-release-needed.sh
+
+      # Tarball is built unconditionally. `npm pack` is cheap (~10s) and
+      # exercises the patched tree's pack lifecycle, which is real signal
+      # worth keeping even when we don't publish.
       - name: Package tarball
         id: tarball
         run: |
@@ -188,6 +217,7 @@ jobs:
           echo "tarball=$(ls openclaw-*.tgz | head -1)" >> "$GITHUB_OUTPUT"
 
       - name: Push stable branch
+        if: steps.release-check.outputs.needs_release == 'true' || inputs.force_release == true
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
@@ -196,6 +226,7 @@ jobs:
           echo "Pushed $STABLE_BRANCH"
 
       - name: Tag stable build
+        if: steps.release-check.outputs.needs_release == 'true' || inputs.force_release == true
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
@@ -204,11 +235,22 @@ jobs:
           git push origin "$TAG"
           echo "Tagged: $TAG"
 
+      - name: Write build fingerprint
+        if: steps.release-check.outputs.needs_release == 'true' || inputs.force_release == true
+        env:
+          MANIFEST_SHA256: ${{ steps.release-check.outputs.manifest_sha256 }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          OUTPUT_PATH: bf-build-fingerprint.json
+        run: /tmp/bf-build-stable/write-build-fingerprint.sh
+
       - name: Create GitHub Release
+        if: steps.release-check.outputs.needs_release == 'true' || inputs.force_release == true
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
           name: "Brightfire ${{ steps.version.outputs.version }}"
           target_commitish: stable/${{ steps.upstream-tag.outputs.version }}
           draft: false
-          files: ${{ steps.tarball.outputs.tarball }}
+          files: |
+            ${{ steps.tarball.outputs.tarball }}
+            bf-build-fingerprint.json
