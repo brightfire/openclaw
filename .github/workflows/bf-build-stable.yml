@@ -292,7 +292,7 @@ jobs:
           # Combined with MAX_WORKERS=2, that's 4 × 2 = 8 worker procs total,
           # an exact match to the 8 vCPU runner. Expected ~40-60% wall-clock
           # reduction vs the prior serial-leaves baseline.
-          OPENCLAW_TEST_PROJECTS_PARALLEL: "5"
+          OPENCLAW_TEST_PROJECTS_PARALLEL: "4"
         # Skip stale upstream prompt-snapshots test (revisit on next upstream upgrade).
         run: pnpm test '--exclude=**/test/scripts/prompt-snapshots.test.ts'
 
