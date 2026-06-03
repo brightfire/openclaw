@@ -230,7 +230,7 @@ jobs:
       - name: Package tarball
         id: tarball
         run: |
-          npm pack --ignore-scripts
+          npm pack
           echo "tarball=$(ls openclaw-*.tgz | head -1)" >> "$GITHUB_OUTPUT"
 
       - name: Push stable branch
