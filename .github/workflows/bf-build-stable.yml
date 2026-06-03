@@ -63,6 +63,11 @@ jobs:
       - name: Stage patch parser
         run: cp scripts/bf/parse-patches.py /tmp/parse-patches.py
 
+      - name: Stage build-stable scripts
+        run: |
+          cp -r scripts/bf/build-stable /tmp/bf-build-stable
+          chmod +x /tmp/bf-build-stable/*.sh
+
       - name: Parse manifest (patches + upstream pin)
         id: patches
         run: |
@@ -73,19 +78,19 @@ jobs:
         env:
           INPUT_TAG: ${{ inputs.upstream_tag }}
           MANIFEST_TAG: ${{ steps.patches.outputs.upstream_version }}
-        run: scripts/bf/build-stable/determine-upstream-tag.sh
+        run: /tmp/bf-build-stable/determine-upstream-tag.sh
 
       - name: Prepare stable branch
         env:
           TAG: ${{ steps.upstream-tag.outputs.tag }}
           VERSION: ${{ steps.upstream-tag.outputs.version }}
-        run: scripts/bf/build-stable/prepare-stable-branch.sh
+        run: /tmp/bf-build-stable/prepare-stable-branch.sh
 
       - name: Compute version suffix
         id: version
         env:
           VERSION: ${{ steps.upstream-tag.outputs.version }}
-        run: scripts/bf/build-stable/compute-bf-version.sh
+        run: /tmp/bf-build-stable/compute-bf-version.sh
 
       - name: Configure git
         run: |
@@ -99,7 +104,7 @@ jobs:
         env:
           PATCHES: ${{ steps.patches.outputs.list }}
           VERSION: ${{ steps.upstream-tag.outputs.version }}
-        run: scripts/bf/build-stable/merge-patches.sh
+        run: /tmp/bf-build-stable/merge-patches.sh
 
       # Reuse upstream's composite so pnpm install + store-cache run the same
       # way upstream CI does. cache-key-suffix is namespaced by Node major
@@ -115,10 +120,10 @@ jobs:
       - name: Update package.json version
         env:
           VERSION: ${{ steps.version.outputs.version }}
-        run: scripts/bf/build-stable/bump-package-version.sh
+        run: /tmp/bf-build-stable/bump-package-version.sh
 
       - name: Regenerate build artifacts
-        run: scripts/bf/build-stable/regenerate-artifacts.sh
+        run: /tmp/bf-build-stable/regenerate-artifacts.sh
 
       - name: Restore tsgo incremental cache
         uses: actions/cache@v5
