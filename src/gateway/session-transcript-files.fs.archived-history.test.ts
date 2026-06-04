@@ -210,6 +210,70 @@ describe("resolveArchivedTranscriptPaths", () => {
       fs.rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it("finds topic-qualified archive files (`<sessionId>-topic-<N>.jsonl.<reason>.<ts>`)", () => {
+    // Regression: PR #85 review noted that topic-qualified archived
+    // transcripts (e.g. `<sessionId>-topic-7.jsonl.reset.<ts>`) were missed by
+    // the scan, causing `sessions_history`/`chat.history` to return empty for
+    // topic conversations after a rollover or delete.
+    const dir = makeTmpDir("oc-arh-topic-");
+    try {
+      const sessionId = "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d";
+      const topicArchive = `${sessionId}-topic-7.jsonl.reset.${ts()}`;
+      touch(dir, topicArchive);
+
+      const result = resolveArchivedTranscriptPaths({ sessionId, sessionsDir: dir });
+      expect(result).toHaveLength(1);
+      expect(result[0]).toBe(path.join(dir, topicArchive));
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("returns both bare and topic-qualified archives in timestamp-descending order", () => {
+    const dir = makeTmpDir("oc-arh-topic-mixed-");
+    try {
+      const sessionId = "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e";
+
+      const tOlder = ts(Date.now() - 30_000);
+      const tNewer = ts(Date.now());
+
+      const bareArchive = `${sessionId}.jsonl.reset.${tOlder}`; // older
+      const topicArchive = `${sessionId}-topic-42.jsonl.reset.${tNewer}`; // newer
+
+      // Write in non-chronological filesystem order
+      touch(dir, bareArchive);
+      touch(dir, topicArchive);
+
+      const result = resolveArchivedTranscriptPaths({ sessionId, sessionsDir: dir });
+      expect(result).toHaveLength(2);
+      // Newer first
+      expect(result[0]).toBe(path.join(dir, topicArchive));
+      expect(result[1]).toBe(path.join(dir, bareArchive));
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("does not match topic-qualified archives that belong to a different session ID", () => {
+    const dir = makeTmpDir("oc-arh-topic-cross-session-");
+    try {
+      // sessionId is a prefix of another session id; without proper boundary
+      // checking we could accidentally match the other session's topic file.
+      const sessionId = "sess";
+      const otherSessionId = "sess-other";
+
+      touch(dir, `${otherSessionId}-topic-1.jsonl.reset.${ts()}`);
+      touch(dir, `${sessionId}-topic-1.jsonl.reset.${ts()}`);
+
+      const result = resolveArchivedTranscriptPaths({ sessionId, sessionsDir: dir });
+      expect(result).toHaveLength(1);
+      expect(result[0]).toContain(`${sessionId}-topic-1.jsonl.reset.`);
+      expect(result[0]).not.toContain(`${otherSessionId}-topic-1`);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -389,6 +453,33 @@ describe("readRecentSessionMessagesAsync with archived transcript", () => {
       const contents = result.map((m: unknown) => (m as Record<string, unknown>).content);
       expect(contents).toContain("newer-archive");
       expect(contents).not.toContain("older-archive");
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("falls back to a topic-qualified archived transcript when only `<sessionId>-topic-<N>.jsonl.reset.<ts>` exists", async () => {
+    // Regression for PR #85 review: `findExistingTranscriptPath` previously
+    // missed `${sessionId}-topic-<N>.jsonl.reset.<ts>` archives, leaving
+    // `chat.history` empty after a rollover on a topic-qualified session.
+    const dir = makeTmpDir("oc-arh-topic-fallback-");
+    try {
+      const sessionId = "c3d4e5f6-a7b8-4c9d-8e0f-1a2b3c4d5e6f";
+      const storePath = path.join(dir, "sessions.json");
+      fs.writeFileSync(storePath, "{}");
+
+      const archiveName = `${sessionId}-topic-7.jsonl.reset.${ts()}`;
+      fs.writeFileSync(
+        path.join(dir, archiveName),
+        '{"message":{"role":"user","content":"topic-archived"}}\n',
+      );
+
+      const result = await readRecentSessionMessagesAsync(sessionId, storePath, undefined, {
+        maxMessages: 10,
+      });
+
+      const contents = result.map((m: unknown) => (m as Record<string, unknown>).content);
+      expect(contents).toContain("topic-archived");
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
