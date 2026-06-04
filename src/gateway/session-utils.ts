@@ -55,7 +55,6 @@ import {
   type SessionStoreTarget,
   type SessionScope,
 } from "../config/sessions.js";
-
 import type { OpenClawConfig } from "../config/types.openclaw.js";
 import { openBoundaryFileSync } from "../infra/boundary-file-read.js";
 import { projectPluginSessionExtensionsSync } from "../plugins/host-hook-state.js";
@@ -1890,6 +1889,7 @@ function filterSessionEntries(params: {
   const label = normalizeOptionalString(opts.label) ?? "";
   const agentId = typeof opts.agentId === "string" ? normalizeAgentId(opts.agentId) : "";
   const search = normalizeLowercaseStringOrEmpty(opts.search);
+  const keyFilter = normalizeOptionalString(opts.key) ?? "";
   const activeMinutes =
     typeof opts.activeMinutes === "number" && Number.isFinite(opts.activeMinutes)
       ? Math.max(1, Math.floor(opts.activeMinutes))
@@ -1902,6 +1902,9 @@ function filterSessionEntries(params: {
         return false;
       }
       if (isCronRunSessionKey(key)) {
+        return false;
+      }
+      if (keyFilter && key !== keyFilter) {
         return false;
       }
       if (!includeGlobal && key === "global") {
@@ -2161,6 +2164,7 @@ export async function listSessionsFromStoreAsync(params: {
   if (opts.includeArchived === true) {
     const archivedFrom = typeof opts.archivedFrom === "number" ? opts.archivedFrom : undefined;
     const archivedTo = typeof opts.archivedTo === "number" ? opts.archivedTo : undefined;
+    const archivedKeyFilter = normalizeOptionalString(opts.key) ?? "";
 
     for (const [storeKey, entry] of Object.entries(store)) {
       if (!entry?.archived || !entry.archivedAt) {
@@ -2178,6 +2182,12 @@ export async function listSessionsFromStoreAsync(params: {
       const archiveSuffix = ":archived:";
       const archiveIndex = storeKey.lastIndexOf(archiveSuffix);
       const originalKey = archiveIndex > 0 ? storeKey.slice(0, archiveIndex) : storeKey;
+      // When a `key` filter is set, only emit archived twins whose original
+      // (pre-suffix) key matches. This pairs with the primary-entry filter
+      // above so callers can ask for one session's full lineage at once.
+      if (archivedKeyFilter && originalKey !== archivedKeyFilter) {
+        continue;
+      }
 
       const archivedRow: GatewaySessionRow = {
         key: originalKey,

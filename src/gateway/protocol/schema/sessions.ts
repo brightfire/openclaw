@@ -61,6 +61,14 @@ export const SessionsListParamsSchema = Type.Object(
     agentId: Type.Optional(NonEmptyString),
     search: Type.Optional(Type.String()),
     /**
+     * Exact canonical session key to filter on. When set, only entries whose
+     * canonical key equals this value are returned. When combined with
+     * `includeArchived: true`, the matching primary entry and its archived
+     * twin store entries (`<key>:archived:<sessionId>`) are returned together,
+     * which lets callers efficiently inspect a single session's full lineage.
+     */
+    key: Type.Optional(NonEmptyString),
+    /**
      * When true, also scan the sessions directory for archived (reset/deleted)
      * transcript files and return them as synthetic rows with `archived: true`.
      */

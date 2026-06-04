@@ -43,6 +43,13 @@ const SessionsListToolSchema = Type.Object({
   label: Type.Optional(Type.String({ minLength: 1 })),
   agentId: Type.Optional(Type.String({ minLength: 1, maxLength: 64 })),
   search: Type.Optional(Type.String({ minLength: 1 })),
+  /**
+   * Exact canonical session key (e.g. `agent:main:slack:dm:U123`). When set,
+   * only entries whose canonical key equals this value are returned. Combine
+   * with `includeArchived: true` to surface the primary entry alongside any
+   * archived twin rows (`<key>:archived:<sessionId>`) for the same session.
+   */
+  key: Type.Optional(Type.String({ minLength: 1, maxLength: 512 })),
   includeDerivedTitles: Type.Optional(Type.Boolean()),
   includeLastMessage: Type.Optional(Type.Boolean()),
   /** Include archived (reset/deleted) sessions from transcript files on disk. */
@@ -118,6 +125,7 @@ export function createSessionsListTool(opts?: {
       const label = readStringParam(params, "label");
       const agentId = readStringParam(params, "agentId");
       const search = readStringParam(params, "search");
+      const key = readStringParam(params, "key");
       const includeDerivedTitles = params.includeDerivedTitles === true;
       const includeLastMessage = params.includeLastMessage === true;
       const includeArchived = params.includeArchived === true;
@@ -141,6 +149,7 @@ export function createSessionsListTool(opts?: {
           label,
           agentId,
           search,
+          key,
           includeDerivedTitles: false,
           includeLastMessage: false,
           includeGlobal: !restrictToSpawned,
