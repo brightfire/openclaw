@@ -155,8 +155,14 @@ jobs:
           restore-keys: |
             upstream-${{ steps.upstream-tag.outputs.tag }}-tsgo-
 
-      - name: Pre-push checks
-        run: pnpm prepush:ci 2>/dev/null || pnpm tsgo
+      - name: Lint and architecture checks
+        run: pnpm check
+
+      - name: Strict-smoke bundle
+        run: pnpm build:strict-smoke
+
+      - name: UI raw-window-open guard
+        run: pnpm lint:ui:no-raw-window-open
 
       - name: Restore Vite UI build cache
         uses: actions/cache@v5
