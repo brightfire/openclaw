@@ -38,7 +38,7 @@ function createHistoryToolWithMessage(content: string) {
   });
 }
 
-describe("sessions_history includeArchived", () => {
+describe("sessions_history archived sessions", () => {
   beforeAll(async () => {
     previousConfigPath = process.env.OPENCLAW_CONFIG_PATH;
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-sessions-history-archived-"));
@@ -63,9 +63,7 @@ describe("sessions_history includeArchived", () => {
       callGateway: async <T = Record<string, unknown>>(request: CallGatewayRequest): Promise<T> => {
         if (request.method === "chat.history") {
           return {
-            messages: [
-              { role: "assistant", content: "archived message" },
-            ],
+            messages: [{ role: "assistant", content: "archived message" }],
             archived: true,
           } as T;
         }
@@ -76,20 +74,24 @@ describe("sessions_history includeArchived", () => {
     // "main" resolves without needing the gateway
     const result = await tool.execute("call-1", {
       sessionKey: "main",
-      includeArchived: true,
     });
     const details = result.details as Record<string, unknown>;
     expect(details.archived).toBe(true);
     expect(Array.isArray(details.messages)).toBe(true);
   });
 
-  it("schema accepts includeArchived parameter", () => {
-    // Verify the tool schema includes includeArchived
+  it("schema does not declare the removed includeArchived parameter", () => {
+    // includeArchived was removed once the gateway started reading archived
+    // transcripts transparently. The tool schema must not advertise it again.
     const tool = createSessionsHistoryTool({ config: {} });
     const schema = tool.parameters as Record<string, unknown>;
     const properties = (schema as { properties?: Record<string, unknown> }).properties;
     expect(properties).toBeDefined();
-    expect(properties!.includeArchived).toBeDefined();
+    expect(properties!.includeArchived).toBeUndefined();
+    // The remaining surface is unchanged.
+    expect(properties!.sessionKey).toBeDefined();
+    expect(properties!.limit).toBeDefined();
+    expect(properties!.includeTools).toBeDefined();
   });
 });
 

@@ -129,6 +129,11 @@ export function resolveSessionTranscriptCandidates(
  * Find archived transcript files for a given session ID by scanning the sessions directory.
  * Returns paths sorted by archive timestamp descending (most recent first).
  * Matches files with `.reset.` or `.deleted.` archive suffixes.
+ *
+ * Matches both the bare `<sessionId>.jsonl.<reason>.<ts>` shape and the
+ * topic-qualified `<sessionId>-topic-<N>.jsonl.<reason>.<ts>` shape, since
+ * topic conversations archive their own `sessionFile` (see
+ * `extractGeneratedTranscriptSessionId` for the supported shapes).
  */
 export function resolveArchivedTranscriptPaths(opts: {
   sessionId: string;
@@ -146,11 +151,12 @@ export function resolveArchivedTranscriptPaths(opts: {
     return [];
   }
 
-  const prefix = `${sessionId}.jsonl.`;
+  const barePrefix = `${sessionId}.jsonl.`;
+  const topicPrefix = `${sessionId}-topic-`;
   const results: Array<{ filePath: string; timestamp: number }> = [];
 
   for (const entry of entries) {
-    if (!entry.startsWith(prefix)) {
+    if (!matchesSessionArchiveBase(entry, barePrefix, topicPrefix)) {
       continue;
     }
     if (!isSessionArchiveArtifactName(entry)) {
@@ -171,6 +177,38 @@ export function resolveArchivedTranscriptPaths(opts: {
   // Sort descending: most recent archive first.
   results.sort((a, b) => b.timestamp - a.timestamp);
   return results.map((r) => r.filePath);
+}
+
+/**
+ * Returns true when `entry` is an archived transcript belonging to the session
+ * whose bare and topic-qualified prefixes are provided. Accepts both:
+ *   - `<sessionId>.jsonl.<reason>.<ts>` (bare)
+ *   - `<sessionId>-topic-<N>.jsonl.<reason>.<ts>` (topic-qualified)
+ *
+ * Topic-qualified matching requires `.jsonl.` to follow the topic suffix so
+ * that we never match a different sessionId that merely starts with
+ * `${sessionId}-topic-` as a substring of its own id.
+ */
+function matchesSessionArchiveBase(
+  entry: string,
+  barePrefix: string,
+  topicPrefix: string,
+): boolean {
+  if (entry.startsWith(barePrefix)) {
+    return true;
+  }
+  if (!entry.startsWith(topicPrefix)) {
+    return false;
+  }
+  // After the topic prefix, the next segment must be `<digits>.jsonl.` so we
+  // only match real topic-qualified transcript archives.
+  const rest = entry.slice(topicPrefix.length);
+  const jsonlIdx = rest.indexOf(".jsonl.");
+  if (jsonlIdx <= 0) {
+    return false;
+  }
+  const topicSegment = rest.slice(0, jsonlIdx);
+  return /^[A-Za-z0-9_-]+$/.test(topicSegment);
 }
 
 export function archiveFileOnDisk(filePath: string, reason: ArchiveFileReason): string {
