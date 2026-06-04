@@ -4,8 +4,8 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { formatSessionArchiveTimestamp } from "../config/sessions/artifacts.js";
 import { resolveArchivedTranscriptPaths } from "./session-transcript-files.fs.js";
-import { readRecentSessionMessagesAsync } from "./session-utils.fs.js";
 import { resolveSessionTranscriptCandidates } from "./session-transcript-files.fs.js";
+import { readRecentSessionMessagesAsync } from "./session-utils.fs.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -228,11 +228,7 @@ describe("readRecentSessionMessagesAsync with archived transcript", () => {
       const archivePath = path.join(dir, archiveName);
       fs.writeFileSync(archivePath, '{"role":"user","content":"test"}\n');
 
-      const candidates = resolveSessionTranscriptCandidates(
-        sessionId,
-        storePath,
-        archivePath,
-      );
+      const candidates = resolveSessionTranscriptCandidates(sessionId, storePath, archivePath);
       // The archive path (or a resolved equivalent) should appear in candidates
       const found = candidates.some((c) => fs.existsSync(c));
       expect(found).toBe(true);
@@ -261,12 +257,9 @@ describe("readRecentSessionMessagesAsync with archived transcript", () => {
 
       // The live .jsonl does NOT exist — only the archived file.
       // Passing the archived path as sessionFile causes the reader to find it.
-      const result = await readRecentSessionMessagesAsync(
-        sessionId,
-        storePath,
-        archivePath,
-        { maxMessages: 10 },
-      );
+      const result = await readRecentSessionMessagesAsync(sessionId, storePath, archivePath, {
+        maxMessages: 10,
+      });
 
       expect(result.length).toBeGreaterThan(0);
       const contents = result.map((m: unknown) => (m as Record<string, unknown>).content);
@@ -277,27 +270,142 @@ describe("readRecentSessionMessagesAsync with archived transcript", () => {
     }
   });
 
-  it("returns empty when sessionFile is not provided and live transcript missing", async () => {
+  it("falls back to the archived transcript when only the .jsonl.reset.<ts> file exists", async () => {
     const dir = makeTmpDir("oc-arh-read-no-file-");
     try {
       const sessionId = "b2c3d4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e";
       const storePath = path.join(dir, "sessions.json");
       fs.writeFileSync(storePath, "{}");
 
-      // Archived file exists but we don't pass it as sessionFile
+      // Archived file exists but the caller does not pass it as sessionFile.
+      // This is the real `chat.history` shape: the store entry's sessionFile
+      // still points at the (now renamed) live `.jsonl`, so `sessionFile` is
+      // either undefined here or points at a non-existent path.
       const archiveName = `${sessionId}.jsonl.reset.${ts()}`;
-      fs.writeFileSync(path.join(dir, archiveName), '{"message":{"role":"user","content":"orphaned"}}\n');
-
-      // Without the sessionFile parameter, only the live .jsonl path is tried
-      const result = await readRecentSessionMessagesAsync(
-        sessionId,
-        storePath,
-        undefined,
-        { maxMessages: 10 },
+      fs.writeFileSync(
+        path.join(dir, archiveName),
+        '{"message":{"role":"user","content":"resurrected"}}\n',
       );
 
-      // This demonstrates the bug: without passing the archived file path,
-      // messages are empty even though an archived transcript exists
+      const result = await readRecentSessionMessagesAsync(sessionId, storePath, undefined, {
+        maxMessages: 10,
+      });
+
+      // After the archive-fallback fix, the reader resolves the `.jsonl.reset.<ts>`
+      // file by scanning the sessions directory and returns its content.
+      expect(result.length).toBe(1);
+      const contents = result.map((m: unknown) => (m as Record<string, unknown>).content);
+      expect(contents).toContain("resurrected");
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("prefers the live .jsonl when both live and archived files exist", async () => {
+    const dir = makeTmpDir("oc-arh-prefer-live-");
+    try {
+      const sessionId = "c3d4e5f6-a7b8-4c9d-8e0f-1a2b3c4d5e6f";
+      const storePath = path.join(dir, "sessions.json");
+      fs.writeFileSync(storePath, "{}");
+
+      fs.writeFileSync(
+        path.join(dir, `${sessionId}.jsonl`),
+        '{"message":{"role":"user","content":"live-only"}}\n',
+      );
+      fs.writeFileSync(
+        path.join(dir, `${sessionId}.jsonl.reset.${ts()}`),
+        '{"message":{"role":"user","content":"archived-only"}}\n',
+      );
+
+      const result = await readRecentSessionMessagesAsync(sessionId, storePath, undefined, {
+        maxMessages: 10,
+      });
+
+      const contents = result.map((m: unknown) => (m as Record<string, unknown>).content);
+      expect(contents).toContain("live-only");
+      expect(contents).not.toContain("archived-only");
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("selects the archive matching the requested sessionId when multiple sessions share a directory", async () => {
+    const dir = makeTmpDir("oc-arh-disambiguate-");
+    try {
+      const sessionIdA = "a1111111-2222-4333-8444-555555555555";
+      const sessionIdB = "b1111111-2222-4333-8444-555555555555";
+      const storePath = path.join(dir, "sessions.json");
+      fs.writeFileSync(storePath, "{}");
+
+      fs.writeFileSync(
+        path.join(dir, `${sessionIdA}.jsonl.reset.${ts()}`),
+        '{"message":{"role":"user","content":"from-A"}}\n',
+      );
+      fs.writeFileSync(
+        path.join(dir, `${sessionIdB}.jsonl.reset.${ts()}`),
+        '{"message":{"role":"user","content":"from-B"}}\n',
+      );
+
+      const resultA = await readRecentSessionMessagesAsync(sessionIdA, storePath, undefined, {
+        maxMessages: 10,
+      });
+      const resultB = await readRecentSessionMessagesAsync(sessionIdB, storePath, undefined, {
+        maxMessages: 10,
+      });
+
+      expect(resultA.map((m: unknown) => (m as Record<string, unknown>).content)).toEqual([
+        "from-A",
+      ]);
+      expect(resultB.map((m: unknown) => (m as Record<string, unknown>).content)).toEqual([
+        "from-B",
+      ]);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("picks the most recent archive when multiple .jsonl.reset.<ts> files exist for the same sessionId", async () => {
+    const dir = makeTmpDir("oc-arh-most-recent-");
+    try {
+      const sessionId = "d4444444-5555-4666-8777-888888888888";
+      const storePath = path.join(dir, "sessions.json");
+      fs.writeFileSync(storePath, "{}");
+
+      const tsOld = ts(Date.now() - 60_000);
+      const tsNew = ts(Date.now());
+      fs.writeFileSync(
+        path.join(dir, `${sessionId}.jsonl.reset.${tsOld}`),
+        '{"message":{"role":"user","content":"older-archive"}}\n',
+      );
+      fs.writeFileSync(
+        path.join(dir, `${sessionId}.jsonl.reset.${tsNew}`),
+        '{"message":{"role":"user","content":"newer-archive"}}\n',
+      );
+
+      const result = await readRecentSessionMessagesAsync(sessionId, storePath, undefined, {
+        maxMessages: 10,
+      });
+
+      const contents = result.map((m: unknown) => (m as Record<string, unknown>).content);
+      expect(contents).toContain("newer-archive");
+      expect(contents).not.toContain("older-archive");
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("returns empty when no live or archived transcript exists for the sessionId", async () => {
+    const dir = makeTmpDir("oc-arh-missing-");
+    try {
+      const sessionId = "e5555555-6666-4777-8888-999999999999";
+      const storePath = path.join(dir, "sessions.json");
+      fs.writeFileSync(storePath, "{}");
+
+      const result = await readRecentSessionMessagesAsync(sessionId, storePath, undefined, {
+        maxMessages: 10,
+      });
+
+      // No transcript anywhere on disk — graceful empty rather than throwing.
       expect(result).toEqual([]);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
