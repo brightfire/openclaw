@@ -140,9 +140,10 @@ export async function resolveSessionKeyFromResolveParams(params: {
     // Check for archived entries matching this key — return the most recent.
     const archivedMatches = Object.entries(store)
       .filter(
-        ([k, entry]) => k.startsWith(`${target.canonicalKey}:archived:`) && entry?.archived === true,
+        ([k, entry]) =>
+          k.startsWith(`${target.canonicalKey}:archived:`) && entry?.archived === true,
       )
-      .sort((a, b) => (b[1].archivedAt ?? 0) - (a[1].archivedAt ?? 0));
+      .toSorted((a, b) => (b[1].archivedAt ?? 0) - (a[1].archivedAt ?? 0));
     if (archivedMatches.length > 0) {
       return { ok: true, key: archivedMatches[0][0] };
     }
@@ -181,7 +182,7 @@ export async function resolveSessionKeyFromResolveParams(params: {
     if (matches.length === 0) {
       const archivedById = Object.entries(store)
         .filter(([, entry]) => entry?.archived === true && entry.sessionId === sessionId)
-        .sort((a, b) => (b[1].archivedAt ?? 0) - (a[1].archivedAt ?? 0));
+        .toSorted((a, b) => (b[1].archivedAt ?? 0) - (a[1].archivedAt ?? 0));
       if (archivedById.length > 0) {
         return { ok: true, key: archivedById[0][0] };
       }
