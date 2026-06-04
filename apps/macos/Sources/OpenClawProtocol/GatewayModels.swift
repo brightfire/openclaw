@@ -11,6 +11,8 @@ public enum ErrorCode: String, Codable, Sendable {
     case invalidRequest = "INVALID_REQUEST"
     case approvalNotFound = "APPROVAL_NOT_FOUND"
     case unavailable = "UNAVAILABLE"
+    case forbidden = "FORBIDDEN"
+    case gatewayError = "GATEWAY_ERROR"
 }
 
 public enum NodePresenceAliveReason: String, Codable, Sendable {
