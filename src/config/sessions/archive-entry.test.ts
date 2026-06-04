@@ -2,14 +2,13 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { SessionEntry } from "./types.js";
 import { buildArchiveStoreEntry } from "./archive-entry.js";
 import {
   clearSessionStoreCacheForTest,
   drainSessionStoreWriterQueuesForTest,
   updateSessionStore,
 } from "./store.js";
-import { loadSessionStore } from "./store-load.js";
+import type { SessionEntry } from "./types.js";
 
 function makeEntry(overrides: Partial<SessionEntry> = {}): SessionEntry {
   return {
@@ -22,11 +21,7 @@ function makeEntry(overrides: Partial<SessionEntry> = {}): SessionEntry {
 describe("buildArchiveStoreEntry", () => {
   it("builds correct archive key and entry for reset reason", () => {
     const entry = makeEntry({ sessionId: "abc-123" });
-    const { archiveKey, archiveEntry } = buildArchiveStoreEntry(
-      "agent:main:main",
-      entry,
-      "reset",
-    );
+    const { archiveKey, archiveEntry } = buildArchiveStoreEntry("agent:main:main", entry, "reset");
 
     expect(archiveKey).toBe("agent:main:main:archived:abc-123");
     expect(archiveEntry.archived).toBe(true);
@@ -96,7 +91,11 @@ describe("sessions.delete inline archive via buildArchiveStoreEntry", () => {
       const primaryKey = "agent:main:slack:direct:u1";
       const currentEntry = store[primaryKey];
       if (currentEntry) {
-        const { archiveKey, archiveEntry } = buildArchiveStoreEntry(primaryKey, currentEntry, "deleted");
+        const { archiveKey, archiveEntry } = buildArchiveStoreEntry(
+          primaryKey,
+          currentEntry,
+          "deleted",
+        );
         store[archiveKey] = archiveEntry;
         delete store[primaryKey];
       }
