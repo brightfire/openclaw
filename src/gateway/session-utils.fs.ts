@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import path from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import { deriveSessionTotalTokens, hasNonzeroUsage, normalizeUsage } from "../agents/usage.js";
 import { jsonUtf8Bytes } from "../infra/json-utf8-bytes.js";
@@ -9,6 +10,7 @@ import { stripInlineDirectiveTagsForDisplay } from "../utils/directive-tags.js";
 import { extractToolCallNames, hasToolCall } from "../utils/transcript-tools.js";
 import { stripEnvelope } from "./chat-sanitize.js";
 import {
+  resolveArchivedTranscriptPaths,
   resolveSessionTranscriptCandidates,
   archiveFileOnDisk,
   archiveSessionTranscripts,
@@ -146,7 +148,13 @@ export function readSessionMessages(
 ): unknown[] {
   const candidates = resolveSessionTranscriptCandidates(sessionId, storePath, sessionFile);
 
-  const filePath = candidates.find((p) => fs.existsSync(p));
+  let filePath = candidates.find((p) => fs.existsSync(p));
+  if (!filePath) {
+    // Fall back to archived transcripts (.reset.* / .deleted.*) when the active file is missing.
+    const sessionsDir = storePath ? path.dirname(storePath) : undefined;
+    const archivedPaths = resolveArchivedTranscriptPaths({ sessionId, sessionsDir });
+    filePath = archivedPaths.find((p) => fs.existsSync(p));
+  }
   if (!filePath) {
     return [];
   }
@@ -747,6 +755,7 @@ export {
   archiveFileOnDisk,
   archiveSessionTranscripts,
   cleanupArchivedSessionTranscripts,
+  resolveArchivedTranscriptPaths,
   resolveSessionTranscriptCandidates,
 } from "./session-transcript-files.fs.js";
 
@@ -993,7 +1002,21 @@ function findExistingTranscriptPath(
   agentId?: string,
 ): string | null {
   const candidates = resolveSessionTranscriptCandidates(sessionId, storePath, sessionFile, agentId);
-  return candidates.find((p) => fs.existsSync(p)) ?? null;
+  const live = candidates.find((p) => fs.existsSync(p));
+  if (live) {
+    return live;
+  }
+  // Fall back to archived transcripts (`<sessionId>.jsonl.reset.<ISO>` /
+  // `<sessionId>.jsonl.deleted.<ISO>`) when no live `.jsonl` is on disk. This
+  // mirrors what the sync `readSessionMessages` already does and is required
+  // so `chat.history` returns archived content for sessions whose store entry
+  // has `archived: true` (e.g. resuming context after a session rollover).
+  const sessionsDir = storePath ? path.dirname(storePath) : undefined;
+  if (!sessionsDir || !sessionId) {
+    return null;
+  }
+  const archived = resolveArchivedTranscriptPaths({ sessionId, sessionsDir, agentId });
+  return archived.find((p) => fs.existsSync(p)) ?? null;
 }
 
 function withOpenTranscriptFd<T>(filePath: string, read: (fd: number) => T | null): T | null {
