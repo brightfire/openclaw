@@ -1195,6 +1195,15 @@
           "minLength": 1,
           "type": "string"
         },
+        "archivedFrom": {
+          "type": "number"
+        },
+        "archivedTo": {
+          "type": "number"
+        },
+        "includeArchived": {
+          "type": "boolean"
+        },
         "includeDerivedTitles": {
           "type": "boolean"
         },

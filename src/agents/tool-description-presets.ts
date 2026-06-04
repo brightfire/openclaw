@@ -15,6 +15,7 @@ export function describeSessionsListTool(): string {
   return [
     "List visible sessions with optional filters for kind, label, agentId, search, recent activity, derived titles, and last-message previews.",
     "Use this to discover a target session before calling sessions_history or sessions_send.",
+    "Set `key` to an exact canonical session key to fetch a single session's row; combine with `includeArchived: true` to also receive its archived twin rows for the same session lineage.",
   ].join(" ");
 }
 
@@ -22,6 +23,7 @@ export function describeSessionsHistoryTool(): string {
   return [
     "Fetch sanitized message history for a visible session.",
     "Supports limits and optional tool messages; use this to inspect another session before replying, debugging, or resuming work.",
+    "Set `includeArchived: true` to fall back to archived transcripts when the session has been reset or deleted; the result includes `archived: true` when reading from an archive.",
   ].join(" ");
 }
 
