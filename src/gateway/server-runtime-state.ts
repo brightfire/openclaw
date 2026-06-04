@@ -41,6 +41,7 @@ import {
 import type { ReadinessChecker } from "./server/readiness.js";
 import type { GatewayTlsRuntime } from "./server/tls.js";
 import type { GatewayWsClient } from "./server/ws-types.js";
+import { initXgw } from "./xgw/inbound.js";
 
 type GatewayPluginRequestHandler = (
   req: IncomingMessage,
@@ -212,6 +213,13 @@ export async function createGatewayRuntimeState(params: {
       maxPayload: MAX_PREAUTH_PAYLOAD_BYTES,
     });
     const preauthConnectionBudget = createPreauthConnectionBudget();
+
+    // Initialize XGW (load persisted state, start prune interval)
+    try {
+      initXgw();
+    } catch {
+      // XGW init failure is non-fatal; will fall back to defaults
+    }
 
     const httpServers: HttpServer[] = [];
     const httpBindHosts: string[] = [];
