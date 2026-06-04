@@ -625,6 +625,7 @@ async function compactEmbeddedPiSessionDirectOnce(
       modelContextTokens: readPiModelContextTokens(runtimeModel),
       modelContextWindow: runtimeModelWithContext.contextWindow,
       defaultTokens: DEFAULT_CONTEXT_TOKENS,
+      catalogContextWindow: runtimeModelWithContext.contextWindow,
     });
     const effectiveModel = applyAuthHeaderOverride(
       applyLocalNoAuthHeaderOverride(
