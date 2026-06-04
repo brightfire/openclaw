@@ -7,7 +7,11 @@ import {
 } from "../plugins/runtime.js";
 import { createOutboundTestPlugin } from "../test-utils/channel-plugins.js";
 import { createRegistry } from "./server.e2e-registry-helpers.js";
-import { getFreePort, installGatewayTestHooks, startGatewayServer } from "./test-helpers.js";
+import {
+  getFreePort,
+  installGatewayTestHooks,
+  startGatewayServerWithRetries,
+} from "./test-helpers.js";
 
 installGatewayTestHooks({ scope: "suite" });
 
@@ -40,8 +44,8 @@ test("minimal gateway tracks later channel registry updates", async () => {
   const prevVitest = process.env.VITEST;
   resetPluginRuntimeStateForTest();
   process.env.VITEST = "1";
-  const port = await getFreePort();
-  const server = await startGatewayServer(port);
+  // Retry on EADDRINUSE — deterministic port allocator collides under PARALLEL>=5.
+  const { server } = await startGatewayServerWithRetries({ port: await getFreePort() });
   try {
     expect(getChannelPlugin("whatsapp")).not.toBe(replacementPlugin);
     setActivePluginRegistry(replacementRegistry);
