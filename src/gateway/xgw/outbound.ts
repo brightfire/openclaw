@@ -65,7 +65,7 @@ export async function postCallbackWithRetry(
         return { ok: true, status: resp.status };
       }
       const bodyText = await resp.text().catch(() => "");
-      lastError = `status=${resp.status} body=${bodyText.substring(0, 200)}`;
+      lastError = `status=${resp.status} body=${bodyText.slice(0, 200)}`;
       process.stderr.write(
         `[xgw] callback POST attempt ${attempt + 1}/${MAX_ATTEMPTS} failed: ${lastError}\n`,
       );

@@ -44,8 +44,8 @@ export async function handleCrossGatewayDispatch(params: {
     return;
   }
 
-  const gwName = rawKey.substring(1, slashIdx);
-  const remoteKey = rawKey.substring(slashIdx + 1);
+  const gwName = rawKey.slice(1, slashIdx);
+  const remoteKey = rawKey.slice(slashIdx + 1);
 
   if (!gwName || !remoteKey) {
     params.respond(
