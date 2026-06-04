@@ -1425,6 +1425,7 @@ public struct SessionsListParams: Codable, Sendable {
     public let spawnedby: String?
     public let agentid: String?
     public let search: String?
+    public let key: String?
     public let includearchived: Bool?
     public let archivedfrom: Int?
     public let archivedto: Int?
@@ -1440,6 +1441,7 @@ public struct SessionsListParams: Codable, Sendable {
         spawnedby: String?,
         agentid: String?,
         search: String?,
+        key: String?,
         includearchived: Bool?,
         archivedfrom: Int?,
         archivedto: Int?)
@@ -1454,6 +1456,7 @@ public struct SessionsListParams: Codable, Sendable {
         self.spawnedby = spawnedby
         self.agentid = agentid
         self.search = search
+        self.key = key
         self.includearchived = includearchived
         self.archivedfrom = archivedfrom
         self.archivedto = archivedto
@@ -1470,6 +1473,7 @@ public struct SessionsListParams: Codable, Sendable {
         case spawnedby = "spawnedBy"
         case agentid = "agentId"
         case search
+        case key
         case includearchived = "includeArchived"
         case archivedfrom = "archivedFrom"
         case archivedto = "archivedTo"
