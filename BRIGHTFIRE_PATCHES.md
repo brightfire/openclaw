@@ -18,7 +18,7 @@ is maintained, the merge-not-rebase philosophy, and the new-entry template.
 | Context Window Min Cap | `brightfire/context-window-min-cap` | `42995a61af` | <https://github.com/brightfire/openclaw/pull/31> | 2026-06-01 |
 | Session Reset Prompt | `brightfire/session-reset-prompt` | `88830f1cfd` | https://github.com/brightfire/openclaw/pull/67 | 2026-06-02 |
 | Control UI Title | `brightfire/control-ui-title` | `85a2c07c36` | <https://github.com/openclaw/openclaw/pull/51067> | 2026-06-01 |
-| Store-Based Session Archiving | `brightfire/sessions-history-archived` | `9c4cf8b830` | https://github.com/brightfire/openclaw/pull/85 | 2026-06-04 |
+| Store-Based Session Archiving | `brightfire/sessions-history-archived` | `fa0706e556` | https://github.com/brightfire/openclaw/pull/86 | 2026-06-04 |
 | CLI HTTP Health Fallback | `brightfire/cli-http-fallback` | `3340721625` | — | 2026-06-01 |
 
 ## Slack Markdown
