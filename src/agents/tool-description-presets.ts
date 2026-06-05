@@ -28,6 +28,7 @@ export function describeSessionsSendTool(): string {
     "Send message to visible session by sessionKey/label, or configured agent by agentId.",
     "Thread-scoped chats rejected; target parent channel session.",
     "Creates missing configured-agent main session; waits for reply when available.",
+    "For cross-gateway messaging to remote fleet peers, use @<gateway>/session keys (see cross-gateway skill).",
   ].join(" ");
 }
 

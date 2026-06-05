@@ -10,6 +10,7 @@ import { createSubsystemLogger } from "../logging/subsystem.js";
 import { closePluginStateSqliteStore } from "../plugin-state/plugin-state-store.js";
 import type { PluginServicesHandle } from "../plugins/services.js";
 import { abortTrackedChatRunById, type ChatAbortControllerEntry } from "./chat-abort.js";
+import { shutdownXgw } from "./xgw/inbound.js";
 import {
   collectGatewayProcessMemoryUsageMb,
   measureGatewayRestartTrace,
@@ -265,6 +266,11 @@ async function triggerGatewayLifecycleHookWithTimeout(params: {
       }),
     ]);
     if (result === "timeout") {
+      try {
+        shutdownXgw();
+      } catch {
+        /* ignore */
+      }
       shutdownLog.warn(
         `${params.hookName} hook timed out after ${params.timeoutMs}ms; continuing shutdown`,
       );
