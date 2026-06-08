@@ -2912,6 +2912,7 @@ export async function runEmbeddedAgent(
             usage: usageMeta.usage,
             lastCallUsage: usageMeta.lastCallUsage,
             promptTokens: usageMeta.promptTokens,
+            cacheRetention: attempt.cacheRetention,
             ...(lastContextBudgetStatus ? { contextBudgetStatus: lastContextBudgetStatus } : {}),
             compactionCount: autoCompactionCount > 0 ? autoCompactionCount : undefined,
             compactionTokensAfter: lastCompactionTokensAfter,
