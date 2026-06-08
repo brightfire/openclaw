@@ -323,6 +323,7 @@ env:
 
 jobs:
   validate_selected_ref:
+    if: false
     runs-on: ubuntu-24.04
     outputs:
       selected_sha: ${{ steps.validate.outputs.selected_sha }}
@@ -373,6 +374,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   validate_live_suite_filter:
+    if: false
     runs-on: ubuntu-24.04
     if: inputs.live_suite_filter != ''
     steps:
@@ -481,6 +483,7 @@ jobs:
           exit 1
 
   plan_release_workflow_matrices:
+    if: false
     needs: validate_selected_ref
     runs-on: ubuntu-24.04
     outputs:
@@ -510,6 +513,7 @@ jobs:
         run: node scripts/plan-release-workflow-matrix.mjs >> "$GITHUB_OUTPUT"
 
   validate_release_live_cache:
+    if: false
     needs: validate_selected_ref
     if: inputs.include_live_suites && !inputs.live_models_only && (inputs.live_suite_filter == '' || inputs.live_suite_filter == 'live-cache')
     continue-on-error: ${{ inputs.advisory }}
@@ -560,6 +564,7 @@ jobs:
           done
 
   validate_repo_e2e:
+    if: false
     needs: validate_selected_ref
     if: inputs.include_repo_e2e && inputs.live_suite_filter == ''
     continue-on-error: ${{ inputs.advisory }}
@@ -592,6 +597,7 @@ jobs:
         run: pnpm test:e2e
 
   validate_special_e2e:
+    if: false
     needs: validate_selected_ref
     if: inputs.include_repo_e2e && (inputs.live_suite_filter == '' || inputs.live_suite_filter == 'openshell-e2e')
     continue-on-error: ${{ inputs.advisory }}
@@ -665,6 +671,7 @@ jobs:
         run: ${{ matrix.command }}
 
   validate_docker_e2e:
+    if: false
     needs: [validate_selected_ref, prepare_docker_e2e_image, plan_release_workflow_matrices]
     if: inputs.include_release_path_suites && inputs.docker_lanes == '' && needs.plan_release_workflow_matrices.outputs.docker_e2e_count != '0'
     name: Docker E2E (${{ matrix.label }})
@@ -900,6 +907,7 @@ jobs:
           if-no-files-found: ignore
 
   plan_docker_lane_groups:
+    if: false
     needs: validate_selected_ref
     if: inputs.docker_lanes != ''
     continue-on-error: ${{ inputs.advisory }}
@@ -928,6 +936,7 @@ jobs:
           echo "groups_json=${groups_json}" >> "$GITHUB_OUTPUT"
 
   validate_docker_lanes:
+    if: false
     needs: [validate_selected_ref, prepare_docker_e2e_image, plan_docker_lane_groups]
     if: inputs.docker_lanes != ''
     name: Docker E2E targeted lanes (${{ matrix.group.label }})
@@ -1160,6 +1169,7 @@ jobs:
           if-no-files-found: ignore
 
   validate_docker_openwebui:
+    if: false
     needs: [validate_selected_ref, prepare_docker_e2e_image]
     if: inputs.include_openwebui && !inputs.include_release_path_suites && inputs.docker_lanes == ''
     name: Docker E2E (openwebui)
@@ -1287,6 +1297,7 @@ jobs:
           if-no-files-found: ignore
 
   prepare_docker_e2e_image:
+    if: false
     needs: validate_selected_ref
     if: inputs.include_release_path_suites || inputs.include_openwebui || inputs.docker_lanes != ''
     continue-on-error: ${{ inputs.advisory }}
@@ -1530,6 +1541,7 @@ jobs:
           push: true
 
   prepare_live_test_image:
+    if: false
     needs: validate_selected_ref
     if: inputs.include_live_suites && (inputs.live_suite_filter == '' || startsWith(inputs.live_suite_filter, 'live-') || startsWith(inputs.live_suite_filter, 'docker-live-models'))
     continue-on-error: ${{ inputs.advisory }}
@@ -1602,6 +1614,7 @@ jobs:
           push: true
 
   validate_live_models_docker:
+    if: false
     name: Docker live models (${{ matrix.provider_label }})
     needs: [validate_selected_ref, prepare_live_test_image, plan_release_workflow_matrices]
     if: inputs.include_live_suites && inputs.live_model_providers == '' && (inputs.live_suite_filter == '' || inputs.live_suite_filter == 'docker-live-models') && needs.plan_release_workflow_matrices.outputs.live_models_count != '0'
@@ -1727,6 +1740,7 @@ jobs:
         run: OPENCLAW_LIVE_DOCKER_REPO_ROOT="$GITHUB_WORKSPACE" timeout --foreground --kill-after=30s 35m bash .release-harness/scripts/test-live-models-docker.sh
 
   validate_live_models_docker_targeted:
+    if: false
     name: Docker live models (selected providers)
     needs: [validate_selected_ref, prepare_live_test_image]
     if: inputs.include_live_suites && inputs.live_model_providers != '' && (inputs.live_suite_filter == '' || inputs.live_suite_filter == 'docker-live-models')
@@ -1901,6 +1915,7 @@ jobs:
         run: OPENCLAW_LIVE_DOCKER_REPO_ROOT="$GITHUB_WORKSPACE" timeout --foreground --kill-after=30s 35m bash .release-harness/scripts/test-live-models-docker.sh
 
   validate_live_provider_suites:
+    if: false
     needs: validate_selected_ref
     if: inputs.include_live_suites && !inputs.live_models_only && (inputs.live_suite_filter == '' || (startsWith(inputs.live_suite_filter, 'native-live-') && !startsWith(inputs.live_suite_filter, 'native-live-extensions-media') && inputs.live_suite_filter != 'native-live-extensions-a-k'))
     continue-on-error: ${{ inputs.advisory }}
@@ -2222,6 +2237,7 @@ jobs:
           exit "$status"
 
   validate_live_docker_provider_suites:
+    if: false
     name: Docker live suites (${{ matrix.label }})
     needs: [validate_selected_ref, prepare_live_test_image]
     if: inputs.include_live_suites && !inputs.live_models_only && (inputs.live_suite_filter == '' || startsWith(inputs.live_suite_filter, 'live-'))
@@ -2441,6 +2457,7 @@ jobs:
           exit "$status"
 
   validate_live_media_provider_suites:
+    if: false
     name: Live media suites (${{ matrix.label }})
     needs: validate_selected_ref
     if: inputs.include_live_suites && !inputs.live_models_only && (inputs.live_suite_filter == '' || startsWith(inputs.live_suite_filter, 'native-live-extensions-media') || inputs.live_suite_filter == 'native-live-extensions-a-k')

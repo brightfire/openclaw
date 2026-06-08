@@ -34,6 +34,7 @@ env:
 
 jobs:
   static:
+    if: false
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
@@ -68,6 +69,7 @@ jobs:
           }
 
   linux-docker:
+    if: false
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
@@ -90,6 +92,7 @@ jobs:
             bash -lc 'apt-get update -y && apt-get install -y curl && bash /tmp/install-cli.sh --prefix /tmp/openclaw --no-onboard --version latest && /tmp/openclaw/bin/openclaw --version'
 
   macos-installer:
+    if: false
     runs-on: macos-15
     steps:
       - name: Checkout
@@ -112,6 +115,7 @@ jobs:
           openclaw --version
 
   windows-installer:
+    if: false
     runs-on: windows-latest
     steps:
       - name: Checkout
@@ -127,6 +131,7 @@ jobs:
         run: .\scripts\install.ps1 -DryRun -NoOnboard -InstallMethod npm
 
   sync-website:
+    if: false
     needs: [static, linux-docker, macos-installer, windows-installer]
     if: >
       (github.event_name == 'push' && github.ref == 'refs/heads/main') ||

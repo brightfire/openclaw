@@ -75,6 +75,7 @@ env:
 
 jobs:
   resolve_release_target:
+    if: false
     name: Resolve release target
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -350,6 +351,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   publish:
+    if: false
     name: Publish plugins, then OpenClaw
     needs: [resolve_release_target]
     runs-on: ubuntu-latest

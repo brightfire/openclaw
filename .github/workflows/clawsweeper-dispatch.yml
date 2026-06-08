@@ -23,6 +23,7 @@ concurrency:
 
 jobs:
   dispatch:
+    if: false
     runs-on: ubuntu-latest
     if: >-
       ${{

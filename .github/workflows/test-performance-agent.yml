@@ -24,7 +24,7 @@ env:
 
 jobs:
   optimize-tests:
-    if: >
+    if: false
       github.repository == 'openclaw/openclaw' &&
       (github.event_name == 'workflow_dispatch' ||
         (github.event.workflow_run.conclusion == 'success' &&

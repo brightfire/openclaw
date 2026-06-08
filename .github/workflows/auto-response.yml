@@ -19,6 +19,7 @@ permissions: {}
 
 jobs:
   auto-response:
+    if: false
     permissions:
       contents: read
       issues: write

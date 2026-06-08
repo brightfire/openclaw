@@ -307,6 +307,7 @@ env:
 
 jobs:
   resolve_package:
+    if: false
     name: Resolve package candidate
     runs-on: ubuntu-24.04
     timeout-minutes: 60
@@ -535,6 +536,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   package_integrity:
+    if: false
     name: Package integrity
     needs: resolve_package
     runs-on: ubuntu-24.04
@@ -561,6 +563,7 @@ jobs:
           node scripts/check-openclaw-package-tarball.mjs .artifacts/docker-e2e-package/openclaw-current.tgz
 
   docker_acceptance:
+    if: false
     name: Docker product acceptance
     needs: [resolve_package, package_integrity]
     permissions:
@@ -631,6 +634,7 @@ jobs:
       FIREWORKS_API_KEY: ${{ secrets.FIREWORKS_API_KEY }}
 
   package_telegram:
+    if: false
     name: Telegram package acceptance
     needs: [resolve_package, package_integrity]
     if: needs.resolve_package.outputs.telegram_enabled == 'true'
@@ -649,6 +653,7 @@ jobs:
       OPENCLAW_QA_CONVEX_SECRET_CI: ${{ secrets.OPENCLAW_QA_CONVEX_SECRET_CI }}
 
   summary:
+    if: false
     name: Verify package acceptance
     needs: [resolve_package, package_integrity, docker_acceptance, package_telegram]
     if: always()

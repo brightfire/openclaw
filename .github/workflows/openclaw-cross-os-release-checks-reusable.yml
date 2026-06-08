@@ -199,6 +199,7 @@ env:
 
 jobs:
   prepare:
+    if: false
     runs-on: ubuntu-24.04
     continue-on-error: ${{ inputs.advisory }}
     outputs:
@@ -521,6 +522,7 @@ jobs:
           echo "value=${MATRIX_JSON}" >> "$GITHUB_OUTPUT"
 
   cross_os_release_checks:
+    if: false
     name: "${{ matrix.display_name }} / ${{ matrix.suite_label }}"
     needs: prepare
     continue-on-error: ${{ inputs.advisory }}

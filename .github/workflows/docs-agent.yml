@@ -21,7 +21,7 @@ env:
 
 jobs:
   update-docs:
-    if: >
+    if: false
       github.repository == 'openclaw/openclaw' &&
       github.actor != 'github-actions[bot]' &&
       (github.event_name != 'workflow_run' ||

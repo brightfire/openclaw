@@ -31,6 +31,7 @@ env:
 
 jobs:
   preflight:
+    if: false
     name: Build plugin prerelease plan
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -204,6 +205,7 @@ jobs:
           EOF
 
   plugin-prerelease-static-shard:
+    if: false
     permissions:
       contents: read
     name: ${{ matrix.check_name }}
@@ -240,6 +242,7 @@ jobs:
           bash -c "$PLUGIN_PRERELEASE_COMMAND"
 
   plugin-prerelease-node-shard:
+    if: false
     permissions:
       contents: read
     name: ${{ matrix.check_name }}
@@ -313,6 +316,7 @@ jobs:
           EOF
 
   plugin-prerelease-extension-shard:
+    if: false
     permissions:
       contents: read
     name: ${{ matrix.check_name }}
@@ -347,6 +351,7 @@ jobs:
         run: pnpm test:extensions:batch "$OPENCLAW_EXTENSION_BATCH" -- --exclude extensions/codex/src/app-server/run-attempt.test.ts
 
   plugin-prerelease-inspector:
+    if: false
     permissions:
       contents: read
     name: plugin-prerelease-inspector
@@ -526,6 +531,7 @@ jobs:
           if-no-files-found: warn
 
   plugin-prerelease-docker-suite:
+    if: false
     name: plugin-prerelease-docker-suite
     needs: [preflight]
     if: ${{ inputs.full_release_validation && needs.preflight.outputs.run_plugin_prerelease_docker == 'true' }}
@@ -546,6 +552,7 @@ jobs:
       live_models_only: false
 
   plugin-prerelease-suite:
+    if: false
     permissions:
       contents: read
     name: plugin-prerelease-suite

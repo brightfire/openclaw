@@ -61,6 +61,7 @@ env:
 
 jobs:
   kova:
+    if: false
     name: ${{ matrix.title }}
     runs-on: blacksmith-16vcpu-ubuntu-2404
     timeout-minutes: 240

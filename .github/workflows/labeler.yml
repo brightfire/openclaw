@@ -27,6 +27,7 @@ permissions: {}
 
 jobs:
   label:
+    if: false
     permissions:
       contents: read
       pull-requests: write
@@ -460,7 +461,7 @@ jobs:
             }
 
   backfill-pr-labels:
-    if: github.event_name == 'workflow_dispatch'
+    if: false
     permissions:
       contents: read
       pull-requests: write
@@ -760,7 +761,7 @@ jobs:
             core.info(`Processed ${processed} pull requests.`);
 
   label-issues:
-    if: github.event_name == 'issues'
+    if: false
     permissions:
       issues: write
     runs-on: ubuntu-24.04

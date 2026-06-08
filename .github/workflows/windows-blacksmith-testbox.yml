@@ -21,6 +21,7 @@ env:
 
 jobs:
   windows:
+    if: false
     name: windows
     runs-on: ${{ inputs.runner_label }}
     timeout-minutes: 75

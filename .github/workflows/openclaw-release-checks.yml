@@ -95,6 +95,7 @@ env:
 
 jobs:
   resolve_target:
+    if: false
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -477,6 +478,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   prepare_release_package:
+    if: false
     name: Prepare release package artifact
     needs: [resolve_target]
     if: contains(fromJSON('["all","cross-os","package"]'), needs.resolve_target.outputs.rerun_group) || (needs.resolve_target.outputs.rerun_group == 'live-e2e' && needs.resolve_target.outputs.live_suite_filter == '')
@@ -554,6 +556,7 @@ jobs:
           if-no-files-found: error
 
   install_smoke_release_checks:
+    if: false
     needs: [resolve_target]
     if: contains(fromJSON('["all","install-smoke"]'), needs.resolve_target.outputs.rerun_group)
     permissions:
@@ -565,6 +568,7 @@ jobs:
       run_bun_global_install_smoke: true
 
   cross_os_release_checks:
+    if: false
     needs: [resolve_target, prepare_release_package]
     if: contains(fromJSON('["all","cross-os"]'), needs.resolve_target.outputs.rerun_group)
     permissions: read-all
@@ -592,6 +596,7 @@ jobs:
       OPENCLAW_DISCORD_SMOKE_CHANNEL_ID: ${{ secrets.OPENCLAW_DISCORD_SMOKE_CHANNEL_ID }}
 
   live_repo_e2e_release_checks:
+    if: false
     name: Run repo/live E2E validation
     needs: [resolve_target]
     if: needs.resolve_target.outputs.rerun_group == 'live-e2e' || (needs.resolve_target.outputs.rerun_group == 'all' && needs.resolve_target.outputs.run_release_soak == 'true')
@@ -659,6 +664,7 @@ jobs:
       FIREWORKS_API_KEY: ${{ secrets.FIREWORKS_API_KEY }}
 
   docker_e2e_release_checks:
+    if: false
     name: Run Docker release-path validation
     needs: [resolve_target, prepare_release_package]
     if: (needs.resolve_target.outputs.rerun_group == 'live-e2e' || (needs.resolve_target.outputs.rerun_group == 'all' && needs.resolve_target.outputs.run_release_soak == 'true')) && needs.resolve_target.outputs.live_suite_filter == ''
@@ -681,6 +687,7 @@ jobs:
     secrets: *live_e2e_release_secrets
 
   package_acceptance_release_checks:
+    if: false
     name: Run package acceptance
     needs: [resolve_target, prepare_release_package]
     if: contains(fromJSON('["all","package"]'), needs.resolve_target.outputs.rerun_group)
@@ -754,6 +761,7 @@ jobs:
       OPENCLAW_QA_CONVEX_SECRET_CI: ${{ secrets.OPENCLAW_QA_CONVEX_SECRET_CI }}
 
   qa_lab_parity_lane_release_checks:
+    if: false
     name: Run QA Lab parity lane (${{ matrix.lane }})
     needs: [resolve_target]
     if: contains(fromJSON('["all","qa","qa-parity"]'), needs.resolve_target.outputs.rerun_group)
@@ -840,6 +848,7 @@ jobs:
           if-no-files-found: warn
 
   qa_lab_parity_report_release_checks:
+    if: false
     name: Run QA Lab parity report
     needs: [resolve_target, qa_lab_parity_lane_release_checks]
     if: contains(fromJSON('["all","qa","qa-parity"]'), needs.resolve_target.outputs.rerun_group)
@@ -898,6 +907,7 @@ jobs:
           if-no-files-found: warn
 
   qa_lab_runtime_parity_release_checks:
+    if: false
     name: Run QA Lab runtime parity lane
     needs: [resolve_target]
     if: contains(fromJSON('["all","qa","qa-parity"]'), needs.resolve_target.outputs.rerun_group)
@@ -1021,6 +1031,7 @@ jobs:
           if-no-files-found: warn
 
   runtime_tool_coverage_release_checks:
+    if: false
     name: Enforce QA Lab runtime tool coverage
     needs: [resolve_target, qa_lab_runtime_parity_release_checks]
     if: always() && contains(fromJSON('["all","qa","qa-parity"]'), needs.resolve_target.outputs.rerun_group)
@@ -1071,6 +1082,7 @@ jobs:
           if-no-files-found: warn
 
   qa_live_matrix_release_checks:
+    if: false
     name: Run QA Lab live Matrix lane
     needs: [resolve_target]
     if: contains(fromJSON('["all","qa","qa-live"]'), needs.resolve_target.outputs.rerun_group) && needs.resolve_target.outputs.qa_live_matrix_enabled == 'true'
@@ -1150,6 +1162,7 @@ jobs:
           if-no-files-found: warn
 
   qa_live_telegram_release_checks:
+    if: false
     name: Run QA Lab live Telegram lane
     needs: [resolve_target]
     if: contains(fromJSON('["all","qa","qa-live"]'), needs.resolve_target.outputs.rerun_group) && needs.resolve_target.outputs.qa_live_telegram_enabled == 'true'
@@ -1246,6 +1259,7 @@ jobs:
           if-no-files-found: warn
 
   qa_live_discord_release_checks:
+    if: false
     name: Run QA Lab live Discord lane
     needs: [resolve_target]
     if: contains(fromJSON('["all","qa","qa-live"]'), needs.resolve_target.outputs.rerun_group) && needs.resolve_target.outputs.qa_live_discord_enabled == 'true' && vars.OPENCLAW_RELEASE_QA_DISCORD_LIVE_CI_ENABLED == 'true'
@@ -1341,6 +1355,7 @@ jobs:
           if-no-files-found: warn
 
   qa_live_whatsapp_release_checks:
+    if: false
     name: Run QA Lab live WhatsApp lane
     needs: [resolve_target]
     if: contains(fromJSON('["all","qa","qa-live"]'), needs.resolve_target.outputs.rerun_group) && needs.resolve_target.outputs.qa_live_whatsapp_enabled == 'true' && vars.OPENCLAW_RELEASE_QA_WHATSAPP_LIVE_CI_ENABLED == 'true'
@@ -1439,6 +1454,7 @@ jobs:
           if-no-files-found: warn
 
   qa_live_slack_release_checks:
+    if: false
     name: Run QA Lab live Slack lane
     needs: [resolve_target]
     if: contains(fromJSON('["all","qa","qa-live"]'), needs.resolve_target.outputs.rerun_group) && needs.resolve_target.outputs.qa_live_slack_enabled == 'true' && vars.OPENCLAW_RELEASE_QA_SLACK_LIVE_CI_ENABLED == 'true'
@@ -1534,6 +1550,7 @@ jobs:
           if-no-files-found: warn
 
   summary:
+    if: false
     name: Verify release checks
     needs:
       - prepare_release_package

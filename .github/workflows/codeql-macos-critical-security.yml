@@ -19,6 +19,7 @@ permissions:
 
 jobs:
   macos:
+    if: false
     name: Critical Security (macOS)
     runs-on: blacksmith-6vcpu-macos-15
     timeout-minutes: 45

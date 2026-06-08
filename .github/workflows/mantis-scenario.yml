@@ -39,6 +39,7 @@ concurrency:
 
 jobs:
   dispatch:
+    if: false
     name: Dispatch selected Mantis workflow
     runs-on: blacksmith-8vcpu-ubuntu-2404
     steps:
