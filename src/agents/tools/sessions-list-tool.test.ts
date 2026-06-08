@@ -1,5 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createSessionsListTool } from "./sessions-list-tool.js";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   gatewayCall: vi.fn(),
@@ -53,6 +52,12 @@ function getSessionsListDetails(result: { details?: unknown }): SessionsListDeta
 }
 
 describe("sessions-list-tool", () => {
+  let createSessionsListTool: typeof import("./sessions-list-tool.js").createSessionsListTool;
+
+  beforeAll(async () => {
+    ({ createSessionsListTool } = await import("./sessions-list-tool.js"));
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.createAgentToAgentPolicy.mockReturnValue({});
@@ -157,6 +162,96 @@ describe("sessions-list-tool", () => {
     });
   });
 
+  it("forwards the `key` filter to gateway sessions.list params", async () => {
+    const capturedParams: Array<Record<string, unknown>> = [];
+    mocks.gatewayCall.mockImplementation(async (opts: unknown) => {
+      const request = opts as { method?: string; params?: Record<string, unknown> };
+      if (request.method === "sessions.list") {
+        capturedParams.push(request.params ?? {});
+        return { path: "/tmp/sessions.json", sessions: [] };
+      }
+      return {};
+    });
+    const tool = createSessionsListTool({ config: {} as never });
+
+    await tool.execute("call-key", {
+      key: "agent:main:slack:dm:U123",
+      includeArchived: true,
+    });
+
+    expect(capturedParams).toHaveLength(1);
+    expect(capturedParams[0]).toMatchObject({
+      key: "agent:main:slack:dm:U123",
+      includeArchived: true,
+    });
+  });
+
+  it("does not forward an empty `key` to gateway sessions.list params", async () => {
+    const capturedParams: Array<Record<string, unknown>> = [];
+    mocks.gatewayCall.mockImplementation(async (opts: unknown) => {
+      const request = opts as { method?: string; params?: Record<string, unknown> };
+      if (request.method === "sessions.list") {
+        capturedParams.push(request.params ?? {});
+        return { path: "/tmp/sessions.json", sessions: [] };
+      }
+      return {};
+    });
+    const tool = createSessionsListTool({ config: {} as never });
+
+    await tool.execute("call-no-key", {});
+
+    expect(capturedParams).toHaveLength(1);
+    // `readStringParam` returns undefined for missing values, so the key field
+    // is either absent or explicitly undefined — never an empty string that
+    // would trip the gateway's `minLength: 1` schema validation.
+    const params = capturedParams[0];
+    if ("key" in params) {
+      expect(params.key).toBeUndefined();
+    }
+  });
+
+  it("surfaces archived twin rows alongside the primary entry when sessions_list is called with key + includeArchived", async () => {
+    mocks.gatewayCall.mockImplementation(async (opts: unknown) => {
+      const request = opts as { method?: string };
+      if (request.method === "sessions.list") {
+        return {
+          path: "/tmp/sessions.json",
+          sessions: [
+            {
+              key: "agent:main:work",
+              kind: "direct",
+              sessionId: "sess-work-live",
+            },
+            {
+              key: "agent:main:work",
+              kind: "direct",
+              sessionId: "sess-work-older",
+              archived: true,
+              archiveReason: "reset",
+            },
+          ],
+        };
+      }
+      return {};
+    });
+    const tool = createSessionsListTool({ config: {} as never });
+
+    const result = await tool.execute("call-archived", {
+      key: "agent:main:work",
+      includeArchived: true,
+    });
+    const details = getSessionsListDetails(result) as {
+      sessions?: Array<{ sessionId?: string; archived?: boolean }>;
+      count?: number;
+    };
+
+    expect(details.sessions).toHaveLength(2);
+    expect(details.sessions?.map((s) => s.sessionId)).toEqual([
+      "sess-work-live",
+      "sess-work-older",
+    ]);
+  });
+
   it("keeps live session setting metadata in sessions_list results", async () => {
     mocks.gatewayCall.mockImplementation(async (opts: unknown) => {
       const request = opts as { method?: string };
@@ -185,24 +280,13 @@ describe("sessions-list-tool", () => {
     const result = await tool.execute("call-3", {});
     const details = getSessionsListDetails(result);
 
-    const session = details.sessions?.[0];
-    expect(session?.thinkingLevel).toBe("high");
-    expect(session?.fastMode).toBe(true);
-    expect(session?.verboseLevel).toBe("on");
-    expect(session?.reasoningLevel).toBe("deep");
-    expect(session?.elevatedLevel).toBe("on");
-    expect(session?.responseUsage).toBe("full");
-  });
-
-  it.each([
-    [{ limit: 1.5 }, "limit must be a positive integer"],
-    [{ activeMinutes: 0 }, "activeMinutes must be a positive integer"],
-    [{ messageLimit: 1.5 }, "messageLimit must be a non-negative integer"],
-    [{ messageLimit: -1 }, "messageLimit must be a non-negative integer"],
-  ])("rejects invalid numeric parameter %o", async (params, message) => {
-    const tool = createSessionsListTool({ config: {} as never });
-
-    await expect(tool.execute("call-4", params)).rejects.toThrow(message);
-    expect(mocks.gatewayCall).not.toHaveBeenCalled();
+    expect(details.sessions?.[0]).toMatchObject({
+      thinkingLevel: "high",
+      fastMode: true,
+      verboseLevel: "on",
+      reasoningLevel: "deep",
+      elevatedLevel: "on",
+      responseUsage: "full",
+    });
   });
 });

@@ -1,4 +1,6 @@
+import fs from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import path from "node:path";
 import {
   normalizeLowercaseStringOrEmpty,
   normalizeOptionalString,
@@ -31,8 +33,10 @@ import {
 import { resolveTranscriptPathForComparison } from "./session-transcript-path.js";
 import {
   readRecentSessionMessagesWithStatsAsync,
+  readSessionMessages,
   readSessionMessagesAsync,
   resolveFreshestSessionEntryFromStoreKeys,
+  resolveArchivedTranscriptPaths,
   resolveGatewaySessionStoreTarget,
   resolveSessionTranscriptCandidates,
 } from "./session-utils.js";
@@ -126,16 +130,49 @@ export async function handleSessionHistoryHttpRequest(
   const target = resolveGatewaySessionStoreTarget({ cfg, key: sessionKey });
   const store = loadSessionStore(target.storePath);
   const entry = resolveFreshestSessionEntryFromStoreKeys(store, target.storeKeys);
+
+  // When the session entry is not in the store (deleted or passed as a bare session ID),
+  // fall back to searching the sessions directory for archived transcripts.
+  // SSE streaming is not supported for archived sessions — return JSON only.
   if (!entry?.sessionId) {
-    sendJson(res, 404, {
-      ok: false,
-      error: {
-        type: "not_found",
-        message: `Session not found: ${sessionKey}`,
-      },
+    const sessionsDir = path.dirname(target.storePath);
+    let archivedSessionId: string | undefined;
+    for (const key of target.storeKeys) {
+      const archivedPaths = resolveArchivedTranscriptPaths({ sessionId: key, sessionsDir });
+      if (archivedPaths.some((p) => fs.existsSync(p))) {
+        archivedSessionId = key;
+        break;
+      }
+    }
+    if (!archivedSessionId) {
+      sendJson(res, 404, {
+        ok: false,
+        error: {
+          type: "not_found",
+          message: `Session not found: ${sessionKey}`,
+        },
+      });
+      return true;
+    }
+    // Read the archived transcript (readSessionMessages already falls back to archive files).
+    const archivedMessages = readSessionMessages(archivedSessionId, target.storePath);
+    const effectiveMaxCharsArchived = DEFAULT_CHAT_HISTORY_TEXT_MAX_CHARS;
+    const limitArchived = resolveLimit(req);
+    const cursorArchived = normalizeOptionalString(getRequestUrl(req).searchParams.get("cursor"));
+    const archivedSnapshot = buildSessionHistorySnapshot({
+      rawMessages: archivedMessages,
+      maxChars: effectiveMaxCharsArchived,
+      limit: limitArchived,
+      cursor: cursorArchived,
+    });
+    sendJson(res, 200, {
+      sessionKey: target.canonicalKey,
+      archived: true,
+      ...archivedSnapshot.history,
     });
     return true;
   }
+
   const limit = resolveLimit(req);
   const cursor = normalizeOptionalString(getRequestUrl(req).searchParams.get("cursor"));
   const effectiveMaxChars = DEFAULT_CHAT_HISTORY_TEXT_MAX_CHARS;
