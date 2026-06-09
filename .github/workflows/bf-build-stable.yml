@@ -39,6 +39,11 @@ on:
 
 env:
   PATCHES_FILE: BRIGHTFIRE_PATCHES.md
+  # Disable pnpm's verifyDepsBeforeRun for the entire workflow. The version
+  # bump changes package.json after setup-node-env installs deps; without
+  # this, pnpm treats deps as stale and auto-installs with lifecycle scripts
+  # that spawn orphan processes, hanging the runner.
+  PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN: "false"
 
 permissions:
   contents: write
@@ -128,6 +133,13 @@ jobs:
           VERSION: ${{ steps.upstream-tag.outputs.version }}
         run: /tmp/bf-build-stable/merge-patches.sh
 
+      # Bump version BEFORE pnpm install so node_modules matches the final
+      # package.json state, eliminating unnecessary auto-installs.
+      - name: Update package.json version
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: /tmp/bf-build-stable/bump-package-version.sh
+
       # Reuse upstream's composite so pnpm install + store-cache run the same
       # way upstream CI does.
       - name: Setup Node environment
@@ -136,27 +148,6 @@ jobs:
           node-version: '22'
           install-bun: 'false'
           use-actions-cache: 'true'
-
-      - name: Debug node_modules (post-setup)
-        run: |
-          echo "=== Post setup-node-env ==="
-          echo "node_modules/.pnpm entries: $(ls node_modules/.pnpm 2>/dev/null | wc -l)"
-          echo "node_modules top-level: $(ls node_modules 2>/dev/null | wc -l)"
-          echo "pnpm store path: $(pnpm store path 2>/dev/null)"
-          echo "package.json version: $(node -p 'require("./package.json").version')"
-
-      - name: Update package.json version
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-        run: /tmp/bf-build-stable/bump-package-version.sh
-
-      - name: Debug node_modules (post-bump)
-        run: |
-          echo "=== Post version bump ==="
-          echo "node_modules/.pnpm entries: $(ls node_modules/.pnpm 2>/dev/null | wc -l)"
-          echo "node_modules top-level: $(ls node_modules 2>/dev/null | wc -l)"
-          echo "package.json version: $(node -p 'require("./package.json").version')"
-          echo "pnpm deps status: $(pnpm install --dry-run 2>&1 | head -20)"
 
       - name: Regenerate build artifacts
         run: /tmp/bf-build-stable/regenerate-artifacts.sh
