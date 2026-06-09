@@ -8,6 +8,10 @@
 
 set -euo pipefail
 
+# Disable verifyDepsBeforeRun to prevent pnpm from auto-installing (and
+# hanging) on every pnpm run command. We do an explicit install below instead.
+export npm_config_verify_deps_before_run=false
+
 # Debug: capture node_modules state for diagnosing CI hangs
 echo "=== Debug: node_modules state ==="
 echo "node_modules packages: $(ls node_modules/.pnpm 2>/dev/null | wc -l)"
@@ -15,9 +19,10 @@ echo "pnpm version: $(pnpm -v)"
 echo "tsx available: $(node -e 'try{require.resolve("tsx");console.log("yes")}catch{console.log("no")}')"
 echo "verifyDepsBeforeRun: $(pnpm config get verify-deps-before-run 2>/dev/null || echo 'unknown')"
 
-# Shrinkwrap first — the first pnpm command triggers verifyDepsBeforeRun
-# auto-install, which may add/remove packages. Generate the shrinkwrap
-# against the settled node_modules before running code generators.
+# Explicit install to sync node_modules after version bump.
+echo "=== Running pnpm install ==="
+pnpm install
+
 echo "=== Running deps:shrinkwrap:generate ==="
 pnpm deps:shrinkwrap:generate
 
@@ -36,8 +41,8 @@ echo "=== Running plugin-sdk:api:gen ==="
 pnpm plugin-sdk:api:gen
 echo "=== All generators complete ==="
 
-if ! git diff --quiet; then
-  git add -A
+git add -A
+if ! git diff --cached --quiet; then
   git commit --no-verify -m "ci: regenerate build artifacts on stable"
   echo "Regenerated build artifacts committed."
 else
