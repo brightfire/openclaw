@@ -38,9 +38,9 @@ for PATCH in "${PATCH_LIST[@]}"; do
     # files are regenerated from scratch in the next workflow step, so textual
     # conflicts in them are harmless. Real source conflicts must still fail.
     CONFLICTED=$(git diff --name-only --diff-filter=U 2>/dev/null)
-    NON_GENERATED=$(echo "$CONFLICTED" | grep -v '^docs/\.generated/' || true)
+    NON_GENERATED=$(echo "$CONFLICTED" | grep -v '^docs/\.generated/.*\.sha256$' || true)
     if [ -n "$CONFLICTED" ] && [ -z "$NON_GENERATED" ]; then
-      echo "Auto-resolving generated-file conflicts in docs/.generated/ (will be regenerated)"
+      echo "Auto-resolving generated baseline hashes in docs/.generated/ (will be regenerated)"
       while IFS= read -r file; do
         # If "theirs" is a deletion there is no blob to check out; remove the file instead.
         if ! git checkout --theirs -- "$file" 2>/dev/null; then

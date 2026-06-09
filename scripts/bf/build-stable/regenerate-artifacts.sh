@@ -8,13 +8,14 @@
 
 set -euo pipefail
 
-# Invoke generators directly via node instead of `pnpm run` to avoid corepack
-# version-shim overhead: when packageManager in package.json differs from the
-# corepack-activated version, corepack re-downloads the declared version on
-# every invocation, which can stall in CI network environments.
-node --import tsx scripts/generate-base-config-schema.ts --write
-node --import tsx scripts/protocol-gen.ts
-node --import tsx scripts/protocol-gen-swift.ts
+# Use documented pnpm commands (not raw node calls) so the script stays
+# correct even if upstream refactors the underlying generator scripts.
+# See docs/.generated/README.md and docs/gateway/protocol.md.
+pnpm config:schema:gen
+pnpm protocol:gen
+pnpm protocol:gen:swift
+pnpm config:docs:gen
+pnpm plugin-sdk:api:gen
 
 if ! git diff --quiet; then
   git add -A
