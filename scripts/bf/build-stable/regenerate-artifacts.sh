@@ -8,10 +8,6 @@
 
 set -euo pipefail
 
-# Disable verifyDepsBeforeRun to prevent pnpm from auto-installing (and
-# hanging) on every pnpm run command. We do an explicit install below instead.
-export npm_config_verify_deps_before_run=false
-
 # Debug: capture node_modules state for diagnosing CI hangs
 echo "=== Debug: node_modules state ==="
 echo "node_modules packages: $(ls node_modules/.pnpm 2>/dev/null | wc -l)"
@@ -19,26 +15,22 @@ echo "pnpm version: $(pnpm -v)"
 echo "tsx available: $(node -e 'try{require.resolve("tsx");console.log("yes")}catch{console.log("no")}')"
 echo "verifyDepsBeforeRun: $(pnpm config get verify-deps-before-run 2>/dev/null || echo 'unknown')"
 
-# Explicit install to sync node_modules after version bump.
-echo "=== Running pnpm install ==="
-pnpm install
-
 echo "=== Running deps:shrinkwrap:generate ==="
-pnpm deps:shrinkwrap:generate
+pnpm --verbose deps:shrinkwrap:generate
 
 # Use documented pnpm commands (not raw node calls) so the script stays
 # correct even if upstream refactors the underlying generator scripts.
 # See docs/.generated/README.md and docs/gateway/protocol.md.
 echo "=== Running config:schema:gen ==="
-pnpm config:schema:gen
+pnpm --verbose config:schema:gen
 echo "=== Running protocol:gen ==="
-pnpm protocol:gen
+pnpm --verbose protocol:gen
 echo "=== Running protocol:gen:swift ==="
-pnpm protocol:gen:swift
+pnpm --verbose protocol:gen:swift
 echo "=== Running config:docs:gen ==="
-pnpm config:docs:gen
+pnpm --verbose config:docs:gen
 echo "=== Running plugin-sdk:api:gen ==="
-pnpm plugin-sdk:api:gen
+pnpm --verbose plugin-sdk:api:gen
 echo "=== All generators complete ==="
 
 git add -A

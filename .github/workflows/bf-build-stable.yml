@@ -137,10 +137,26 @@ jobs:
           install-bun: 'false'
           use-actions-cache: 'true'
 
+      - name: Debug node_modules (post-setup)
+        run: |
+          echo "=== Post setup-node-env ==="
+          echo "node_modules/.pnpm entries: $(ls node_modules/.pnpm 2>/dev/null | wc -l)"
+          echo "node_modules top-level: $(ls node_modules 2>/dev/null | wc -l)"
+          echo "pnpm store path: $(pnpm store path 2>/dev/null)"
+          echo "package.json version: $(node -p 'require("./package.json").version')"
+
       - name: Update package.json version
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: /tmp/bf-build-stable/bump-package-version.sh
+
+      - name: Debug node_modules (post-bump)
+        run: |
+          echo "=== Post version bump ==="
+          echo "node_modules/.pnpm entries: $(ls node_modules/.pnpm 2>/dev/null | wc -l)"
+          echo "node_modules top-level: $(ls node_modules 2>/dev/null | wc -l)"
+          echo "package.json version: $(node -p 'require("./package.json").version')"
+          echo "pnpm deps status: $(pnpm install --dry-run 2>&1 | head -20)"
 
       - name: Regenerate build artifacts
         run: /tmp/bf-build-stable/regenerate-artifacts.sh
