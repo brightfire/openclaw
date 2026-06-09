@@ -137,7 +137,7 @@ def parse_upstream_version(patches_file: str) -> str | None:
     in_meta = False
     for line in content.split("\n"):
         # Enter the _meta section on its heading; leave on any subsequent ##.
-        if re.match(r"^\s*##\s+_meta\s*$", line):
+        if re.match(r"^\s*##\s+\\?_meta\s*$", line):
             in_meta = True
             continue
         if in_meta and re.match(r"^\s*##\s+", line):
