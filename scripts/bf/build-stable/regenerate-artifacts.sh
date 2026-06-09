@@ -8,11 +8,18 @@
 
 set -euo pipefail
 
+# Debug: capture node_modules state for diagnosing CI hangs
 echo "=== Debug: node_modules state ==="
 echo "node_modules packages: $(ls node_modules/.pnpm 2>/dev/null | wc -l)"
 echo "pnpm version: $(pnpm -v)"
 echo "tsx available: $(node -e 'try{require.resolve("tsx");console.log("yes")}catch{console.log("no")}')"
 echo "verifyDepsBeforeRun: $(pnpm config get verify-deps-before-run 2>/dev/null || echo 'unknown')"
+
+# Shrinkwrap first — the first pnpm command triggers verifyDepsBeforeRun
+# auto-install, which may add/remove packages. Generate the shrinkwrap
+# against the settled node_modules before running code generators.
+echo "=== Running deps:shrinkwrap:generate ==="
+pnpm deps:shrinkwrap:generate
 
 # Use documented pnpm commands (not raw node calls) so the script stays
 # correct even if upstream refactors the underlying generator scripts.
