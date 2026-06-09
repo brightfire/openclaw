@@ -21,7 +21,7 @@ echo "verifyDepsBeforeRun: $(pnpm config get verify-deps-before-run 2>/dev/null 
 
 # Explicit install to sync node_modules after version bump.
 echo "=== Running pnpm install ==="
-pnpm install
+pnpm install --ignore-scripts
 
 echo "=== Running deps:shrinkwrap:generate ==="
 pnpm deps:shrinkwrap:generate
