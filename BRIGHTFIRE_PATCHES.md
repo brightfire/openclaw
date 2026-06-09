@@ -20,7 +20,6 @@ is maintained, the merge-not-rebase philosophy, and the new-entry template.
 | Control UI Title              | `brightfire/control-ui-title`          | `85a2c07c36` | <https://github.com/openclaw/openclaw/pull/51067> | 2026-06-01   |
 | Store-Based Session Archiving | `brightfire/sessions-history-archived` | `2c3872a8da` | https://github.com/brightfire/openclaw/pull/97 | 2026-06-09 |
 | CLI HTTP Health Fallback      | `brightfire/cli-http-fallback`         | `3340721625` | —                                                 | 2026-06-01   |
-| Changelog BF Version          | `brightfire/changelog-bf-version`      | `b8283ae527` | —                                                 | 2026-06-09   |
 
 ## Slack Markdown
 
@@ -284,32 +283,3 @@ are expected to be trivial since all changes are test-file-only and small.
 If upstream renames or restructures one of these files, the merge will
 surface it and the corresponding fix should be re-applied (or dropped if
 upstream fixed the underlying issue).
-
-## Changelog BF Version
-
-(canonical: `brightfire/changelog-bf-version`)
-
-### Rationale
-
-`scripts/package-changelog.mjs` trims CHANGELOG.md to just the current
-version's section before packaging. Its `RELEASE_VERSION_PATTERN` regex
-doesn't support `-bf<N>` suffixes, so `pnpm pack` fails with:
-`Unsupported OpenClaw package version for changelog packaging: <version>`.
-
-Fix: add an early return in `preparePackageChangelog` that skips trimming
-when the version contains a `-bf` suffix. This ships the full CHANGELOG.md
-in the tarball, which is what we want — users upgrading across upstream
-versions need the complete history.
-
-### Files touched
-
-- `scripts/package-changelog.mjs` (early return for `-bf` suffix in `preparePackageChangelog`)
-
-### Upgrade guidance
-
-**Conflicts:** Unlikely. The early return is a 4-line addition near the top of
-`preparePackageChangelog`. If upstream restructures this function, re-apply the
-early return after `readPackageVersion()`.
-
-**Drop when:** upstream adds native support for custom version suffixes in the
-changelog packaging regex, or we stop using `-bf<N>` versioning.
