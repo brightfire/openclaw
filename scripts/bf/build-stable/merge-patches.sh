@@ -34,8 +34,27 @@ for PATCH in "${PATCH_LIST[@]}"; do
     git commit --no-verify -m "ci: apply $PATCH_BRANCH" 2>&1
     echo "SUCCESS: $PATCH_BRANCH"
   else
-    git reset --hard HEAD
-    echo "::error::Merge conflict applying $PATCH_BRANCH"
-    exit 1
+    # Check whether every conflicted file is under docs/.generated/ — those
+    # files are regenerated from scratch in the next workflow step, so textual
+    # conflicts in them are harmless. Real source conflicts must still fail.
+    CONFLICTED=$(git diff --name-only --diff-filter=U 2>/dev/null)
+    NON_GENERATED=$(echo "$CONFLICTED" | grep -v '^docs/\.generated/.*\.sha256$' || true)
+    if [ -n "$CONFLICTED" ] && [ -z "$NON_GENERATED" ]; then
+      echo "Auto-resolving generated baseline hashes in docs/.generated/ (will be regenerated)"
+      while IFS= read -r file; do
+        # If "theirs" is a deletion there is no blob to check out; remove the file instead.
+        if ! git checkout --theirs -- "$file" 2>/dev/null; then
+          git rm -f "$file"
+        else
+          git add -- "$file"
+        fi
+      done <<< "$CONFLICTED"
+      git commit --no-verify -m "ci: apply $PATCH_BRANCH" 2>&1
+      echo "SUCCESS: $PATCH_BRANCH (generated conflicts auto-resolved)"
+    else
+      git reset --hard HEAD
+      echo "::error::Merge conflict applying $PATCH_BRANCH"
+      exit 1
+    fi
   fi
 done
