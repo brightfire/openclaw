@@ -130,7 +130,7 @@ export function createSessionsListTool(opts?: {
       const label = readStringParam(params, "label");
       const agentId = readStringParam(params, "agentId");
       const search = readStringParam(params, "search");
-      const key = readStringParam(params, "key");
+      const filterKey = readStringParam(params, "key");
       const includeDerivedTitles = params.includeDerivedTitles === true;
       const includeLastMessage = params.includeLastMessage === true;
       const includeArchived = params.includeArchived === true;
@@ -154,7 +154,7 @@ export function createSessionsListTool(opts?: {
           label,
           agentId,
           search,
-          key,
+          key: filterKey,
           includeDerivedTitles: false,
           includeLastMessage: false,
           includeGlobal: !restrictToSpawned,

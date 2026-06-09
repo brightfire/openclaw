@@ -211,8 +211,6 @@ export function createSessionsHistoryTool(opts?: {
         restrictToSpawned,
       });
 
-      let resolvedKey: string;
-      let displayKey: string;
       if (!resolvedSession.ok) {
         return jsonResult({ status: resolvedSession.status, error: resolvedSession.error });
       }
@@ -229,8 +227,8 @@ export function createSessionsHistoryTool(opts?: {
         });
       }
       // From here on, use the canonical key (sessionId inputs already resolved).
-      resolvedKey = visibleSession.key;
-      displayKey = visibleSession.displayKey;
+      const resolvedKey = visibleSession.key;
+      const displayKey = visibleSession.displayKey;
 
       const a2aPolicy = createAgentToAgentPolicy(cfg);
       const visibility = resolveEffectiveSessionToolsVisibility({
