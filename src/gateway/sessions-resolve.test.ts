@@ -6,6 +6,7 @@ const hoisted = vi.hoisted(() => ({
   loadSessionStoreMock: vi.fn(),
   updateSessionStoreMock: vi.fn(),
   listSessionsFromStoreMock: vi.fn(),
+  filterAndSortSessionEntriesMock: vi.fn(),
   migrateAndPruneGatewaySessionStoreKeyMock: vi.fn(),
   resolveGatewaySessionStoreTargetMock: vi.fn(),
   loadCombinedSessionStoreForGatewayMock: vi.fn(),
@@ -36,6 +37,7 @@ vi.mock("./session-utils.js", async () => {
   const actual = await vi.importActual<typeof import("./session-utils.js")>("./session-utils.js");
   return {
     ...actual,
+    filterAndSortSessionEntries: hoisted.filterAndSortSessionEntriesMock,
     listSessionsFromStore: hoisted.listSessionsFromStoreMock,
     migrateAndPruneGatewaySessionStoreKey: hoisted.migrateAndPruneGatewaySessionStoreKeyMock,
     resolveGatewaySessionStoreTarget: hoisted.resolveGatewaySessionStoreTargetMock,
@@ -54,10 +56,17 @@ describe("resolveSessionKeyFromResolveParams", () => {
     hoisted.loadSessionStoreMock.mockReset();
     hoisted.updateSessionStoreMock.mockReset();
     hoisted.listSessionsFromStoreMock.mockReset();
+    hoisted.filterAndSortSessionEntriesMock.mockReset();
     hoisted.migrateAndPruneGatewaySessionStoreKeyMock.mockReset();
     hoisted.resolveGatewaySessionStoreTargetMock.mockReset();
     hoisted.loadCombinedSessionStoreForGatewayMock.mockReset();
     hoisted.listAgentIdsMock.mockReset();
+    // Default: filterAndSortSessionEntries returns non-archived store entries
+    // (mirrors production filtering where archived === true entries are excluded).
+    hoisted.filterAndSortSessionEntriesMock.mockImplementation(
+      (params: { store: Record<string, SessionEntry> }) =>
+        Object.entries(params.store).filter(([, entry]) => !entry.archived),
+    );
     // Default: all agents are known (main is always present).
     hoisted.listAgentIdsMock.mockReturnValue(["main"]);
     hoisted.resolveGatewaySessionStoreTargetMock.mockReturnValue({
@@ -82,7 +91,8 @@ describe("resolveSessionKeyFromResolveParams", () => {
     hoisted.loadSessionStoreMock.mockReturnValue({
       [canonicalKey]: { sessionId: "sess-1", updatedAt: 1 },
     });
-    hoisted.listSessionsFromStoreMock.mockReturnValue({ sessions: [] });
+    // filterAndSortSessionEntries returns no entries for this spawnedBy filter.
+    hoisted.filterAndSortSessionEntriesMock.mockReturnValue([]);
 
     await expect(
       resolveSessionKeyFromResolveParams({
@@ -103,9 +113,8 @@ describe("resolveSessionKeyFromResolveParams", () => {
       [legacyKey]: { sessionId: "sess-legacy", updatedAt: 1 },
     } satisfies Record<string, SessionEntry>;
     hoisted.loadSessionStoreMock.mockImplementation(() => store);
-    hoisted.listSessionsFromStoreMock.mockReturnValue({
-      sessions: [{ key: canonicalKey }],
-    });
+    // filterAndSortSessionEntries returns the canonical key as visible after migration.
+    hoisted.filterAndSortSessionEntriesMock.mockReturnValue([[canonicalKey, store[legacyKey]]]);
 
     await expect(
       resolveSessionKeyFromResolveParams({
@@ -118,17 +127,18 @@ describe("resolveSessionKeyFromResolveParams", () => {
     });
 
     expect(hoisted.updateSessionStoreMock).toHaveBeenCalledWith(storePath, expect.any(Function));
-    expect(hoisted.listSessionsFromStoreMock).toHaveBeenCalledWith({
-      cfg: {},
-      storePath,
-      store,
-      opts: {
-        includeGlobal: false,
-        includeUnknown: false,
-        spawnedBy: "controller-1",
-        agentId: undefined,
-      },
-    });
+    expect(hoisted.filterAndSortSessionEntriesMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cfg: {},
+        store,
+        opts: {
+          includeGlobal: false,
+          includeUnknown: false,
+          spawnedBy: "controller-1",
+          agentId: undefined,
+        },
+      }),
+    );
   });
 
   it("rejects sessions belonging to a deleted agent (key-based lookup)", async () => {
