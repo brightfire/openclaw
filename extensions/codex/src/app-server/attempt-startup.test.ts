@@ -147,7 +147,7 @@ describe("startCodexAttemptThread", () => {
     expect(harness.process.stdin.destroyed).toBe(true);
   });
 
-  it.skip("clears the shared app-server when startup abandons an in-flight thread request", async () => {
+  it("clears the shared app-server when startup abandons an in-flight thread request", async () => {
     const { harness, run } = startThreadWithHarness(200);
     const runError = run.then(
       () => undefined,
