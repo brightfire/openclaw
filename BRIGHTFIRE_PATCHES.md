@@ -11,15 +11,15 @@ is maintained, the merge-not-rebase philosophy, and the new-entry template.
 
 | Name                          | Canonical branch                       | Branch HEAD  | Source PR                                         | Last updated |
 | ----------------------------- | -------------------------------------- | ------------ | ------------------------------------------------- | ------------ |
-| Upstream Test Fixes | `brightfire/upstream-test-fixes` | `3bc08e8de3` | https://github.com/brightfire/openclaw/pull/98 | 2026-06-09 |
-| Slack Markdown                | `brightfire/slack-mrkdwn`              | `3b009de181` | —                                                 | 2026-06-01   |
-| XGW Cross-Gateway             | `brightfire/xgw`                       | `c8c6d9c11a` | https://github.com/brightfire/openclaw/pull/87    | 2026-06-04   |
-| Cache Write TTL Cost          | `brightfire/cache-write-ttl-cost`      | `fe383828b4` | <https://github.com/brightfire/openclaw/pull/24>  | 2026-06-01   |
-| Context Window Min Cap        | `brightfire/context-window-min-cap`    | `42995a61af` | <https://github.com/brightfire/openclaw/pull/31>  | 2026-06-01   |
-| Session Reset Prompt          | `brightfire/session-reset-prompt`      | `88830f1cfd` | https://github.com/brightfire/openclaw/pull/67    | 2026-06-02   |
-| Control UI Title              | `brightfire/control-ui-title`          | `85a2c07c36` | <https://github.com/openclaw/openclaw/pull/51067> | 2026-06-01   |
+| Upstream Test Fixes | `brightfire/upstream-test-fixes` | `a19aa995e4` | https://github.com/brightfire/openclaw/pull/98 | 2026-06-10 |
+| Slack Markdown | `brightfire/slack-mrkdwn` | `da078f8620` | — | 2026-06-10 |
+| XGW Cross-Gateway | `brightfire/xgw` | `c888115336` | https://github.com/brightfire/openclaw/pull/87 | 2026-06-10 |
+| Cache Write TTL Cost | `brightfire/cache-write-ttl-cost` | `aa551852a6` | <https://github.com/brightfire/openclaw/pull/24> | 2026-06-10 |
+| Context Window Min Cap | `brightfire/context-window-min-cap` | `97c13620e3` | <https://github.com/brightfire/openclaw/pull/31> | 2026-06-10 |
+| Session Reset Prompt | `brightfire/session-reset-prompt` | `67f6b43e96` | https://github.com/brightfire/openclaw/pull/67 | 2026-06-10 |
+| Control UI Title | `brightfire/control-ui-title` | `fb0856ec40` | <https://github.com/openclaw/openclaw/pull/51067> | 2026-06-10 |
 | Store-Based Session Archiving | `brightfire/sessions-history-archived` | `2c3872a8da` | https://github.com/brightfire/openclaw/pull/97 | 2026-06-09 |
-| CLI HTTP Health Fallback      | `brightfire/cli-http-fallback`         | `3340721625` | —                                                 | 2026-06-01   |
+| CLI HTTP Health Fallback | `brightfire/cli-http-fallback` | `9ac5b93658` | — | 2026-06-10 |
 
 ## Slack Markdown
 
