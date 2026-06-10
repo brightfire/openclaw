@@ -20,6 +20,7 @@ is maintained, the merge-not-rebase philosophy, and the new-entry template.
 | Control UI Title | `brightfire/control-ui-title` | `fb0856ec40` | <https://github.com/openclaw/openclaw/pull/51067> | 2026-06-10 |
 | Store-Based Session Archiving | `brightfire/sessions-history-archived` | `2c3872a8da` | https://github.com/brightfire/openclaw/pull/97 | 2026-06-09 |
 | CLI HTTP Health Fallback | `brightfire/cli-http-fallback` | `9ac5b93658` | — | 2026-06-10 |
+| skip changelog trimming for Brightfire -bf versions | `brightfire/changelog-bf-version` | `a01ea55990` | — | 2026-06-09 |
 
 ## Slack Markdown
 
@@ -283,3 +284,22 @@ are expected to be trivial since all changes are test-file-only and small.
 If upstream renames or restructures one of these files, the merge will
 surface it and the corresponding fix should be re-applied (or dropped if
 upstream fixed the underlying issue).
+
+## skip changelog trimming for Brightfire -bf versions
+
+(canonical: `brightfire/changelog-bf-version`)
+
+### Rationale
+
+_Add description of what this patch does and why._
+
+### Files touched
+
+TBD — update after first stable merge
+
+### Upgrade guidance
+
+_Describe upstream changes that have historically conflicted and how they
+were resolved. Patches are absorbed by `bf-build-stable` via squash-merge of
+the canonical branch — do **not** prescribe `git cherry-pick` here. Describe
+what tends to conflict and how to resolve it._
