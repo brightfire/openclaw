@@ -80,6 +80,7 @@ function estimateSessionRunCostUsd(params: {
   usage?: NormalizedUsage;
   providerUsed?: string;
   modelUsed?: string;
+  cacheRetention?: "short" | "long" | "none";
 }): number | undefined {
   if (!hasNonzeroUsage(params.usage)) {
     return undefined;
@@ -89,7 +90,13 @@ function estimateSessionRunCostUsd(params: {
     model: params.modelUsed,
     config: params.cfg,
   });
-  return resolveNonNegativeNumber(estimateUsageCost({ usage: params.usage, cost }));
+  return resolveNonNegativeNumber(
+    estimateUsageCost({
+      usage: params.usage,
+      cost,
+      cacheRetention: params.cacheRetention,
+    }),
+  );
 }
 
 export async function persistSessionUsageUpdate(params: {
@@ -108,6 +115,7 @@ export async function persistSessionUsageUpdate(params: {
   providerUsed?: string;
   contextTokensUsed?: number;
   promptTokens?: number;
+  cacheRetention?: "short" | "long" | "none";
   usageIsContextSnapshot?: boolean;
   isHeartbeat?: boolean;
   systemPromptReport?: SessionSystemPromptReport;
@@ -182,6 +190,7 @@ export async function persistSessionUsageUpdate(params: {
                 usage: params.usage,
                 providerUsed: params.providerUsed ?? entry.modelProvider,
                 modelUsed: params.modelUsed ?? entry.model,
+                cacheRetention: params.cacheRetention,
               });
           const patch: Partial<SessionEntry> = {
             modelProvider: preserveSessionModelState

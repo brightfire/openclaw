@@ -969,6 +969,7 @@ async function finalizeCronRun(params: {
           model: modelUsed,
           config: prepared.cfgWithAgentDefaults,
         }),
+        cacheRetention: finalRunResult.meta?.agentMeta?.cacheRetention,
       }),
     );
     prepared.cronSession.sessionEntry.inputTokens = input;
