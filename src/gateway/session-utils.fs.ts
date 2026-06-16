@@ -1,6 +1,7 @@
 // Filesystem session history readers.
 // Parses transcript JSONL files for messages, previews, counts, and usage metadata.
 import fs from "node:fs";
+import path from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import {
   resolveIntegerOption,
@@ -17,6 +18,7 @@ import { stripInlineDirectiveTagsForDisplay } from "../utils/directive-tags.js";
 import { extractToolCallNames, hasToolCall } from "../utils/transcript-tools.js";
 import { stripEnvelope } from "./chat-sanitize.js";
 import {
+  resolveArchivedTranscriptPaths,
   resolveSessionTranscriptCandidates,
   resolveSessionTranscriptResetArchiveCandidatesAsync,
 } from "./session-transcript-files.fs.js";
@@ -156,7 +158,18 @@ export function readSessionMessages(
   storePath: string | undefined,
   sessionFile?: string,
 ): unknown[] {
-  const filePath = findExistingTranscriptPath(sessionId, storePath, sessionFile);
+  const candidates = resolveSessionTranscriptCandidates(sessionId, storePath, sessionFile);
+
+  let filePath = candidates.find((p) => fs.existsSync(p));
+  if (!filePath) {
+    // Fall back to archived transcripts (`.reset.*` / `.deleted.*`) when the
+    // active file is missing. This sync path keeps its own fallback so
+    // `chat.history`/context-report reads of archived sessions still resolve;
+    // the async history path owns the header-verified cross-root variant.
+    const sessionsDir = storePath ? path.dirname(storePath) : undefined;
+    const archivedPaths = resolveArchivedTranscriptPaths({ sessionId, sessionsDir });
+    filePath = archivedPaths.find((p) => fs.existsSync(p));
+  }
   if (!filePath) {
     return [];
   }
@@ -893,6 +906,7 @@ export {
   archiveFileOnDisk,
   archiveSessionTranscripts,
   cleanupArchivedSessionTranscripts,
+  resolveArchivedTranscriptPaths,
   resolveSessionTranscriptCandidates,
   resolveSessionTranscriptResetArchiveCandidatesAsync,
 } from "./session-transcript-files.fs.js";

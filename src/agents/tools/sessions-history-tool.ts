@@ -215,6 +215,7 @@ export function createSessionsHistoryTool(opts?: {
         requesterInternalKey: effectiveRequesterKey,
         restrictToSpawned,
       });
+
       if (!resolvedSession.ok) {
         return jsonResult({ status: resolvedSession.status, error: resolvedSession.error });
       }
@@ -255,11 +256,12 @@ export function createSessionsHistoryTool(opts?: {
 
       const limit = readPositiveIntegerParam(params, "limit");
       const includeTools = Boolean(params.includeTools);
-      const result = await gatewayCall<{ messages: Array<unknown> }>({
+      const result = await gatewayCall<{ messages: Array<unknown>; archived?: boolean }>({
         method: "chat.history",
         params: { sessionKey: resolvedKey, limit },
       });
       const rawMessages = Array.isArray(result?.messages) ? result.messages : [];
+      const isArchived = result?.archived === true;
       const selectedMessages = includeTools ? rawMessages : stripToolMessages(rawMessages);
       const sanitizedMessages = selectedMessages.map((message) => sanitizeHistoryMessage(message));
       const contentTruncated = sanitizedMessages.some((entry) => entry.truncated);
@@ -282,6 +284,7 @@ export function createSessionsHistoryTool(opts?: {
         contentTruncated,
         contentRedacted,
         bytes: hardened.bytes,
+        ...(isArchived ? { archived: true } : {}),
       });
     },
   };

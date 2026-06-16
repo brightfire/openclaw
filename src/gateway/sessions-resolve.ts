@@ -153,6 +153,16 @@ export async function resolveSessionKeyFromResolveParams(params: {
       }
       return { ok: true, key: target.canonicalKey };
     }
+    // Check for archived entries matching this key — return the most recent.
+    const archivedMatches = Object.entries(store)
+      .filter(
+        ([k, entry]) =>
+          k.startsWith(`${target.canonicalKey}:archived:`) && entry?.archived === true,
+      )
+      .toSorted((a, b) => (b[1].archivedAt ?? 0) - (a[1].archivedAt ?? 0));
+    if (archivedMatches.length > 0) {
+      return { ok: true, key: archivedMatches[0][0] };
+    }
     const legacyKey = target.storeKeys.find((candidate) => store[candidate]);
     if (!legacyKey) {
       return noSessionFoundResult(key);
@@ -192,6 +202,15 @@ export async function resolveSessionKeyFromResolveParams(params: {
     // matches and ambiguity rules stay shared with other session-id callers.
     const { store } = loadCombinedSessionStoreForGateway(cfg, { agentId: p.agentId });
     const matches = findVisibleSessionIdMatches({ cfg, store, p, sessionId });
+    // Also check archived entries by sessionId — return the most recent.
+    if (matches.length === 0) {
+      const archivedById = Object.entries(store)
+        .filter(([, entry]) => entry?.archived === true && entry.sessionId === sessionId)
+        .toSorted((a, b) => (b[1].archivedAt ?? 0) - (a[1].archivedAt ?? 0));
+      if (archivedById.length > 0) {
+        return { ok: true, key: archivedById[0][0] };
+      }
+    }
     const selection = resolveSessionIdMatchSelection(matches, sessionId);
     if (selection.kind === "none") {
       return {
