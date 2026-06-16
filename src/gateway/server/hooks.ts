@@ -133,7 +133,7 @@ export function createGatewayHooksRequestHandler(params: {
       createdAtMs: nowMs,
       updatedAtMs: nowMs,
       schedule: { kind: "at", at: resolveTimestampMsToIsoString(nowMs) },
-      sessionTarget: value.sessionTarget === "persistent" ? "persistent" : "isolated",
+      sessionTarget: value.sessionTarget ?? "isolated",
       wakeMode: value.wakeMode,
       payload: {
         kind: "agentTurn",

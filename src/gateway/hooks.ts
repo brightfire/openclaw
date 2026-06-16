@@ -460,6 +460,9 @@ export function normalizeAgentPayload(payload: Record<string, unknown>):
     typeof timeoutRaw === "number" && Number.isFinite(timeoutRaw) && timeoutRaw > 0
       ? Math.floor(timeoutRaw)
       : undefined;
+  const sessionTargetRaw = payload.sessionTarget;
+  const sessionTarget =
+    sessionTargetRaw === "persistent" ? ("persistent" as const) : undefined;
   return {
     ok: true,
     value: {
@@ -469,6 +472,7 @@ export function normalizeAgentPayload(payload: Record<string, unknown>):
       idempotencyKey,
       wakeMode,
       sessionKey,
+      sessionTarget,
       deliver,
       channel,
       to,
