@@ -1,3 +1,4 @@
+// Gateway status probe helper used by `gateway status` service diagnostics.
 import type { OpenClawConfig } from "../../config/types.js";
 import type { GatewayProbeResult } from "../../gateway/probe.js";
 import { formatErrorMessage } from "../../infra/errors.js";
@@ -95,6 +96,7 @@ function readRuntimeVersionFromStatusPayload(payload: unknown): string | null {
     : null;
 }
 
+/** Probe Gateway connectivity or read-capability status with optional RPC verification. */
 export async function probeGatewayStatus(opts: {
   url: string;
   token?: string;
@@ -105,6 +107,7 @@ export async function probeGatewayStatus(opts: {
   preauthHandshakeTimeoutMs?: number;
   json?: boolean;
   requireRpc?: boolean;
+  allowRpcConfigCredentials?: boolean;
   configPath?: string;
 }) {
   const kind = (opts.requireRpc ? "read" : "connect") satisfies GatewayStatusProbeKind;
@@ -132,13 +135,19 @@ export async function probeGatewayStatus(opts: {
           includeDetails: false,
         };
         if (opts.requireRpc) {
+          const allowRpcConfigCredentials = opts.allowRpcConfigCredentials !== false;
+          if (!allowRpcConfigCredentials && !opts.token && !opts.password) {
+            throw new Error(
+              "gateway status RPC skipped because configured gateway credentials are disabled for this status request",
+            );
+          }
           const { callGateway } = await import("../../gateway/call.js");
           const statusPayload = await callGateway({
             url: opts.url,
             token: opts.token,
             password: opts.password,
             tlsFingerprint: opts.tlsFingerprint,
-            ...(opts.config ? { config: opts.config } : {}),
+            ...(allowRpcConfigCredentials && opts.config ? { config: opts.config } : {}),
             method: "status",
             timeoutMs: opts.timeoutMs,
             ...(opts.configPath ? { configPath: opts.configPath } : {}),
