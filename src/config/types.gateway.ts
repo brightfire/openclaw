@@ -1,5 +1,7 @@
+// Defines gateway runtime and networking configuration types.
 import type { SecretInput } from "./types.secrets.js";
 
+/** Gateway bind-address policy for local server startup. */
 export type GatewayBindMode = "auto" | "lan" | "loopback" | "custom" | "tailnet";
 
 export type GatewayTlsConfig = {
@@ -16,11 +18,13 @@ export type GatewayTlsConfig = {
 };
 
 export type WideAreaDiscoveryConfig = {
+  /** Enable DNS-SD style wide-area discovery. */
   enabled?: boolean;
   /** Optional unicast DNS-SD domain (e.g. "openclaw.internal"). */
   domain?: string;
 };
 
+/** mDNS/Bonjour metadata exposure level for local gateway discovery. */
 export type MdnsDiscoveryMode = "off" | "minimal" | "full";
 
 export type MdnsDiscoveryConfig = {
@@ -34,7 +38,9 @@ export type MdnsDiscoveryConfig = {
 };
 
 export type DiscoveryConfig = {
+  /** Wide-area DNS-SD discovery settings. */
   wideArea?: WideAreaDiscoveryConfig;
+  /** Local mDNS/Bonjour discovery settings. */
   mdns?: MdnsDiscoveryConfig;
 };
 
@@ -149,6 +155,7 @@ export type GatewayControlUiConfig = {
   title?: string;
 };
 
+/** Gateway authentication strategy for WebSocket and HTTP clients. */
 export type GatewayAuthMode = "none" | "token" | "password" | "trusted-proxy";
 
 /**
@@ -211,6 +218,7 @@ export type GatewayAuthRateLimitConfig = {
   exemptLoopback?: boolean;
 };
 
+/** Tailscale exposure mode for gateway HTTP/WebSocket surfaces. */
 export type GatewayTailscaleMode = "off" | "serve" | "funnel";
 
 export type GatewayTailscaleConfig = {
@@ -250,6 +258,7 @@ export type GatewayRemoteConfig = {
   sshIdentity?: string;
 };
 
+/** Gateway config reload strategy for managed installs. */
 export type GatewayReloadMode = "off" | "restart" | "hot" | "hybrid";
 
 export type GatewayReloadConfig = {
@@ -382,7 +391,9 @@ export type GatewayHttpResponsesImagesConfig = {
 };
 
 export type GatewayHttpEndpointsConfig = {
+  /** OpenAI-compatible chat completions endpoint controls. */
   chatCompletions?: GatewayHttpChatCompletionsConfig;
+  /** OpenResponses-compatible responses endpoint controls. */
   responses?: GatewayHttpResponsesConfig;
 };
 
@@ -397,7 +408,9 @@ export type GatewayHttpSecurityHeadersConfig = {
 };
 
 export type GatewayHttpConfig = {
+  /** Per-endpoint HTTP API controls. */
   endpoints?: GatewayHttpEndpointsConfig;
+  /** HTTP security header overrides. */
   securityHeaders?: GatewayHttpSecurityHeadersConfig;
 };
 
@@ -409,10 +422,12 @@ export type GatewayPushApnsRelayConfig = {
 };
 
 export type GatewayPushApnsConfig = {
+  /** External APNs relay used by iOS/mobile notification flows. */
   relay?: GatewayPushApnsRelayConfig;
 };
 
 export type GatewayPushConfig = {
+  /** Apple Push Notification Service settings. */
   apns?: GatewayPushApnsConfig;
 };
 
