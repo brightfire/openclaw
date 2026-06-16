@@ -1,3 +1,5 @@
+// Gateway sessions.resolve implementation helper.
+// Resolves key/sessionId/label selectors into one canonical session key.
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 import {
   ErrorCodes,
@@ -40,8 +42,10 @@ function noSessionFoundResult(key: string): SessionsResolveResult {
 function validateSessionAgentExists(
   cfg: OpenClawConfig,
   key: string,
+  entry?: SessionEntry | null,
+  options?: { acpMetadataSessionKey?: string | null },
 ): SessionsResolveResult | null {
-  const deletedAgentId = resolveDeletedAgentIdFromSessionKey(cfg, key);
+  const deletedAgentId = resolveDeletedAgentIdFromSessionKey(cfg, key, entry, options);
   if (deletedAgentId === null) {
     return null;
   }
@@ -119,6 +123,8 @@ export async function resolveSessionKeyFromResolveParams(params: {
   }
 
   if (hasKey) {
+    // Key lookups may hit legacy store aliases. Migrate/prune before returning
+    // the canonical key so later calls operate on one store identity.
     const target = resolveGatewaySessionStoreTarget({ cfg, key });
     const store = loadSessionStore(target.storePath);
     if (store[target.canonicalKey]) {
@@ -133,7 +139,12 @@ export async function resolveSessionKeyFromResolveParams(params: {
       ) {
         return noSessionFoundResult(key);
       }
-      const agentCheck = validateSessionAgentExists(cfg, target.canonicalKey);
+      const agentCheck = validateSessionAgentExists(
+        cfg,
+        target.canonicalKey,
+        store[target.canonicalKey],
+        { acpMetadataSessionKey: target.canonicalKey },
+      );
       if (agentCheck) {
         return agentCheck;
       }
@@ -159,18 +170,24 @@ export async function resolveSessionKeyFromResolveParams(params: {
         s[primaryKey] = s[legacyKey];
       }
     });
+    const migratedStore = loadSessionStore(target.storePath);
     if (
       !isResolvedSessionKeyVisible({
         cfg,
         p,
         storePath: target.storePath,
-        store: loadSessionStore(target.storePath),
+        store: migratedStore,
         key: target.canonicalKey,
       })
     ) {
       return noSessionFoundResult(key);
     }
-    const agentCheckLegacy = validateSessionAgentExists(cfg, target.canonicalKey);
+    const agentCheckLegacy = validateSessionAgentExists(
+      cfg,
+      target.canonicalKey,
+      migratedStore[target.canonicalKey],
+      { acpMetadataSessionKey: target.canonicalKey },
+    );
     if (agentCheckLegacy) {
       return agentCheckLegacy;
     }
@@ -178,6 +195,8 @@ export async function resolveSessionKeyFromResolveParams(params: {
   }
 
   if (hasSessionId) {
+    // sessionId can collide across stores; delegate selection so exact key
+    // matches and ambiguity rules stay shared with other session-id callers.
     const { store } = loadCombinedSessionStoreForGateway(cfg, { agentId: p.agentId });
     const matches = findVisibleSessionIdMatches({ cfg, store, p, sessionId });
     // Also check archived entries by sessionId — return the most recent.
@@ -206,7 +225,12 @@ export async function resolveSessionKeyFromResolveParams(params: {
         ),
       };
     }
-    const agentCheckSessionId = validateSessionAgentExists(cfg, selection.sessionKey);
+    const selectedEntry = matches.find(([matchKey]) => matchKey === selection.sessionKey)?.[1];
+    const agentCheckSessionId = validateSessionAgentExists(
+      cfg,
+      selection.sessionKey,
+      selectedEntry,
+    );
     if (agentCheckSessionId) {
       return agentCheckSessionId;
     }
@@ -255,7 +279,8 @@ export async function resolveSessionKeyFromResolveParams(params: {
     };
   }
 
-  const agentCheckLabel = validateSessionAgentExists(cfg, list.sessions[0].key);
+  const labelKey = list.sessions[0].key;
+  const agentCheckLabel = validateSessionAgentExists(cfg, labelKey, store[labelKey]);
   if (agentCheckLabel) {
     return agentCheckLabel;
   }

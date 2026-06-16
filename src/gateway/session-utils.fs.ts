@@ -1,3 +1,5 @@
+// Filesystem session history readers.
+// Parses transcript JSONL files for messages, previews, counts, and usage metadata.
 import fs from "node:fs";
 import path from "node:path";
 import { StringDecoder } from "node:string_decoder";
@@ -18,6 +20,7 @@ import { stripEnvelope } from "./chat-sanitize.js";
 import {
   resolveArchivedTranscriptPaths,
   resolveSessionTranscriptCandidates,
+  resolveSessionTranscriptResetArchiveCandidatesAsync,
 } from "./session-transcript-files.fs.js";
 import {
   readSessionTranscriptIndex,
@@ -125,6 +128,7 @@ async function yieldTranscriptScan(): Promise<void> {
   });
 }
 
+/** Attach OpenClaw metadata to a transcript message without dropping existing metadata. */
 export function attachOpenClawTranscriptMeta(
   message: unknown,
   meta: Record<string, unknown>,
@@ -148,6 +152,7 @@ export function attachOpenClawTranscriptMeta(
   };
 }
 
+/** Read all visible transcript messages for a session from the first existing candidate file. */
 export function readSessionMessages(
   sessionId: string,
   storePath: string | undefined,
@@ -157,7 +162,10 @@ export function readSessionMessages(
 
   let filePath = candidates.find((p) => fs.existsSync(p));
   if (!filePath) {
-    // Fall back to archived transcripts (.reset.* / .deleted.*) when the active file is missing.
+    // Fall back to archived transcripts (`.reset.*` / `.deleted.*`) when the
+    // active file is missing. This sync path keeps its own fallback so
+    // `chat.history`/context-report reads of archived sessions still resolve;
+    // the async history path owns the header-verified cross-root variant.
     const sessionsDir = storePath ? path.dirname(storePath) : undefined;
     const archivedPaths = resolveArchivedTranscriptPaths({ sessionId, sessionsDir });
     filePath = archivedPaths.find((p) => fs.existsSync(p));
@@ -173,12 +181,14 @@ export type ReadRecentSessionMessagesOptions = {
   maxMessages: number;
   maxBytes?: number;
   maxLines?: number;
+  allowResetArchiveFallback?: boolean;
 };
 
 export type ReadSessionMessagesAsyncOptions =
   | {
       mode: "full";
       reason: string;
+      allowResetArchiveFallback?: boolean;
     }
   | ({
       mode: "recent";
@@ -187,6 +197,12 @@ export type ReadSessionMessagesAsyncOptions =
 type ReadRecentSessionMessagesResult = {
   messages: unknown[];
   totalMessages: number;
+  transcriptPath?: string;
+};
+
+type ReadSessionMessagesResult = {
+  messages: unknown[];
+  transcriptPath?: string;
 };
 
 const RECENT_SESSION_MESSAGES_DEFAULT_MAX_BYTES = 8 * 1024 * 1024;
@@ -588,16 +604,38 @@ export async function readSessionMessagesAsync(
   sessionFile: string | undefined,
   opts: ReadSessionMessagesAsyncOptions,
 ): Promise<unknown[]> {
+  const result = await readSessionMessagesWithSourceAsync(sessionId, storePath, sessionFile, opts);
+  return result.messages;
+}
+
+export async function readSessionMessagesWithSourceAsync(
+  sessionId: string,
+  storePath: string | undefined,
+  sessionFile: string | undefined,
+  opts: ReadSessionMessagesAsyncOptions,
+): Promise<ReadSessionMessagesResult> {
   if (opts.mode === "recent") {
     const { mode: _modeValue, ...recentOpts } = opts;
-    return await readRecentSessionMessagesAsync(sessionId, storePath, sessionFile, recentOpts);
+    const result = await readRecentSessionMessagesWithSourceAsync(
+      sessionId,
+      storePath,
+      sessionFile,
+      recentOpts,
+    );
+    return result;
   }
-  const filePath = findExistingTranscriptPath(sessionId, storePath, sessionFile);
+  const filePath =
+    opts.allowResetArchiveFallback === true
+      ? await findExistingTranscriptHistoryPathAsync(sessionId, storePath, sessionFile)
+      : findExistingTranscriptPath(sessionId, storePath, sessionFile);
   if (!filePath) {
-    return [];
+    return { messages: [] };
   }
   const index = await readSessionTranscriptIndex(filePath);
-  return index?.entries.flatMap((entry) => indexedTranscriptEntryToMessages(entry)) ?? [];
+  return {
+    messages: index?.entries.flatMap((entry) => indexedTranscriptEntryToMessages(entry)) ?? [],
+    transcriptPath: filePath,
+  };
 }
 
 export async function readSessionMessageByIdAsync(
@@ -605,8 +643,12 @@ export async function readSessionMessageByIdAsync(
   storePath: string | undefined,
   sessionFile: string | undefined,
   messageId: string,
+  opts?: { allowResetArchiveFallback?: boolean },
 ): Promise<{ message?: unknown; seq?: number; oversized: boolean; found: boolean }> {
-  const filePath = findExistingTranscriptPath(sessionId, storePath, sessionFile);
+  const filePath =
+    opts?.allowResetArchiveFallback === true
+      ? await findExistingTranscriptHistoryPathAsync(sessionId, storePath, sessionFile)
+      : findExistingTranscriptPath(sessionId, storePath, sessionFile);
   if (!filePath) {
     return { oversized: false, found: false };
   }
@@ -697,16 +739,45 @@ export async function readRecentSessionMessagesAsync(
   sessionFile?: string,
   opts?: ReadRecentSessionMessagesOptions,
 ): Promise<unknown[]> {
+  const result = await readRecentSessionMessagesWithSourceAsync(
+    sessionId,
+    storePath,
+    sessionFile,
+    opts,
+  );
+  return result.messages;
+}
+
+async function readRecentSessionMessagesWithSourceAsync(
+  sessionId: string,
+  storePath: string | undefined,
+  sessionFile?: string,
+  opts?: ReadRecentSessionMessagesOptions,
+): Promise<ReadSessionMessagesResult> {
   const normalized = normalizeRecentSessionReadOptions(opts);
   const { maxMessages } = normalized;
   if (maxMessages === 0) {
-    return [];
+    return { messages: [] };
   }
 
-  const filePath = findExistingTranscriptPath(sessionId, storePath, sessionFile);
+  const filePath =
+    opts?.allowResetArchiveFallback === true
+      ? await findExistingTranscriptHistoryPathAsync(sessionId, storePath, sessionFile)
+      : findExistingTranscriptPath(sessionId, storePath, sessionFile);
   if (!filePath) {
-    return [];
+    return { messages: [] };
   }
+  return {
+    messages: await readRecentSessionMessagesFromPathAsync(filePath, normalized),
+    transcriptPath: filePath,
+  };
+}
+
+async function readRecentSessionMessagesFromPathAsync(
+  filePath: string,
+  opts: ReturnType<typeof normalizeRecentSessionReadOptions>,
+): Promise<unknown[]> {
+  const { maxMessages } = opts;
 
   let stat: fs.Stats;
   try {
@@ -718,7 +789,7 @@ export async function readRecentSessionMessagesAsync(
     return [];
   }
   const lines = await readRecentTranscriptTailLinesAsync(filePath, stat, {
-    ...normalized,
+    ...opts,
   });
   return parseRecentTranscriptTailMessages(lines, maxMessages);
 }
@@ -729,13 +800,23 @@ export async function readRecentSessionMessagesWithStatsAsync(
   sessionFile: string | undefined,
   opts: ReadRecentSessionMessagesOptions,
 ): Promise<ReadRecentSessionMessagesResult> {
-  const totalMessages = await readSessionMessageCountAsync(sessionId, storePath, sessionFile);
-  const messages = await readRecentSessionMessagesAsync(sessionId, storePath, sessionFile, opts);
+  const filePath =
+    opts.allowResetArchiveFallback === true
+      ? await findExistingTranscriptHistoryPathAsync(sessionId, storePath, sessionFile)
+      : findExistingTranscriptPath(sessionId, storePath, sessionFile);
+  if (!filePath) {
+    return { messages: [], totalMessages: 0 };
+  }
+  const totalMessages = await readSessionMessageCountFromPathAsync(filePath);
+  const messages = await readRecentSessionMessagesFromPathAsync(
+    filePath,
+    normalizeRecentSessionReadOptions(opts),
+  );
   const firstSeq = Math.max(1, totalMessages - messages.length + 1);
   const messagesWithSeq = messages.map((message, index) =>
     attachOpenClawTranscriptMeta(message, { seq: firstSeq + index }),
   );
-  return { messages: messagesWithSeq, totalMessages };
+  return { messages: messagesWithSeq, totalMessages, transcriptPath: filePath };
 }
 
 export function readRecentSessionTranscriptLines(params: {
@@ -827,6 +908,7 @@ export {
   cleanupArchivedSessionTranscripts,
   resolveArchivedTranscriptPaths,
   resolveSessionTranscriptCandidates,
+  resolveSessionTranscriptResetArchiveCandidatesAsync,
 } from "./session-transcript-files.fs.js";
 
 export function capArrayByJsonBytes<T>(
@@ -862,8 +944,7 @@ export function readSessionTitleFieldsFromTranscript(
   agentId?: string,
   opts?: { includeInterSession?: boolean },
 ): SessionTitleFields {
-  const candidates = resolveSessionTranscriptCandidates(sessionId, storePath, sessionFile, agentId);
-  const filePath = candidates.find((p) => fs.existsSync(p));
+  const filePath = findExistingTranscriptPath(sessionId, storePath, sessionFile, agentId);
   if (!filePath) {
     return { firstUserMessage: null, lastMessagePreview: null };
   }
@@ -934,8 +1015,7 @@ export async function readSessionTitleFieldsFromTranscriptAsync(
   agentId?: string,
   opts?: { includeInterSession?: boolean },
 ): Promise<SessionTitleFields> {
-  const candidates = resolveSessionTranscriptCandidates(sessionId, storePath, sessionFile, agentId);
-  const filePath = candidates.find((p) => fs.existsSync(p));
+  const filePath = findExistingTranscriptPath(sessionId, storePath, sessionFile, agentId);
   if (!filePath) {
     return { firstUserMessage: null, lastMessagePreview: null };
   }
@@ -1072,21 +1152,70 @@ function findExistingTranscriptPath(
   agentId?: string,
 ): string | null {
   const candidates = resolveSessionTranscriptCandidates(sessionId, storePath, sessionFile, agentId);
-  const live = candidates.find((p) => fs.existsSync(p));
-  if (live) {
-    return live;
+  return candidates.find((p) => fs.existsSync(p)) ?? null;
+}
+
+async function findExistingTranscriptHistoryPathAsync(
+  sessionId: string,
+  storePath: string | undefined,
+  sessionFile?: string,
+  agentId?: string,
+): Promise<string | null> {
+  const activePath = findExistingTranscriptPath(sessionId, storePath, sessionFile, agentId);
+  if (activePath) {
+    return activePath;
   }
-  // Fall back to archived transcripts (`<sessionId>.jsonl.reset.<ISO>` /
-  // `<sessionId>.jsonl.deleted.<ISO>`) when no live `.jsonl` is on disk. This
-  // mirrors what the sync `readSessionMessages` already does and is required
-  // so `chat.history` returns archived content for sessions whose store entry
-  // has `archived: true` (e.g. resuming context after a session rollover).
-  const sessionsDir = storePath ? path.dirname(storePath) : undefined;
-  if (!sessionsDir || !sessionId) {
-    return null;
+  for (const archivePath of await resolveSessionTranscriptResetArchiveCandidatesAsync(
+    sessionId,
+    storePath,
+    sessionFile,
+    agentId,
+  )) {
+    const stat = await fs.promises.stat(archivePath).catch(() => null);
+    if (stat?.isFile()) {
+      const refreshedActivePath = findExistingTranscriptPath(
+        sessionId,
+        storePath,
+        sessionFile,
+        agentId,
+      );
+      if (refreshedActivePath) {
+        return refreshedActivePath;
+      }
+      return archivePath;
+    }
   }
-  const archived = resolveArchivedTranscriptPaths({ sessionId, sessionsDir, agentId });
-  return archived.find((p) => fs.existsSync(p)) ?? null;
+  return null;
+}
+
+export async function resolveSessionHistoryTranscriptPathAsync(
+  sessionId: string,
+  storePath: string | undefined,
+  sessionFile?: string,
+  opts?: { agentId?: string; allowResetArchiveFallback?: boolean },
+): Promise<string | null> {
+  return opts?.allowResetArchiveFallback === true
+    ? findExistingTranscriptHistoryPathAsync(sessionId, storePath, sessionFile, opts.agentId)
+    : findExistingTranscriptPath(sessionId, storePath, sessionFile, opts?.agentId);
+}
+
+async function readSessionMessageCountFromPathAsync(filePath: string): Promise<number> {
+  let stat: fs.Stats | null = null;
+  try {
+    stat = await fs.promises.stat(filePath);
+    const cached = getCachedTranscriptMessageCount(filePath, stat);
+    if (typeof cached === "number") {
+      return cached;
+    }
+  } catch {
+    // Count from the transcript index below when stat metadata is unavailable.
+  }
+  const index = await readSessionTranscriptIndex(filePath);
+  const count = index?.entries.length ?? 0;
+  if (stat) {
+    setCachedTranscriptMessageCount(filePath, stat, count);
+  }
+  return count;
 }
 
 function withOpenTranscriptFd<T>(filePath: string, read: (fd: number) => T | null): T | null {

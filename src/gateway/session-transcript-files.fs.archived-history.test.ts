@@ -353,6 +353,7 @@ describe("readRecentSessionMessagesAsync with archived transcript", () => {
 
       const result = await readRecentSessionMessagesAsync(sessionId, storePath, undefined, {
         maxMessages: 10,
+        allowResetArchiveFallback: true,
       });
 
       // After the archive-fallback fix, the reader resolves the `.jsonl.reset.<ts>`
@@ -412,9 +413,11 @@ describe("readRecentSessionMessagesAsync with archived transcript", () => {
 
       const resultA = await readRecentSessionMessagesAsync(sessionIdA, storePath, undefined, {
         maxMessages: 10,
+        allowResetArchiveFallback: true,
       });
       const resultB = await readRecentSessionMessagesAsync(sessionIdB, storePath, undefined, {
         maxMessages: 10,
+        allowResetArchiveFallback: true,
       });
 
       expect(resultA.map((m: unknown) => (m as Record<string, unknown>).content)).toEqual([
@@ -448,6 +451,7 @@ describe("readRecentSessionMessagesAsync with archived transcript", () => {
 
       const result = await readRecentSessionMessagesAsync(sessionId, storePath, undefined, {
         maxMessages: 10,
+        allowResetArchiveFallback: true,
       });
 
       const contents = result.map((m: unknown) => (m as Record<string, unknown>).content);
@@ -474,9 +478,18 @@ describe("readRecentSessionMessagesAsync with archived transcript", () => {
         '{"message":{"role":"user","content":"topic-archived"}}\n',
       );
 
-      const result = await readRecentSessionMessagesAsync(sessionId, storePath, undefined, {
-        maxMessages: 10,
-      });
+      // Topic-qualified sessions archive their own `sessionFile`, so the store
+      // entry's sessionFile still points at the topic transcript; supply it so
+      // reset-archive discovery scans `${sessionFile}.reset.<ts>`.
+      const result = await readRecentSessionMessagesAsync(
+        sessionId,
+        storePath,
+        path.join(dir, `${sessionId}-topic-7.jsonl`),
+        {
+          maxMessages: 10,
+          allowResetArchiveFallback: true,
+        },
+      );
 
       const contents = result.map((m: unknown) => (m as Record<string, unknown>).content);
       expect(contents).toContain("topic-archived");

@@ -1,4 +1,5 @@
-import fs from "node:fs";
+// Gateway HTTP session history endpoint.
+// Serves JSON and SSE history snapshots backed by transcript files.
 import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
 import {
@@ -11,6 +12,7 @@ import { createSubsystemLogger } from "../logging/subsystem.js";
 import { onSessionTranscriptUpdate } from "../sessions/transcript-events.js";
 import type { AuthRateLimiter } from "./auth-rate-limit.js";
 import type { ResolvedGatewayAuth } from "./auth.js";
+import { DEFAULT_CHAT_HISTORY_TEXT_MAX_CHARS } from "./chat-display-projection.js";
 import {
   sendInvalidRequest,
   sendJson,
@@ -24,7 +26,6 @@ import {
   resolveSharedSecretHttpOperatorScopes,
 } from "./http-utils.js";
 import { authorizeOperatorScopesForMethod } from "./method-scopes.js";
-import { DEFAULT_CHAT_HISTORY_TEXT_MAX_CHARS } from "./server-methods/chat.js";
 import {
   buildSessionHistorySnapshot,
   resolveSessionHistoryTailReadOptions,
@@ -34,7 +35,7 @@ import { resolveTranscriptPathForComparison } from "./session-transcript-path.js
 import {
   readRecentSessionMessagesWithStatsAsync,
   readSessionMessages,
-  readSessionMessagesAsync,
+  readSessionMessagesWithSourceAsync,
   resolveFreshestSessionEntryFromStoreKeys,
   resolveArchivedTranscriptPaths,
   resolveGatewaySessionStoreTarget,
@@ -85,6 +86,7 @@ function sseWrite(res: ServerResponse, event: string, payload: unknown): void {
   res.write(`data: ${JSON.stringify(payload)}\n\n`);
 }
 
+/** Handle `/sessions/:sessionKey/history` JSON/SSE requests. */
 export async function handleSessionHistoryHttpRequest(
   req: IncomingMessage,
   res: ServerResponse,
@@ -139,7 +141,9 @@ export async function handleSessionHistoryHttpRequest(
     let archivedSessionId: string | undefined;
     for (const key of target.storeKeys) {
       const archivedPaths = resolveArchivedTranscriptPaths({ sessionId: key, sessionsDir });
-      if (archivedPaths.some((p) => fs.existsSync(p))) {
+      // resolveArchivedTranscriptPaths only returns paths for real directory
+      // entries, so a non-empty result already means the archive exists on disk.
+      if (archivedPaths.length > 0) {
         archivedSessionId = key;
         break;
       }
@@ -182,19 +186,28 @@ export async function handleSessionHistoryHttpRequest(
           entry.sessionId,
           target.storePath,
           entry.sessionFile,
-          resolveSessionHistoryTailReadOptions(limit),
+          {
+            ...resolveSessionHistoryTailReadOptions(limit),
+            allowResetArchiveFallback: true,
+          },
         )
       : undefined;
   // Cursor reads still need an arbitrary historical window. The common first
   // page path is bounded above so `limit=1` cannot materialize huge transcripts.
-  const rawSnapshot =
-    boundedSnapshot?.messages ??
-    (entry?.sessionId
-      ? await readSessionMessagesAsync(entry.sessionId, target.storePath, entry.sessionFile, {
-          mode: "full",
-          reason: "session history cursor pagination",
-        })
-      : []);
+  const fullSnapshot =
+    boundedSnapshot === undefined && entry?.sessionId
+      ? await readSessionMessagesWithSourceAsync(
+          entry.sessionId,
+          target.storePath,
+          entry.sessionFile,
+          {
+            mode: "full",
+            reason: "session history cursor pagination",
+            allowResetArchiveFallback: true,
+          },
+        )
+      : undefined;
+  const rawSnapshot = boundedSnapshot?.messages ?? fullSnapshot?.messages ?? [];
   const historySnapshot = buildSessionHistorySnapshot({
     rawMessages: rawSnapshot,
     maxChars: effectiveMaxChars,
@@ -236,6 +249,7 @@ export async function handleSessionHistoryHttpRequest(
     rawMessages: rawSnapshot,
     rawTranscriptSeq: boundedSnapshot?.totalMessages,
     totalRawMessages: boundedSnapshot?.totalMessages,
+    transcriptPath: boundedSnapshot?.transcriptPath ?? fullSnapshot?.transcriptPath,
     maxChars: effectiveMaxChars,
     limit,
     cursor,
@@ -343,6 +357,14 @@ export async function handleSessionHistoryHttpRequest(
       }
       if (update.message !== undefined) {
         if (limit === undefined && cursor === undefined) {
+          if (sseState.shouldRefreshForTranscriptPath(updatePath)) {
+            sentHistory = await sseState.refreshAsync();
+            sseWrite(res, "history", {
+              sessionKey: target.canonicalKey,
+              ...sentHistory,
+            });
+            return;
+          }
           const nextEvent = sseState.appendInlineMessage({
             message: update.message,
             messageId: update.messageId,
