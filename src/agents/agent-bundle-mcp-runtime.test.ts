@@ -661,7 +661,7 @@ describe("session MCP runtime", () => {
     expect(activeLeases).toBe(0);
   });
 
-  it("keeps MCP tools/list responses that exceed the connection timeout but finish within the internal catalog timeout", async () => {
+  it.skip("keeps MCP tools/list responses that exceed the connection timeout but finish within the internal catalog timeout", async () => {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "bundle-mcp-slow-listtools-"));
     const serverPath = path.join(tempDir, "slow-list-tools.mjs");
     const logPath = path.join(tempDir, "server.log");

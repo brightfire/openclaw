@@ -448,6 +448,13 @@ export const zh_TW: TranslationMap = {
     dreams: "睡眠期間的記憶整合。",
   },
   skillWorkshop: {
+    viewSwitcher: {
+      label: "Workshop view",
+      board: "Board",
+      boardTitle: "Board view",
+      today: "Today",
+      todayTitle: "Today view",
+    },
     header: {
       useCurrentChat: "Use current chat",
       useCurrentChatAria: "Use current chat for revision requests",
