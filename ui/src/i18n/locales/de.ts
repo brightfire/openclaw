@@ -461,6 +461,7 @@ export const de: TranslationMap = {
       boardTitle: "Board view",
       today: "Today",
       todayTitle: "Today view",
+    },
     header: {
       useCurrentChat: "Use current chat",
       useCurrentChatAria: "Use current chat for revision requests",
