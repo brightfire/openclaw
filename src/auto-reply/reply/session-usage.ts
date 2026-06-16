@@ -1,3 +1,4 @@
+/** Persists usage, cost, model, and CLI session metadata after reply runs. */
 import {
   clearCliSession,
   setCliSessionBinding,
@@ -99,6 +100,7 @@ function estimateSessionRunCostUsd(params: {
   );
 }
 
+/** Persists usage accounting and selected runtime metadata to the session store. */
 export async function persistSessionUsageUpdate(params: {
   storePath?: string;
   sessionKey?: string;
