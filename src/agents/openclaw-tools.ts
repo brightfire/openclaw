@@ -1,3 +1,8 @@
+/**
+ * OpenClaw built-in and plugin tool assembly.
+ *
+ * Creates the per-run tool inventory from config, channel context, sandbox policy, auth stores, and plugin tools.
+ */
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 import type { SourceReplyDeliveryMode } from "../auto-reply/get-reply-options.types.js";
 import type { InboundEventKind } from "../channels/inbound-event/kind.js";
@@ -159,6 +164,11 @@ export function createOpenClawTools(
     authProfileStore?: AuthProfileStore;
     /** Ephemeral session UUID — regenerated on /new and /reset. */
     sessionId?: string;
+    /**
+     * Explicit one-shot local CLI runs should not keep plugin-owned process
+     * resources alive after emitting their result.
+     */
+    oneShotCliRun?: boolean;
     /**
      * Workspace directory to pass to spawned subagents for inheritance.
      * Defaults to workspaceDir. Use this to pass the actual agent workspace when the
