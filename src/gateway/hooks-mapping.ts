@@ -318,7 +318,10 @@ function mergeAction(
     agentId: override.agentId ?? baseAgent?.agentId,
     sessionKey: override.sessionKey ?? baseAgent?.sessionKey,
     sessionKeySource: resolveMergedSessionKeySource(baseAgent, override),
-    sessionTarget: override.sessionTarget ?? baseAgent?.sessionTarget,
+    sessionTarget:
+      override.sessionTarget === "isolated" || override.sessionTarget === "persistent"
+        ? override.sessionTarget
+        : baseAgent?.sessionTarget,
     deliver: typeof override.deliver === "boolean" ? override.deliver : baseAgent?.deliver,
     allowUnsafeExternalContent:
       typeof override.allowUnsafeExternalContent === "boolean"
