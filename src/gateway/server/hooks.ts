@@ -133,6 +133,11 @@ export function createGatewayHooksRequestHandler(params: {
       createdAtMs: nowMs,
       updatedAtMs: nowMs,
       schedule: { kind: "at", at: resolveTimestampMsToIsoString(nowMs) },
+      // Hook-specific sessionTarget: "persistent" is not a canonical cron session target
+      // but works correctly here because hook jobs bypass cron job validation
+      // (assertSupportedJobSpec) and all runtime checks in isolated-agent/run.ts only
+      // branch on === "isolated" or === "main". Any non-"isolated" value results in
+      // forceNew=false in resolveCronSession(), which is the desired reuse behavior.
       sessionTarget: value.sessionTarget ?? "isolated",
       wakeMode: value.wakeMode,
       payload: {
