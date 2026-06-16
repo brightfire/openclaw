@@ -414,7 +414,7 @@ function shouldQueueCronAwareness(params: {
   // Keep issue #52136 scoped to isolated runs with an explicit delivery target.
   // Default isolated announce delivery must not mirror text into the main session.
   return (
-    (params.job.sessionTarget === "isolated" || params.job.sessionTarget === "persistent") &&
+    params.job.sessionTarget === "isolated" &&
     !params.deliveryBestEffort &&
     params.delivery.mode === "explicit"
   );
@@ -1018,7 +1018,7 @@ export async function dispatchCronDelivery(
       // Implicit/default isolated delivery must not create main-session awareness.
       const mirrorWouldBypassIsolatedAwarenessPolicy =
         mirrorTargetsAwarenessMainSession &&
-        (params.job.sessionTarget === "isolated" || params.job.sessionTarget === "persistent") &&
+        params.job.sessionTarget === "isolated" &&
         delivery.mode !== "explicit";
       if (
         delivered &&

@@ -18,7 +18,7 @@ export type CronSchedule =
     };
 
 /** Runtime target that decides whether a job joins main, isolated, or a named session. */
-export type CronSessionTarget = "main" | "isolated" | "persistent" | "current" | `session:${string}`;
+export type CronSessionTarget = "main" | "isolated" | "current" | `session:${string}`;
 
 /** Wake policy for main-session jobs waiting on heartbeat/user activity. */
 export type CronWakeMode = "next-heartbeat" | "now";
