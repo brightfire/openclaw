@@ -229,6 +229,112 @@ describe("hooks mapping", () => {
     }
   });
 
+  describe("sessionTarget", () => {
+    it("passes through sessionTarget from mapping config", async () => {
+      const result = await applyGmailMappings({
+        mappings: [
+          {
+            id: "persistent-session",
+            match: { path: "gmail" },
+            action: "agent",
+            messageTemplate: "Subject: {{messages[0].subject}}",
+            sessionTarget: "persistent",
+          },
+        ],
+      });
+      expect(result?.ok).toBe(true);
+      if (result?.ok && result.action?.kind === "agent") {
+        expect(result.action.sessionTarget).toBe("persistent");
+      }
+    });
+
+    it("leaves sessionTarget undefined when not configured", async () => {
+      const result = await applyGmailMappings({
+        mappings: [
+          createGmailAgentMapping({
+            id: "no-session-target",
+            messageTemplate: "Subject: {{messages[0].subject}}",
+          }),
+        ],
+      });
+      expect(result?.ok).toBe(true);
+      if (result?.ok && result.action?.kind === "agent") {
+        expect(result.action.sessionTarget).toBeUndefined();
+      }
+    });
+
+    it("transform can override sessionTarget", async () => {
+      const configDir = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-sessiontarget-"));
+      const transformsRoot = path.join(configDir, "hooks", "transforms");
+      fs.mkdirSync(transformsRoot, { recursive: true });
+      const modPath = path.join(transformsRoot, "transform-st.mjs");
+      fs.writeFileSync(
+        modPath,
+        `export default () => ({ sessionTarget: "persistent" });`,
+      );
+      const mappings = resolveHookMappings(
+        {
+          mappings: [
+            {
+              id: "st-transform",
+              match: { path: "gmail" },
+              action: "agent",
+              messageTemplate: "Subject: {{messages[0].subject}}",
+              transform: { module: "transform-st.mjs" },
+            },
+          ],
+        },
+        { configDir },
+      );
+      const result = await applyHookMappings(mappings, {
+        payload: gmailPayload,
+        headers: {},
+        url: baseUrl,
+        path: "gmail",
+      });
+      expect(result?.ok).toBe(true);
+      if (result?.ok && result.action?.kind === "agent") {
+        expect(result.action.sessionTarget).toBe("persistent");
+      }
+    });
+
+    it("transform sessionTarget merges over mapping sessionTarget", async () => {
+      const configDir = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-sessiontarget-override-"));
+      const transformsRoot = path.join(configDir, "hooks", "transforms");
+      fs.mkdirSync(transformsRoot, { recursive: true });
+      const modPath = path.join(transformsRoot, "transform-st-override.mjs");
+      fs.writeFileSync(
+        modPath,
+        `export default () => ({ sessionTarget: "persistent" });`,
+      );
+      const mappings = resolveHookMappings(
+        {
+          mappings: [
+            {
+              id: "st-override",
+              match: { path: "gmail" },
+              action: "agent",
+              messageTemplate: "Subject: {{messages[0].subject}}",
+              sessionTarget: "isolated",
+              transform: { module: "transform-st-override.mjs" },
+            },
+          ],
+        },
+        { configDir },
+      );
+      const result = await applyHookMappings(mappings, {
+        payload: gmailPayload,
+        headers: {},
+        url: baseUrl,
+        path: "gmail",
+      });
+      expect(result?.ok).toBe(true);
+      if (result?.ok && result.action?.kind === "agent") {
+        expect(result.action.sessionTarget).toBe("persistent");
+      }
+    });
+  });
+
   it("runs transform module", async () => {
     const configDir = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-config-"));
     const transformsRoot = path.join(configDir, "hooks", "transforms");

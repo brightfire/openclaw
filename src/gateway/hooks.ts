@@ -225,6 +225,7 @@ type HookAgentPayload = {
   idempotencyKey?: string;
   wakeMode: "now" | "next-heartbeat";
   sessionKey?: string;
+  sessionTarget?: "isolated" | "persistent";
   deliver: boolean;
   channel: HookMessageChannel;
   to?: string;
