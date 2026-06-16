@@ -463,7 +463,7 @@ export function normalizeAgentPayload(payload: Record<string, unknown>):
   const sessionTargetRaw = payload.sessionTarget;
   const sessionTarget =
     sessionTargetRaw === "persistent" || sessionTargetRaw === "isolated"
-      ? (sessionTargetRaw as "isolated" | "persistent")
+      ? sessionTargetRaw
       : undefined;
   return {
     ok: true,
