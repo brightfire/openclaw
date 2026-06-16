@@ -58,6 +58,7 @@ export const HookMappingSchema = z
     model: z.string().optional(),
     thinking: z.string().optional(),
     timeoutSeconds: z.number().int().positive().optional(),
+    sessionTarget: z.union([z.literal("isolated"), z.literal("persistent")]).optional(),
     transform: z
       .object({
         module: SafeRelativeModulePathSchema,
