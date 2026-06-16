@@ -788,7 +788,7 @@ jobs:
           fi
 
           args=(
-            -f ref="$TARGET_SHA"
+            -f ref="$TARGET_REF"
             -f expected_sha="$TARGET_SHA"
             -f provider="$PROVIDER"
             -f mode="$MODE"
@@ -1148,7 +1148,16 @@ jobs:
   summary:
     if: false
     name: Verify full validation
-    needs: [resolve_target, docker_runtime_assets_preflight, normal_ci, plugin_prerelease, release_checks, npm_telegram, performance]
+    needs:
+      [
+        resolve_target,
+        docker_runtime_assets_preflight,
+        normal_ci,
+        plugin_prerelease,
+        release_checks,
+        npm_telegram,
+        performance,
+      ]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 5

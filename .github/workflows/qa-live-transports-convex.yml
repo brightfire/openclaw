@@ -66,7 +66,7 @@ jobs:
     steps:
       - name: Require maintainer-level repository access
         id: permission
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             if (context.eventName === "schedule") {
@@ -162,7 +162,7 @@ jobs:
     if: false
     name: Run QA Lab mock parity lane
     needs: [validate_selected_ref]
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: blacksmith-16vcpu-ubuntu-2404
     timeout-minutes: 30
     env:
       QA_PARITY_CONCURRENCY: "1"
@@ -189,7 +189,7 @@ jobs:
 
       - name: Build private QA runtime
         env:
-          NODE_OPTIONS: --max-old-space-size=8192
+          NODE_OPTIONS: --max-old-space-size=12288
         run: pnpm build
 
       - name: Run OpenAI candidate lane
@@ -236,7 +236,7 @@ jobs:
     name: Run live runtime token-efficiency lane
     needs: [authorize_actor, validate_selected_ref]
     if: github.event_name == 'schedule'
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: blacksmith-16vcpu-ubuntu-2404
     timeout-minutes: 45
     environment: qa-live-shared
     env:
@@ -271,7 +271,7 @@ jobs:
 
       - name: Build private QA runtime
         env:
-          NODE_OPTIONS: --max-old-space-size=8192
+          NODE_OPTIONS: --max-old-space-size=12288
         run: pnpm build
 
       - name: Run live runtime parity lane
@@ -326,7 +326,7 @@ jobs:
     name: Run Matrix live QA lane
     needs: [authorize_actor, validate_selected_ref]
     if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.matrix_profile == 'all') }}
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: blacksmith-16vcpu-ubuntu-2404
     timeout-minutes: 60
     environment: qa-live-shared
     steps:
@@ -357,7 +357,7 @@ jobs:
 
       - name: Build private QA runtime
         env:
-          NODE_OPTIONS: --max-old-space-size=8192
+          NODE_OPTIONS: --max-old-space-size=12288
         run: pnpm build
 
       - name: Run Matrix live lane
@@ -403,7 +403,7 @@ jobs:
     name: Run Matrix live QA lane (${{ matrix.profile }})
     needs: [authorize_actor, validate_selected_ref]
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.matrix_profile == 'all' }}
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: blacksmith-16vcpu-ubuntu-2404
     timeout-minutes: 60
     environment: qa-live-shared
     strategy:
@@ -443,7 +443,7 @@ jobs:
 
       - name: Build private QA runtime
         env:
-          NODE_OPTIONS: --max-old-space-size=8192
+          NODE_OPTIONS: --max-old-space-size=12288
         run: pnpm build
 
       - name: Run Matrix live lane shard
@@ -487,7 +487,7 @@ jobs:
     if: false
     name: Run Telegram live QA lane with Convex leases
     needs: [authorize_actor, validate_selected_ref]
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: blacksmith-16vcpu-ubuntu-2404
     timeout-minutes: 60
     environment: qa-live-shared
     steps:
@@ -527,7 +527,7 @@ jobs:
 
       - name: Build private QA runtime
         env:
-          NODE_OPTIONS: --max-old-space-size=8192
+          NODE_OPTIONS: --max-old-space-size=12288
         run: pnpm build
 
       - name: Run Telegram live lane
@@ -539,7 +539,6 @@ jobs:
           OPENCLAW_QA_CONVEX_SECRET_CI: ${{ secrets.OPENCLAW_QA_CONVEX_SECRET_CI }}
           OPENCLAW_QA_CREDENTIAL_ACQUIRE_TIMEOUT_MS: "1800000"
           OPENCLAW_QA_REDACT_PUBLIC_METADATA: "1"
-          OPENCLAW_QA_TELEGRAM_CAPTURE_CONTENT: "1"
           INPUT_SCENARIO: ${{ github.event_name == 'workflow_dispatch' && inputs.scenario || '' }}
         run: |
           set -euo pipefail
@@ -583,7 +582,7 @@ jobs:
     if: false
     name: Run Discord live QA lane with Convex leases
     needs: [authorize_actor, validate_selected_ref]
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: blacksmith-16vcpu-ubuntu-2404
     timeout-minutes: 60
     environment: qa-live-shared
     steps:
@@ -623,7 +622,7 @@ jobs:
 
       - name: Build private QA runtime
         env:
-          NODE_OPTIONS: --max-old-space-size=8192
+          NODE_OPTIONS: --max-old-space-size=12288
         run: pnpm build
 
       - name: Run Discord live lane
@@ -678,7 +677,7 @@ jobs:
     if: false
     name: Run WhatsApp live QA lane with Convex leases
     needs: [authorize_actor, validate_selected_ref]
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: blacksmith-16vcpu-ubuntu-2404
     timeout-minutes: 60
     concurrency:
       group: qa-live-whatsapp-shared
@@ -721,7 +720,7 @@ jobs:
 
       - name: Build private QA runtime
         env:
-          NODE_OPTIONS: --max-old-space-size=8192
+          NODE_OPTIONS: --max-old-space-size=12288
         run: pnpm build
 
       - name: Run WhatsApp live lane
@@ -776,7 +775,7 @@ jobs:
     if: false
     name: Run Slack live QA lane with Convex leases
     needs: [authorize_actor, validate_selected_ref]
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: blacksmith-16vcpu-ubuntu-2404
     timeout-minutes: 60
     environment: qa-live-shared
     steps:
@@ -816,7 +815,7 @@ jobs:
 
       - name: Build private QA runtime
         env:
-          NODE_OPTIONS: --max-old-space-size=8192
+          NODE_OPTIONS: --max-old-space-size=12288
         run: pnpm build
 
       - name: Run Slack live lane
