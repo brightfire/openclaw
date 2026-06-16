@@ -81,6 +81,7 @@ export const AgentDefaultsSchema = z
       })
       .strict()
       .optional(),
+    sessionResetPrompt: z.string().min(1).optional(),
     skipBootstrap: z.boolean().optional(),
     skipOptionalBootstrapFiles: z.array(OptionalBootstrapFileNameSchema).optional(),
     contextInjection: z
