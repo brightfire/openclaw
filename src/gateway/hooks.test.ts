@@ -210,6 +210,56 @@ describe("gateway hooks helpers", () => {
     }
   });
 
+  test("normalizeAgentPayload validates sessionTarget", () => {
+    const omitted = normalizeAgentPayload({ message: "hello" });
+    expect(omitted.ok).toBe(true);
+    if (omitted.ok) {
+      expect(omitted.value.sessionTarget).toBeUndefined();
+    }
+
+    const persistent = normalizeAgentPayload({
+      message: "hello",
+      sessionTarget: "persistent",
+    });
+    expect(persistent.ok).toBe(true);
+    if (persistent.ok) {
+      expect(persistent.value.sessionTarget).toBe("persistent");
+    }
+
+    const isolated = normalizeAgentPayload({
+      message: "hello",
+      sessionTarget: "isolated",
+    });
+    expect(isolated.ok).toBe(true);
+    if (isolated.ok) {
+      expect(isolated.value.sessionTarget).toBe("isolated");
+    }
+
+    // Typos and cron-style values ("session:<key>") must be rejected so
+    // webhook clients learn about the bad payload instead of silently
+    // falling back to an isolated cron job.
+    const typo = normalizeAgentPayload({
+      message: "hello",
+      sessionTarget: "persistant",
+    });
+    expect(typo.ok).toBe(false);
+    if (!typo.ok) {
+      expect(typo.error).toMatch(/sessionTarget/);
+    }
+
+    const cronStyle = normalizeAgentPayload({
+      message: "hello",
+      sessionTarget: "session:hook-foo",
+    });
+    expect(cronStyle.ok).toBe(false);
+
+    const nonString = normalizeAgentPayload({
+      message: "hello",
+      sessionTarget: 42,
+    });
+    expect(nonString.ok).toBe(false);
+  });
+
   test("resolveHookTargetAgentId preserves omitted default target intent", () => {
     const cfg = {
       hooks: { enabled: true, token: "secret" },

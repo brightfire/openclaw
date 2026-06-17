@@ -461,10 +461,21 @@ export function normalizeAgentPayload(payload: Record<string, unknown>):
       ? Math.floor(timeoutRaw)
       : undefined;
   const sessionTargetRaw = payload.sessionTarget;
-  const sessionTarget =
-    sessionTargetRaw === "persistent" || sessionTargetRaw === "isolated"
-      ? sessionTargetRaw
-      : undefined;
+  let sessionTarget: "persistent" | "isolated" | undefined;
+  if (sessionTargetRaw === undefined) {
+    sessionTarget = undefined;
+  } else if (sessionTargetRaw === "persistent" || sessionTargetRaw === "isolated") {
+    sessionTarget = sessionTargetRaw;
+  } else {
+    // Reject typos and cron-style values like "session:<key>" so webhook
+    // clients get a clear error instead of silently falling back to an
+    // isolated cron job. Mapping config already rejects invalid values via
+    // the Zod schema; the request path mirrors that contract.
+    return {
+      ok: false,
+      error: 'sessionTarget must be "persistent" or "isolated"',
+    };
+  }
   return {
     ok: true,
     value: {
