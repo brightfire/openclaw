@@ -426,6 +426,7 @@ export const FIELD_LABELS: Record<string, string> = {
   "agents.list[].subagents.delegationMode": "Sub-agent Delegation Mode",
   "agents.defaults.workspace": "Workspace",
   "agents.defaults.repoRoot": "Repo Root",
+  "agents.defaults.sessionResetPrompt": "Session Reset Prompt",
   "agents.defaults.promptOverlays": "Prompt Overlays",
   "agents.defaults.promptOverlays.gpt5": "GPT-5 Prompt Overlay",
   "agents.defaults.promptOverlays.gpt5.personality": "GPT-5 Personality Overlay",
