@@ -59,6 +59,28 @@ describe("HookMappingSchema sessionTarget + sessionKey pairing", () => {
     }
   });
 
+  it("rejects persistent with whitespace-only sessionKey", () => {
+    // renderOptional()/normalizeOptionalString() downstream trim sessionKey
+    // and treat whitespace-only as absent. The Zod refine must reject the
+    // same way at load time so the failure surfaces in config validation
+    // rather than at the first webhook fire.
+    const result = OpenClawSchema.safeParse(
+      buildHooksConfig({
+        id: "bad-whitespace-key",
+        match: { path: "linear" },
+        action: "agent",
+        sessionTarget: "persistent",
+        sessionKey: "   ",
+      }),
+    );
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const issue = result.error.issues.find((entry) => entry.message.includes("sessionTarget"));
+      expect(issue).toBeDefined();
+      expect(issue?.message).toMatch(/persistent.*sessionKey/);
+    }
+  });
+
   it("accepts isolated without sessionKey", () => {
     const result = OpenClawSchema.safeParse(
       buildHooksConfig({

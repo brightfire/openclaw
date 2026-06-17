@@ -80,7 +80,11 @@ export const HookMappingSchema = z
       if (value?.sessionTarget !== "persistent") {
         return true;
       }
-      return typeof value.sessionKey === "string" && value.sessionKey.length > 0;
+      // Mirror renderOptional()/normalizeOptionalString() downstream, which
+      // trim sessionKey and treat whitespace-only as absent. Without
+      // trimming here, "   " would slip past Zod and then fail later at
+      // dispatch with the same error, defeating the load-time check.
+      return typeof value.sessionKey === "string" && value.sessionKey.trim().length > 0;
     },
     { message: 'sessionTarget "persistent" requires sessionKey', path: ["sessionTarget"] },
   )
