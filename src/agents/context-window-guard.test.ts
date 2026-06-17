@@ -409,6 +409,171 @@ describe("context-window-guard", () => {
     ).toContain("Raise contextWindow/contextTokens or choose a larger model.");
   });
 
+  describe("catalogContextWindow cap", () => {
+    it("caps configured value when it exceeds catalog native window", () => {
+      const cfg = {
+        models: {
+          providers: {
+            openrouter: {
+              baseUrl: "http://localhost",
+              apiKey: "x",
+              models: [
+                {
+                  id: "big-model",
+                  name: "big-model",
+                  reasoning: false,
+                  input: ["text"],
+                  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                  contextWindow: 200_000,
+                  maxTokens: 8192,
+                },
+              ],
+            },
+          },
+        },
+      } satisfies OpenClawConfig;
+
+      const info = resolveContextWindowInfo({
+        cfg,
+        provider: "openrouter",
+        modelId: "big-model",
+        modelContextWindow: 128_000,
+        defaultTokens: 200_000,
+        catalogContextWindow: 128_000,
+      });
+
+      // User configured 200k, catalog says 128k — must cap at 128k
+      expect(info.tokens).toBe(128_000);
+      expect(info.source).toBe("modelsConfig");
+    });
+
+    it("leaves value unchanged when configured is below catalog native window", () => {
+      const cfg = {
+        models: {
+          providers: {
+            openrouter: {
+              baseUrl: "http://localhost",
+              apiKey: "x",
+              models: [
+                {
+                  id: "some-model",
+                  name: "some-model",
+                  reasoning: false,
+                  input: ["text"],
+                  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                  contextWindow: 64_000,
+                  maxTokens: 8192,
+                },
+              ],
+            },
+          },
+        },
+      } satisfies OpenClawConfig;
+
+      const info = resolveContextWindowInfo({
+        cfg,
+        provider: "openrouter",
+        modelId: "some-model",
+        modelContextWindow: 128_000,
+        defaultTokens: 200_000,
+        catalogContextWindow: 128_000,
+      });
+
+      // Configured 64k < catalog 128k — no cap needed
+      expect(info.tokens).toBe(64_000);
+      expect(info.source).toBe("modelsConfig");
+    });
+
+    it("does not cap when catalogContextWindow is not provided", () => {
+      const cfg = {
+        models: {
+          providers: {
+            openrouter: {
+              baseUrl: "http://localhost",
+              apiKey: "x",
+              models: [
+                {
+                  id: "big-model",
+                  name: "big-model",
+                  reasoning: false,
+                  input: ["text"],
+                  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                  contextWindow: 200_000,
+                  maxTokens: 8192,
+                },
+              ],
+            },
+          },
+        },
+      } satisfies OpenClawConfig;
+
+      const info = resolveContextWindowInfo({
+        cfg,
+        provider: "openrouter",
+        modelId: "big-model",
+        modelContextWindow: 128_000,
+        defaultTokens: 200_000,
+        // No catalogContextWindow — no cap
+      });
+
+      expect(info.tokens).toBe(200_000);
+      expect(info.source).toBe("modelsConfig");
+    });
+
+    it("caps default window when it exceeds catalog native window", () => {
+      const info = resolveContextWindowInfo({
+        cfg: undefined,
+        provider: "openrouter",
+        modelId: "small-model",
+        // No model metadata provided — falls back to defaultTokens
+        defaultTokens: 200_000,
+        catalogContextWindow: 64_000,
+      });
+
+      // Default 200k, catalog says 64k — must cap
+      expect(info.tokens).toBe(64_000);
+      expect(info.source).toBe("default");
+    });
+
+    it("agents.defaults.contextTokens cap still applies after catalog cap", () => {
+      const cfg = {
+        agents: { defaults: { contextTokens: 32_000 } },
+        models: {
+          providers: {
+            openrouter: {
+              baseUrl: "http://localhost",
+              apiKey: "x",
+              models: [
+                {
+                  id: "big-model",
+                  name: "big-model",
+                  reasoning: false,
+                  input: ["text"],
+                  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                  contextWindow: 200_000,
+                  maxTokens: 8192,
+                },
+              ],
+            },
+          },
+        },
+      } satisfies OpenClawConfig;
+
+      const info = resolveContextWindowInfo({
+        cfg,
+        provider: "openrouter",
+        modelId: "big-model",
+        modelContextWindow: 128_000,
+        defaultTokens: 200_000,
+        catalogContextWindow: 128_000,
+      });
+
+      // Configured 200k, catalog 128k → capped to 128k, then agents.defaults.contextTokens 32k caps further
+      expect(info.tokens).toBe(32_000);
+      expect(info.source).toBe("agentContextTokens");
+    });
+  });
+
   it("keeps block messages concise for public providers", () => {
     const guard = evaluateContextWindowGuard({
       info: { tokens: 3_000, source: "model" },
