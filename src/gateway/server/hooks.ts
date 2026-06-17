@@ -133,7 +133,11 @@ export function createGatewayHooksRequestHandler(params: {
       createdAtMs: nowMs,
       updatedAtMs: nowMs,
       schedule: { kind: "at", at: resolveTimestampMsToIsoString(nowMs) },
-      sessionTarget: "isolated",
+      // When hooks request persistent sessions, translate to the cron-native
+      // "session:<key>" target so the existing session reuse and delivery
+      // semantics apply without extending the cron session target contract.
+      sessionTarget:
+        value.sessionTarget === "persistent" ? `session:${sessionKey}` : "isolated",
       wakeMode: value.wakeMode,
       payload: {
         kind: "agentTurn",

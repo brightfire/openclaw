@@ -33,6 +33,12 @@ export type HookMappingConfig = {
   model?: string;
   thinking?: string;
   timeoutSeconds?: number;
+  /**
+   * Session lifecycle for hook agent runs.
+   * "isolated" (default) creates a fresh session per invocation.
+   * "persistent" reuses the existing session when the same sessionKey matches a prior run.
+   */
+  sessionTarget?: "isolated" | "persistent";
   transform?: HookMappingTransform;
 };
 
