@@ -453,6 +453,13 @@ export const uk: TranslationMap = {
     dreams: "Консолідація пам’яті під час сну.",
   },
   skillWorkshop: {
+    viewSwitcher: {
+      label: "Workshop view",
+      board: "Board",
+      boardTitle: "Board view",
+      today: "Today",
+      todayTitle: "Today view",
+    },
     header: {
       useCurrentChat: "Use current chat",
       useCurrentChatAria: "Use current chat for revision requests",

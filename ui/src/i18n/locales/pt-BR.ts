@@ -451,6 +451,13 @@ export const pt_BR: TranslationMap = {
     dreams: "Consolidação de memória durante o sono.",
   },
   skillWorkshop: {
+    viewSwitcher: {
+      label: "Workshop view",
+      board: "Board",
+      boardTitle: "Board view",
+      today: "Today",
+      todayTitle: "Today view",
+    },
     header: {
       useCurrentChat: "Use current chat",
       useCurrentChatAria: "Use current chat for revision requests",
