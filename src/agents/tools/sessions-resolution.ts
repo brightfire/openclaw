@@ -127,7 +127,8 @@ export function shouldVerifyRequesterSpawnedSessionVisibility(params: {
   return (
     params.restrictToSpawned &&
     !params.resolvedViaSessionId &&
-    params.requesterSessionKey !== params.targetSessionKey
+    params.requesterSessionKey !== params.targetSessionKey &&
+    !params.targetSessionKey.startsWith("@")
   );
 }
 
