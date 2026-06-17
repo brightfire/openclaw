@@ -1,0 +1,84 @@
+// Schema-level coverage for the persistent-sessionTarget + sessionKey pairing
+// rule on hook mappings. Mirrors the request-side validation in
+// normalizeAgentPayload; both surfaces refuse persistent without a stable key
+// to prevent the silent fall-through to a generated hook:<uuid> session.
+import { describe, expect, it } from "vitest";
+import { OpenClawSchema } from "./zod-schema.js";
+
+function buildHooksConfig(mapping: Record<string, unknown>) {
+  return {
+    hooks: {
+      enabled: true,
+      token: "secret",
+      mappings: [mapping],
+    },
+  };
+}
+
+describe("HookMappingSchema sessionTarget + sessionKey pairing", () => {
+  it("accepts persistent + sessionKey", () => {
+    const result = OpenClawSchema.safeParse(
+      buildHooksConfig({
+        id: "ok-static",
+        match: { path: "linear" },
+        action: "agent",
+        sessionTarget: "persistent",
+        sessionKey: "hook:linear:fixed",
+      }),
+    );
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts persistent + templated sessionKey", () => {
+    const result = OpenClawSchema.safeParse(
+      buildHooksConfig({
+        id: "ok-templated",
+        match: { path: "gmail" },
+        action: "agent",
+        sessionTarget: "persistent",
+        sessionKey: "hook:gmail:{{messages[0].id}}",
+      }),
+    );
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects persistent without sessionKey", () => {
+    const result = OpenClawSchema.safeParse(
+      buildHooksConfig({
+        id: "bad-no-key",
+        match: { path: "linear" },
+        action: "agent",
+        sessionTarget: "persistent",
+      }),
+    );
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const issue = result.error.issues.find((entry) => entry.message.includes("sessionTarget"));
+      expect(issue).toBeDefined();
+      expect(issue?.message).toMatch(/persistent.*sessionKey/);
+    }
+  });
+
+  it("accepts isolated without sessionKey", () => {
+    const result = OpenClawSchema.safeParse(
+      buildHooksConfig({
+        id: "isolated-no-key",
+        match: { path: "linear" },
+        action: "agent",
+        sessionTarget: "isolated",
+      }),
+    );
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts mappings without sessionTarget (defaults to isolated downstream)", () => {
+    const result = OpenClawSchema.safeParse(
+      buildHooksConfig({
+        id: "no-target",
+        match: { path: "linear" },
+        action: "agent",
+      }),
+    );
+    expect(result.success).toBe(true);
+  });
+});

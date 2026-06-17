@@ -345,6 +345,16 @@ function validateAction(action: HookAction): HookMappingResult {
   if (!action.message?.trim()) {
     return { ok: false, error: "hook mapping requires message" };
   }
+  if (action.sessionTarget === "persistent" && !action.sessionKey?.trim()) {
+    // Catches transform overrides that promote a mapping to persistent without
+    // supplying a sessionKey. Pure config-side mappings are also rejected
+    // earlier by the Zod schema refine on HookMappingSchema; this guard covers
+    // the runtime merge path.
+    return {
+      ok: false,
+      error: 'hook mapping with sessionTarget "persistent" requires sessionKey',
+    };
+  }
   return { ok: true, action };
 }
 

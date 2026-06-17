@@ -476,6 +476,17 @@ export function normalizeAgentPayload(payload: Record<string, unknown>):
       error: 'sessionTarget must be "persistent" or "isolated"',
     };
   }
+  if (sessionTarget === "persistent" && !sessionKey) {
+    // Persistent hooks reuse the same cron session across invocations, which
+    // only works when the caller supplies a stable sessionKey. Otherwise the
+    // generated hook:<uuid> fallback would mint a fresh session per call and
+    // silently behave like isolated. defaultSessionKey is intentionally not
+    // accepted here; pairing is a per-request contract.
+    return {
+      ok: false,
+      error: 'sessionTarget "persistent" requires a sessionKey',
+    };
+  }
   return {
     ok: true,
     value: {

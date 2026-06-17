@@ -68,6 +68,22 @@ export const HookMappingSchema = z
       .optional(),
   })
   .strict()
+  .refine(
+    (value) => {
+      // Persistent hooks reuse the same cron session across invocations and
+      // only work when a stable sessionKey is bound to the mapping. Reject
+      // the combination at config time so operators see the misconfiguration
+      // before any webhook fires; defaultSessionKey is intentionally not
+      // accepted here — the pairing is a per-mapping contract. Transforms
+      // may still override sessionTarget at runtime if they also return a
+      // sessionKey.
+      if (value?.sessionTarget !== "persistent") {
+        return true;
+      }
+      return typeof value.sessionKey === "string" && value.sessionKey.length > 0;
+    },
+    { message: 'sessionTarget "persistent" requires sessionKey', path: ["sessionTarget"] },
+  )
   .optional();
 
 const InternalHookHandlerSchema = z

@@ -238,6 +238,9 @@ describe("hooks mapping", () => {
             match: { path: "gmail" },
             action: "agent",
             messageTemplate: "Subject: {{messages[0].subject}}",
+            // Persistent requires a stable sessionKey; use the templated
+            // gmail message id so each thread reuses the same session.
+            sessionKey: "hook:gmail:{{messages[0].id}}",
             sessionTarget: "persistent",
           },
         ],
@@ -268,10 +271,7 @@ describe("hooks mapping", () => {
       const transformsRoot = path.join(configDir, "hooks", "transforms");
       fs.mkdirSync(transformsRoot, { recursive: true });
       const modPath = path.join(transformsRoot, "transform-st.mjs");
-      fs.writeFileSync(
-        modPath,
-        `export default () => ({ sessionTarget: "persistent" });`,
-      );
+      fs.writeFileSync(modPath, `export default () => ({ sessionTarget: "persistent" });`);
       const mappings = resolveHookMappings(
         {
           mappings: [
@@ -280,6 +280,10 @@ describe("hooks mapping", () => {
               match: { path: "gmail" },
               action: "agent",
               messageTemplate: "Subject: {{messages[0].subject}}",
+              // Persistent target requires a sessionKey; supply a templated
+              // one so the merged action passes validateAction's persistent
+              // + sessionKey guard.
+              sessionKey: "hook:gmail:{{messages[0].id}}",
               transform: { module: "transform-st.mjs" },
             },
           ],
@@ -303,10 +307,7 @@ describe("hooks mapping", () => {
       const transformsRoot = path.join(configDir, "hooks", "transforms");
       fs.mkdirSync(transformsRoot, { recursive: true });
       const modPath = path.join(transformsRoot, "transform-st-override.mjs");
-      fs.writeFileSync(
-        modPath,
-        `export default () => ({ sessionTarget: "persistent" });`,
-      );
+      fs.writeFileSync(modPath, `export default () => ({ sessionTarget: "persistent" });`);
       const mappings = resolveHookMappings(
         {
           mappings: [
@@ -315,6 +316,7 @@ describe("hooks mapping", () => {
               match: { path: "gmail" },
               action: "agent",
               messageTemplate: "Subject: {{messages[0].subject}}",
+              sessionKey: "hook:gmail:{{messages[0].id}}",
               sessionTarget: "isolated",
               transform: { module: "transform-st-override.mjs" },
             },
@@ -331,6 +333,42 @@ describe("hooks mapping", () => {
       expect(result?.ok).toBe(true);
       if (result?.ok && result.action?.kind === "agent") {
         expect(result.action.sessionTarget).toBe("persistent");
+      }
+    });
+
+    it("rejects merged action with persistent sessionTarget but no sessionKey", async () => {
+      // Mapping config is isolated with no sessionKey; transform promotes it
+      // to persistent without supplying a sessionKey. validateAction must
+      // refuse the merged action so the request fails instead of falling
+      // through to a generated hook:<uuid> cron session per call.
+      const configDir = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-sessiontarget-bad-"));
+      const transformsRoot = path.join(configDir, "hooks", "transforms");
+      fs.mkdirSync(transformsRoot, { recursive: true });
+      const modPath = path.join(transformsRoot, "transform-st-bad.mjs");
+      fs.writeFileSync(modPath, `export default () => ({ sessionTarget: "persistent" });`);
+      const mappings = resolveHookMappings(
+        {
+          mappings: [
+            {
+              id: "st-bad",
+              match: { path: "gmail" },
+              action: "agent",
+              messageTemplate: "Subject: {{messages[0].subject}}",
+              transform: { module: "transform-st-bad.mjs" },
+            },
+          ],
+        },
+        { configDir },
+      );
+      const result = await applyHookMappings(mappings, {
+        payload: gmailPayload,
+        headers: {},
+        url: baseUrl,
+        path: "gmail",
+      });
+      expect(result?.ok).toBe(false);
+      if (result && !result.ok) {
+        expect(result.error).toMatch(/persistent.*sessionKey/);
       }
     });
   });

@@ -220,6 +220,8 @@ describe("gateway hooks helpers", () => {
     const persistent = normalizeAgentPayload({
       message: "hello",
       sessionTarget: "persistent",
+      // Pairing rule: persistent requires sessionKey on the request payload.
+      sessionKey: "hook:linear:issue-1",
     });
     expect(persistent.ok).toBe(true);
     if (persistent.ok) {
@@ -258,6 +260,45 @@ describe("gateway hooks helpers", () => {
       sessionTarget: 42,
     });
     expect(nonString.ok).toBe(false);
+  });
+
+  test("normalizeAgentPayload rejects persistent sessionTarget without sessionKey", () => {
+    // Persistent reuses the same cron session across invocations; without a
+    // stable request-supplied sessionKey, the generated hook:<uuid> fallback
+    // would mint a fresh session per call and silently behave like isolated.
+    const missing = normalizeAgentPayload({
+      message: "hello",
+      sessionTarget: "persistent",
+    });
+    expect(missing.ok).toBe(false);
+    if (!missing.ok) {
+      expect(missing.error).toMatch(/sessionTarget.*persistent.*sessionKey/);
+    }
+
+    const empty = normalizeAgentPayload({
+      message: "hello",
+      sessionTarget: "persistent",
+      sessionKey: "   ",
+    });
+    expect(empty.ok).toBe(false);
+
+    const paired = normalizeAgentPayload({
+      message: "hello",
+      sessionTarget: "persistent",
+      sessionKey: "hook:linear:issue-42",
+    });
+    expect(paired.ok).toBe(true);
+    if (paired.ok) {
+      expect(paired.value.sessionTarget).toBe("persistent");
+      expect(paired.value.sessionKey).toBe("hook:linear:issue-42");
+    }
+
+    // Isolated (or omitted) never requires a sessionKey.
+    const isolatedNoKey = normalizeAgentPayload({
+      message: "hello",
+      sessionTarget: "isolated",
+    });
+    expect(isolatedNoKey.ok).toBe(true);
   });
 
   test("resolveHookTargetAgentId preserves omitted default target intent", () => {
