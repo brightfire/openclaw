@@ -21,6 +21,7 @@ is maintained, the merge-not-rebase philosophy, and the new-entry template.
 | Store-Based Session Archiving | `brightfire/sessions-history-archived` | `b4e7fdf7bb` | https://github.com/brightfire/openclaw/pull/97 | 2026-06-16 |
 | CLI HTTP Health Fallback | `brightfire/cli-http-fallback` | `82107367f0` | — | 2026-06-16 |
 | skip changelog trimming for Brightfire -bf versions | `brightfire/changelog-bf-version` | `c41a70f132` | — | 2026-06-16 |
+| configurable sessionTarget for hook mappings | `brightfire/webhook-sessiontarget-support` | `ef22d62d59` | https://github.com/brightfire/openclaw/pull/106 | 2026-06-17 |
 
 ## Slack Markdown
 
@@ -288,6 +289,25 @@ upstream fixed the underlying issue).
 ## skip changelog trimming for Brightfire -bf versions
 
 (canonical: `brightfire/changelog-bf-version`)
+
+### Rationale
+
+_Add description of what this patch does and why._
+
+### Files touched
+
+TBD — update after first stable merge
+
+### Upgrade guidance
+
+_Describe upstream changes that have historically conflicted and how they
+were resolved. Patches are absorbed by `bf-build-stable` via squash-merge of
+the canonical branch — do **not** prescribe `git cherry-pick` here. Describe
+what tends to conflict and how to resolve it._
+
+## configurable sessionTarget for hook mappings
+
+(canonical: `brightfire/webhook-sessiontarget-support`)
 
 ### Rationale
 
