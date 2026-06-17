@@ -254,6 +254,46 @@ describe("usage-format", () => {
     });
   });
 
+  describe("estimateUsageCost with cacheRetention", () => {
+    const baseCost = {
+      input: 3,
+      output: 15,
+      cacheRead: 0.3,
+      cacheWrite: 6,
+      cacheWriteShort: 3.75,
+    };
+    const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 1_000_000 };
+
+    it("uses cacheWriteShort when cacheRetention is 'short' and cacheWriteShort is defined", () => {
+      const total = estimateUsageCost({ usage, cost: baseCost, cacheRetention: "short" });
+      // 1_000_000 cacheWrite tokens * 3.75 / 1_000_000 = 3.75
+      expect(total).toBeCloseTo(3.75);
+    });
+
+    it("uses cacheWrite when cacheRetention is 'long'", () => {
+      const total = estimateUsageCost({ usage, cost: baseCost, cacheRetention: "long" });
+      // 1_000_000 cacheWrite tokens * 6 / 1_000_000 = 6
+      expect(total).toBeCloseTo(6);
+    });
+
+    it("falls back to cacheWrite when cacheRetention is 'short' but cacheWriteShort is not defined", () => {
+      const costWithoutShort = { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 6 };
+      const total = estimateUsageCost({
+        usage,
+        cost: costWithoutShort,
+        cacheRetention: "short",
+      });
+      // Falls back to cacheWrite: 6
+      expect(total).toBeCloseTo(6);
+    });
+
+    it("uses cacheWrite when no cacheRetention is passed (backward compat)", () => {
+      const total = estimateUsageCost({ usage, cost: baseCost });
+      // No cacheRetention → default to cacheWrite: 6
+      expect(total).toBeCloseTo(6);
+    });
+  });
+
   it("can skip plugin-backed model normalization for display-only cost lookup", () => {
     const config = {
       models: {

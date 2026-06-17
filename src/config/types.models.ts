@@ -168,6 +168,7 @@ export type ModelDefinitionConfig = {
     output: number;
     cacheRead: number;
     cacheWrite: number;
+    cacheWriteShort?: number;
     /** Optional tiered pricing.  When present, cost calculation uses
      *  per-tier rates instead of the flat rates above.  Prices are
      *  USD / million tokens; ranges are half-open `[start, end)` on the

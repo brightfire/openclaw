@@ -39,6 +39,7 @@ export type EmbeddedAgentMeta = {
    * and completion tokens that are useful for billing but noisy as live context.
    */
   promptTokens?: number;
+  cacheRetention?: "short" | "long" | "none";
   usage?: {
     input?: number;
     output?: number;

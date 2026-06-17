@@ -1908,6 +1908,7 @@ export async function runReplyAgent(params: {
       modelUsed,
       providerUsed,
       contextTokensUsed,
+      cacheRetention: runResult.meta?.agentMeta?.cacheRetention,
       systemPromptReport: runResult.meta?.systemPromptReport,
       cliSessionId,
       cliSessionBinding,
@@ -2140,7 +2141,11 @@ export async function runReplyAgent(params: {
         config: cfg,
       });
       const costUsd = hasBillableUsageBuckets
-        ? estimateUsageCost({ usage, cost: costConfig })
+        ? estimateUsageCost({
+            usage,
+            cost: costConfig,
+            cacheRetention: runResult.meta?.agentMeta?.cacheRetention,
+          })
         : undefined;
       emitTrustedDiagnosticEvent({
         type: "model.usage",
@@ -2191,6 +2196,7 @@ export async function runReplyAgent(params: {
         usage,
         showCost,
         costConfig,
+        cacheRetention: runResult.meta?.agentMeta?.cacheRetention,
       });
       const usageTemplate =
         responseUsageMode === "full" && replyUsageState
