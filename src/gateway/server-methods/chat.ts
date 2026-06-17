@@ -2546,12 +2546,14 @@ async function handleChatHistoryRequest({
     void modelCatalogPromise.catch(() => undefined);
   }
   const sessionId = entry?.sessionId;
+  const isArchived = entry?.archived === true;
   const sessionAgentId = resolveSessionAgentId({
     sessionKey,
     config: cfg,
     agentId: selectedAgent.agentId,
   });
   const resolvedSessionModel = resolveSessionModelRef(cfg, entry, sessionAgentId);
+
   const hardMax = 1000;
   const defaultLimit = 200;
   const requested = typeof limit === "number" ? limit : defaultLimit;
@@ -2683,6 +2685,7 @@ async function handleChatHistoryRequest({
     thinkingLevel,
     fastMode: entry?.fastMode,
     verboseLevel,
+    ...(isArchived ? { archived: true } : {}),
     ...(boundedInFlightRun ? { inFlightRun: boundedInFlightRun } : {}),
     ...(includeAgentsList ? { agentsList: listAgentsForGateway(cfg, modelCatalog) } : {}),
     ...(startupMetadata ? { metadata: startupMetadata } : {}),

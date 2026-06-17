@@ -16,6 +16,7 @@ export function describeSessionsListTool(): string {
   return [
     "List visible sessions; filter by kind, label, agentId, search, activity.",
     "Use before sessions_history or sessions_send target selection.",
+    "Set `key` to an exact canonical session key to fetch a single session's row; combine with `includeArchived: true` to also receive its archived twin rows for the same session lineage.",
   ].join(" ");
 }
 
@@ -24,6 +25,8 @@ export function describeSessionsHistoryTool(): string {
   return [
     "Fetch sanitized history for visible session.",
     "Use before replying, debugging, resuming; supports limits/tool messages.",
+    "`sessionKey` accepts the canonical session key (e.g. `agent:main:main`), an archive-twin key (`<canonical>:archived:<sessionId>`), or a bare sessionId. Archived sessions are read transparently from their `.jsonl.reset.<ts>` transcript and the response includes `archived: true`.",
+    "To resume context from a prior rolled-over session: call sessions_list with `key=<your canonical session key>` and `includeArchived: true` to get the archive twin's sessionId, then sessions_history with `sessionKey=<that sessionId>` (or the archive-twin key) to read its transcript.",
   ].join(" ");
 }
 
