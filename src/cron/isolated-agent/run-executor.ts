@@ -510,7 +510,13 @@ export async function executeCronRun(params: {
       ).preferFinalAssistantVisibleText,
     });
     const interimText = interimOutputText?.trim() ?? "";
+    const isPersistentWebhookSession =
+      params.job.payload.kind === "agentTurn" &&
+      params.job.payload.externalContentSource === "webhook" &&
+      typeof params.job.sessionTarget === "string" &&
+      params.job.sessionTarget.startsWith("session:");
     const shouldRetryInterimAck =
+      !isPersistentWebhookSession &&
       !runResult.meta?.error &&
       !interimHasFatalErrorPayload &&
       !runResult.didSendViaMessagingTool &&
