@@ -87,6 +87,23 @@
       }
     },
     {
+      "name": "@brightfire/diagnostics-otel",
+      "description": "Brightfire fork of the OpenClaw OTel diagnostics plugin",
+      "source": "official",
+      "kind": "plugin",
+      "openclaw": {
+        "plugin": {
+          "id": "diagnostics-otel",
+          "label": "Diagnostics OpenTelemetry"
+        },
+        "install": {
+          "npmSpec": "@brightfire/diagnostics-otel",
+          "defaultChoice": "npm",
+          "minHostVersion": ">=2026.6.8"
+        }
+      }
+    },
+    {
       "name": "@openclaw/diagnostics-prometheus",
       "description": "OpenClaw diagnostics Prometheus exporter",
       "source": "official",
