@@ -3,7 +3,8 @@
   "name": "Diagnostics OpenTelemetry",
   "description": "OpenClaw diagnostics OpenTelemetry exporter for metrics and traces.",
   "activation": {
-    "onStartup": true
+    "onStartup": false,
+    "onConfigPaths": ["diagnostics.otel"]
   },
   "configSchema": {
     "type": "object",
