@@ -847,6 +847,7 @@ export function logSessionTurnCreated(params: {
   sessionId?: string;
   sessionKey?: string;
   agentId?: string;
+  agentLabel?: string;
   channel?: string;
   trigger: "user" | "heartbeat";
 }) {
@@ -868,6 +869,7 @@ export function logSessionTurnCreated(params: {
     sessionId: params.sessionId,
     sessionKey: params.sessionKey,
     agentId: params.agentId,
+    agentLabel: params.agentLabel,
     channel: params.channel,
     trigger: params.trigger,
   });
