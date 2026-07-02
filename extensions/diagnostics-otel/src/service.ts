@@ -336,7 +336,10 @@ function lowCardinalityQueueLaneAttr(value: string | undefined, fallback = "unkn
 // stripping the "agent:" session-key prefix from agentId as fallback.
 function resolveAgentLabelAttr(evt: { agentId?: string; agentLabel?: string }): string {
   if (evt.agentLabel) {
-    return lowCardinalityAttr(evt.agentLabel);
+    const candidate = lowCardinalityAttr(evt.agentLabel);
+    if (candidate !== "unknown") {
+      return candidate;
+    }
   }
   const id = evt.agentId;
   if (!id) {
