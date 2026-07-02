@@ -2160,6 +2160,7 @@ export async function runReplyAgent(params: {
         sessionId: followupRun.run.sessionId,
         channel: replyToChannel,
         agentId: followupRun.run.agentId,
+        agentLabel: resolveAgentConfig(cfg, followupRun.run.agentId)?.name,
         provider: providerUsed,
         model: modelUsed,
         usage: {
