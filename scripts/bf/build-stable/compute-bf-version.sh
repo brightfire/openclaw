@@ -26,14 +26,26 @@ if [ -z "${VERSION:-}" ]; then
   exit 2
 fi
 
-# Only count new-style tags (pure numeric suffix, e.g. bf/v2026.6.8-3).
-# Old-style -bf{N} tags are excluded so the counter is independent of
-# pre-migration builds.
-BF_NUM=$(git tag -l "bf/v${VERSION}-*" \
-  | grep -vE -- '-bf[0-9]+$' \
-  | grep -E -- '-[0-9]+$' \
-  | sed -E 's/.*-([0-9]+)$/\1/' \
-  | sort -n | tail -1)
+# Fetch all bf/v{VERSION}-* tags from git.
+# If git itself fails (connectivity, auth, bad repo), this exits loudly here.
+ALL_BF_TAGS=$(git tag -l "bf/v${VERSION}-*")
+
+# Filter to new-style numeric-suffix tags only.
+# Old-style -bf{N} tags are excluded — pre-migration builds, counter is independent.
+# We handle the no-new-style-tags case explicitly rather than relying on || true:
+#   grep exits 1 on no match, which is expected on the first new-format build.
+BF_NUM=""
+if [[ -n "$ALL_BF_TAGS" ]]; then
+  NEW_STYLE=$(printf '%s\n' "$ALL_BF_TAGS" \
+    | grep -vE -- '-bf[0-9]+$' \
+    | grep -E -- '-[0-9]+$' || true)
+  if [[ -n "$NEW_STYLE" ]]; then
+    BF_NUM=$(printf '%s\n' "$NEW_STYLE" \
+      | sed -E 's/.*-([0-9]+)$/\1/' \
+      | sort -n \
+      | tail -1)
+  fi
+fi
 
 if [ -z "$BF_NUM" ]; then
   BF_NUM=1
