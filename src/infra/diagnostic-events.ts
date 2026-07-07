@@ -426,7 +426,6 @@ export type DiagnosticSkillUsedEvent = DiagnosticBaseEvent & {
   /**
    * Bounded (max 500 chars) excerpt describing what triggered the skill load.
    * For command activation: the command name. For read activation: the skill file path.
-   * Neither is PII — both are system identifiers.
    */
   triggerSummary?: string;
   toolName?: string;

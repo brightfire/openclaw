@@ -272,7 +272,7 @@ describe("skill.used diagnostic event — triggerSummary field", () => {
     );
 
     expect(events).toHaveLength(1);
-    // triggerSummary should be the resolved skill file path (not PII — it's a system path)
+    // triggerSummary should be the resolved skill file path
     expect(events[0].triggerSummary).toBe(skillFilePath);
   });
 

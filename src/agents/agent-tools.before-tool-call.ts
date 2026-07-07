@@ -418,7 +418,6 @@ function emitSkillUsedDiagnostic(params: {
     ? freezeDiagnosticTraceContext(createChildDiagnosticTraceContext(params.ctx.trace))
     : undefined;
   // triggerSummary: command name for command activation, file path for read activation.
-  // Neither is PII — command names and skill file paths are system identifiers.
   const triggerSummary =
     params.match.activation === "command" && params.ctx?.skillCommand?.commandName
       ? params.ctx.skillCommand.commandName.slice(0, 500)
