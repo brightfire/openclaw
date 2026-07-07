@@ -74,7 +74,7 @@ function loadSingleSkillDirectory(params: {
       description,
       filePath,
       baseDir,
-      promptVersion: computeSkillPromptVersion(raw),
+      promptVersion: computeSkillPromptVersion(params.skillDir),
       source: params.source,
       sourceInfo: createSyntheticSourceInfo(filePath, {
         source: params.source,
