@@ -152,6 +152,8 @@ jobs:
       - name: Regenerate build artifacts
         run: /tmp/bf-build-stable/regenerate-artifacts.sh
 
+      # Both incremental caches restored together before any compute begins,
+      # so neither the lint phase nor the build phase ever starts cold.
       - name: Restore tsgo incremental cache
         uses: actions/cache@v5
         with:
@@ -159,12 +161,6 @@ jobs:
           key: upstream-${{ steps.upstream-tag.outputs.tag }}-tsgo-${{ hashFiles('BRIGHTFIRE_PATCHES.md', 'tsconfig.core.json') }}
           restore-keys: |
             upstream-${{ steps.upstream-tag.outputs.tag }}-tsgo-
-
-      - name: Lint and architecture checks
-        run: pnpm check
-
-      - name: UI raw-window-open guard
-        run: pnpm lint:ui:no-raw-window-open
 
       - name: Restore Vite UI build cache
         uses: actions/cache@v5
@@ -175,6 +171,18 @@ jobs:
           key: upstream-${{ steps.upstream-tag.outputs.tag }}-vite-${{ hashFiles('ui/package.json', 'pnpm-lock.yaml', 'ui/vite.config.ts') }}
           restore-keys: |
             upstream-${{ steps.upstream-tag.outputs.tag }}-vite-
+
+      # Both checks are independent (different input trees, no shared writes)
+      # so run them concurrently — UI lint overlaps with the heavier arch/lint
+      # suite on the idle vCPUs rather than waiting behind it.
+      - name: Lint, architecture, and UI checks
+        run: |
+          pnpm check                       & CHECK_PID=$!
+          pnpm lint:ui:no-raw-window-open  & UI_LINT_PID=$!
+          FAIL=0
+          wait "$CHECK_PID"      || { echo "=== FAILED: pnpm check ==="                       >&2; FAIL=1; }
+          wait "$UI_LINT_PID"    || { echo "=== FAILED: pnpm lint:ui:no-raw-window-open ===" >&2; FAIL=1; }
+          [ "$FAIL" -eq 0 ]
 
       - name: Build
         run: NODE_OPTIONS="--max-old-space-size=12000" pnpm build
