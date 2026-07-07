@@ -1286,6 +1286,10 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         { spanContext: SpanContext; token: symbol; owner?: TrustedSpanAliasOwner }
       >();
       const retainedTrustedSpanContextCleanupTimers = new Set<ReturnType<typeof setTimeout>>();
+      // Tracks the OTEL span ID of the most recent model call per trace ID so that
+      // model.usage spans can reference their corresponding model.call span via
+      // the openclaw.model_call_id attribute even though the two spans are siblings.
+      const lastModelCallOtelSpanIdByTraceId = new Map<string, string>();
       stopActiveTrustedSpans = () => {
         const stopAt = Date.now();
         for (const handle of retainedTrustedSpanContextCleanupTimers) {
@@ -1293,6 +1297,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         }
         retainedTrustedSpanContextCleanupTimers.clear();
         retainedTrustedSpanContexts.clear();
+        lastModelCallOtelSpanIdByTraceId.clear();
         for (const span of new Set([
           ...activeTrustedSpans.values(),
           ...Array.from(activeTrustedSpanAliases.values(), (entry) => entry.span),
@@ -2130,6 +2135,15 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
           usage.cacheWrite,
         );
 
+        const modelCallId =
+          evt.modelCallId ??
+          (evt.trace?.traceId
+            ? lastModelCallOtelSpanIdByTraceId.get(evt.trace.traceId)
+            : undefined);
+        if (modelCallId) {
+          spanAttrs["openclaw.model_call_id"] = modelCallId;
+        }
+
         const span = spanWithDuration("openclaw.model.usage", spanAttrs, evt.durationMs, {
           parentContext: activeTrustedParentContext(evt, metadata),
           endTimeMs: evt.ts,
@@ -2898,7 +2912,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         if (evt.transport) {
           spanAttrs["openclaw.transport"] = evt.transport;
         }
-        trackTrustedSpan(
+        const span = trackTrustedSpan(
           evt,
           metadata,
           spanWithDuration(modelCallSpanName(evt), spanAttrs, undefined, {
@@ -2907,6 +2921,10 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
             startTimeMs: evt.ts,
           }),
         );
+        const traceId = trustedTraceContext(evt, metadata)?.traceId;
+        if (traceId) {
+          lastModelCallOtelSpanIdByTraceId.set(traceId, span.spanContext().spanId);
+        }
       };
 
       const recordModelCallCompleted = (
