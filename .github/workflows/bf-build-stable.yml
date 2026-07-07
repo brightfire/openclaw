@@ -55,7 +55,7 @@ concurrency:
 jobs:
   rebuild-stable:
     name: Rebuild stable
-    runs-on: ubuntu-latest-l
+    runs-on: ubuntu-latest-xl
     timeout-minutes: 45
     steps:
       - name: Generate app token
@@ -182,15 +182,15 @@ jobs:
       - name: Run tests
         env:
           # Per-worker heap budget (V8 old-generation limit). 2 workers × ~6 GB
-          # RSS × 4 parallel leaves = ~48 GB envelope, fits comfortably in the
-          # 32 GB runner since not every worker hits peak RSS simultaneously
-          # and many tests are I/O-bound rather than CPU-bound.
+          # RSS × 8 parallel leaves = ~96 GB theoretical max, fits comfortably
+          # in the 64 GB runner since not every worker hits peak RSS
+          # simultaneously and many tests are I/O-bound rather than CPU-bound.
           NODE_OPTIONS: "--max-old-space-size=4096"
 
           # Workers per leaf shard. Reduced from 6 → 2 because LEAF_SHARDS
           # expansion makes most leaves small enough that they don't benefit
           # from 6 internal workers — we get more wall-clock benefit from
-          # running multiple leaves concurrently (PARALLEL=4) than from
+          # running multiple leaves concurrently (PARALLEL=8) than from
           # over-parallelizing each individual leaf.
           OPENCLAW_VITEST_MAX_WORKERS: "2"
 
@@ -202,11 +202,11 @@ jobs:
           # See scripts/test-projects.test-support.mjs:buildFullSuiteVitestRunPlans.
           OPENCLAW_TEST_PROJECTS_LEAF_SHARDS: "1"
 
-          # Run 4 leaves in parallel (instead of the CI default of 1).
-          # Combined with MAX_WORKERS=2, that's 4 × 2 = 8 worker procs total,
-          # an exact match to the 8 vCPU runner. Expected ~40-60% wall-clock
-          # reduction vs the prior serial-leaves baseline.
-          OPENCLAW_TEST_PROJECTS_PARALLEL: "4"
+          # Run 8 leaves in parallel (instead of the CI default of 1).
+          # Combined with MAX_WORKERS=2, that's 8 × 2 = 16 worker procs total,
+          # matching the 16 vCPU runner (ubuntu-latest-xl). Expected ~50%
+          # wall-clock reduction vs the prior 4-parallel baseline (~10m vs ~20m).
+          OPENCLAW_TEST_PROJECTS_PARALLEL: "8"
         run: pnpm test
 
       # Decide whether the publish steps below should run. Compares sha256 of
