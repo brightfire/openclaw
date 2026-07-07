@@ -5454,4 +5454,83 @@ describe("diagnostics-otel service", () => {
     );
     await service.stop?.(ctx);
   });
+
+  test("sets openclaw.agent on run spans from agentLabel when present", async () => {
+    const service = createDiagnosticsOtelService();
+    const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });
+    await service.start(ctx);
+
+    emitTrustedDiagnosticEvent({
+      type: "run.completed",
+      runId: "run-label",
+      agentId: "agent:main:main",
+      agentLabel: "vash",
+      provider: "anthropic",
+      model: "claude-sonnet-4-6",
+      outcome: "completed",
+      durationMs: 50,
+      trace: {
+        traceId: TRACE_ID,
+        spanId: SPAN_ID,
+        traceFlags: "01",
+      },
+    });
+    await flushDiagnosticEvents();
+
+    const runSpanAttrs = startedSpanOptions("openclaw.run")?.attributes;
+    expect(runSpanAttrs?.["openclaw.agent"]).toBe("vash");
+    await service.stop?.(ctx);
+  });
+
+  test("derives openclaw.agent from agentId by stripping agent: prefix when agentLabel is absent", async () => {
+    const service = createDiagnosticsOtelService();
+    const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });
+    await service.start(ctx);
+
+    emitTrustedDiagnosticEvent({
+      type: "run.completed",
+      runId: "run-id-only",
+      agentId: "agent:main:main",
+      provider: "openai",
+      model: "gpt-5.5",
+      outcome: "completed",
+      durationMs: 30,
+      trace: {
+        traceId: TRACE_ID,
+        spanId: SPAN_ID,
+        traceFlags: "01",
+      },
+    });
+    await flushDiagnosticEvents();
+
+    const runSpanAttrs = startedSpanOptions("openclaw.run")?.attributes;
+    // "agent:main:main" -> strip "agent:" prefix -> "main:main" -> take up to first colon -> "main"
+    expect(runSpanAttrs?.["openclaw.agent"]).toBe("main");
+    await service.stop?.(ctx);
+  });
+
+  test("omits openclaw.agent from run span when neither agentId nor agentLabel is set", async () => {
+    const service = createDiagnosticsOtelService();
+    const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });
+    await service.start(ctx);
+
+    emitTrustedDiagnosticEvent({
+      type: "run.completed",
+      runId: "run-no-agent",
+      provider: "openai",
+      model: "gpt-5.5",
+      outcome: "completed",
+      durationMs: 20,
+      trace: {
+        traceId: TRACE_ID,
+        spanId: SPAN_ID,
+        traceFlags: "01",
+      },
+    });
+    await flushDiagnosticEvents();
+
+    const runSpanAttrs = startedSpanOptions("openclaw.run")?.attributes;
+    expect(Object.hasOwn(runSpanAttrs ?? {}, "openclaw.agent")).toBe(false);
+    await service.stop?.(ctx);
+  });
 });

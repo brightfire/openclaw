@@ -104,7 +104,7 @@ import {
   materializeBundleMcpToolsForRun,
 } from "../../agent-bundle-mcp-tools.js";
 import { createPreparedEmbeddedAgentSettingsManager } from "../../agent-project-settings.js";
-import { resolveAgentDir, resolveSessionAgentIds } from "../../agent-scope.js";
+import { resolveAgentConfig, resolveAgentDir, resolveSessionAgentIds } from "../../agent-scope.js";
 import {
   applyAgentAutoCompactionGuard,
   applyAgentCompactionSettingsFromConfig,
@@ -1173,10 +1173,13 @@ export async function runEmbeddedAttempt(
     const runTrace = freezeDiagnosticTraceContext(
       createChildDiagnosticTraceContext(diagnosticTrace),
     );
+    const agentLabel = resolveAgentConfig(params.config ?? {}, sessionAgentId)?.name;
     const diagnosticRunBase = {
       runId: params.runId,
       ...(params.sessionKey && { sessionKey: params.sessionKey }),
       ...(params.sessionId && { sessionId: params.sessionId }),
+      agentId: sessionAgentId,
+      ...(agentLabel ? { agentLabel } : {}),
       provider: params.provider,
       model: params.modelId,
       trigger: params.trigger,

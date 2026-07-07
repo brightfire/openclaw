@@ -450,6 +450,22 @@ function lowCardinalityQueueLaneAttr(value: string | undefined, fallback = "unkn
   return LOW_CARDINALITY_VALUE_RE.test(lane) ? lane : fallback;
 }
 
+// Resolves the openclaw.agent span attribute from agentLabel (preferred) or by
+// stripping the "agent:" session-key prefix from agentId as fallback.
+function resolveAgentLabelAttr(evt: { agentId?: string; agentLabel?: string }): string {
+  if (evt.agentLabel) {
+    return lowCardinalityAttr(evt.agentLabel);
+  }
+  const id = evt.agentId;
+  if (!id) {
+    return "unknown";
+  }
+  const stripped = id.toLowerCase().startsWith("agent:") ? id.slice("agent:".length) : id;
+  const colonIdx = stripped.indexOf(":");
+  const label = colonIdx >= 0 ? stripped.slice(0, colonIdx) : stripped;
+  return lowCardinalityAttr(label || undefined);
+}
+
 function shouldCaptureOtelLogBody(policy: OtelContentCapturePolicy): boolean {
   return policy.logBodies;
 }
@@ -2542,12 +2558,17 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
           runId?: string;
           sessionKey?: string;
           sessionId?: string;
+          agentId?: string;
+          agentLabel?: string;
           provider?: string;
           model?: string;
           channel?: string;
           trigger?: string;
         },
       ) => {
+        if (evt.agentId || evt.agentLabel) {
+          spanAttrs["openclaw.agent"] = resolveAgentLabelAttr(evt);
+        }
         if (evt.provider) {
           spanAttrs["openclaw.provider"] = evt.provider;
         }
