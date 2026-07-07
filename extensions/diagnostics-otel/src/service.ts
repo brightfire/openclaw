@@ -2111,11 +2111,17 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
           usage.cacheWrite,
         );
 
+        const modelCallTraceId = evt.trace?.traceId;
         const modelCallId =
           evt.modelCallId ??
-          (evt.trace?.traceId
-            ? lastModelCallOtelSpanIdByTraceId.get(evt.trace.traceId)
+          (modelCallTraceId
+            ? lastModelCallOtelSpanIdByTraceId.get(modelCallTraceId)
             : undefined);
+        // Clear the map entry after consumption to prevent unbounded growth in long-running
+        // gateways where every agent run produces a fresh trace ID.
+        if (modelCallTraceId) {
+          lastModelCallOtelSpanIdByTraceId.delete(modelCallTraceId);
+        }
         if (modelCallId) {
           spanAttrs["openclaw.model_call_id"] = modelCallId;
         }
