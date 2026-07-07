@@ -368,10 +368,14 @@ jobs:
           # and concurrently with pnpm test, potentially corrupting dist/).
           # prepare/restore mirror what prepack does: narrow CHANGELOG.md to
           # the current release section so the tarball doesn't ship the full
-          # cumulative changelog (~2.4 MB).
+          # cumulative changelog (~2.4 MB). The bundled-channel smoke check
+          # (runBuildSmoke in openclaw-prepack.ts) is also preserved here so
+          # a patch that breaks a built channel/setup entry import is caught
+          # before the tarball is uploaded.
           (
             node scripts/package-changelog.mjs prepare
             node --import tsx scripts/write-package-dist-inventory.ts
+            node scripts/test-built-bundled-channel-entry-smoke.mjs
             npm pack --ignore-scripts
             node scripts/package-changelog.mjs restore
             echo "tarball=$(ls openclaw-*.tgz | head -1)" >> "$GITHUB_OUTPUT"
