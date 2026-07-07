@@ -3222,11 +3222,11 @@ describe("active-memory plugin", () => {
   });
 
   it("does not cache timeout results", async () => {
-    testing.setMinimumTimeoutMsForTests(1);
+    testing.setMinimumTimeoutMsForTests(50);
     testing.setSetupGraceTimeoutMsForTests(0);
     api.pluginConfig = {
       agents: ["main"],
-      timeoutMs: 1,
+      timeoutMs: 50,
       logging: true,
     };
     plugin.register(api as unknown as OpenClawPluginApi);
