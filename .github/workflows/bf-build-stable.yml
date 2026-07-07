@@ -137,7 +137,7 @@ jobs:
       # package.json state, eliminating unnecessary auto-installs.
       - name: Update package.json version
         env:
-          VERSION: ${{ steps.version.outputs.version }}  
+          VERSION: ${{ steps.version.outputs.version }}
         run: /tmp/bf-build-stable/bump-package-version.sh
 
       # Reuse upstream's composite so pnpm install + store-cache run the same
