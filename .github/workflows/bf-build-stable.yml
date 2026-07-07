@@ -360,12 +360,14 @@ jobs:
           # No dependency on test results — start immediately.
           /tmp/bf-build-stable/check-release-needed.sh & RELEASE_CHECK_PID=$!
 
-          # Tarball pack: packs the already-built dist/ tree (~10 s).
+          # Tarball pack: generates dist/postinstall-inventory.json (skipped by
+          # --ignore-scripts) then packs the already-built dist/ tree (~10 s).
           # No dependency on test results — start immediately.
           # --ignore-scripts prevents prepack from re-running pnpm build +
           # pnpm ui:build (which would run under the 4 GB Vitest heap limit
           # and concurrently with pnpm test, potentially corrupting dist/).
           (
+            node --import tsx scripts/write-package-dist-inventory.ts
             npm pack --ignore-scripts
             echo "tarball=$(ls openclaw-*.tgz | head -1)" >> "$GITHUB_OUTPUT"
           ) & PACK_PID=$!
