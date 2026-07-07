@@ -309,6 +309,8 @@ type SkillUsageMatch = {
   skillName: string;
   skillSource: SkillTelemetrySource;
   activation: "command" | "read";
+  /** sha256 promptVersion from the matched skill entry, if available. */
+  skillVersion?: string;
 };
 
 function resolveRelativeToolPath(candidate: string, ctx?: HookContext): string | undefined {
@@ -350,6 +352,7 @@ function skillInstructionPaths(snapshot: SkillSnapshot | undefined): Map<string,
       skillName,
       skillSource: resolveSkillTelemetrySource(skill),
       activation: "read" as const,
+      ...(skill.promptVersion && { skillVersion: skill.promptVersion }),
     };
     const filePath = typeof skill.filePath === "string" ? skill.filePath.trim() : "";
     if (filePath && path.isAbsolute(filePath)) {
@@ -372,10 +375,14 @@ function findSkillUsageMatch(params: {
   if (command) {
     const commandToolName = normalizeToolName(command.toolName ?? params.toolName);
     if (!commandToolName || commandToolName === params.toolName) {
+      const commandSkillVersion = params.ctx?.skillsSnapshot?.resolvedSkills?.find(
+        (s) => s.name === command.skillName,
+      )?.promptVersion;
       return {
         skillName: command.skillName,
         skillSource: resolveSkillTelemetrySourceValue(command.skillSource),
         activation: "command",
+        ...(commandSkillVersion && { skillVersion: commandSkillVersion }),
       };
     }
   }
@@ -402,6 +409,12 @@ function emitSkillUsedDiagnostic(params: {
   const trace = params.ctx?.trace
     ? freezeDiagnosticTraceContext(createChildDiagnosticTraceContext(params.ctx.trace))
     : undefined;
+  // triggerSummary: safe for command activation (command name is not PII);
+  // omitted for read activation (file path is PII — scrub before OTel, coordinate with DEV-289).
+  const triggerSummary =
+    params.match.activation === "command" && params.ctx?.skillCommand?.commandName
+      ? params.ctx.skillCommand.commandName.slice(0, 200)
+      : undefined;
   emitTrustedDiagnosticEvent({
     type: "skill.used",
     ...(params.ctx?.runId && { runId: params.ctx.runId }),
@@ -412,6 +425,8 @@ function emitSkillUsedDiagnostic(params: {
     skillName: params.match.skillName,
     skillSource: params.match.skillSource,
     activation: params.match.activation,
+    ...(params.match.skillVersion && { skillVersion: params.match.skillVersion }),
+    ...(triggerSummary && { triggerSummary }),
     toolName: params.toolName,
     ...(params.toolCallId && { toolCallId: params.toolCallId }),
   });
