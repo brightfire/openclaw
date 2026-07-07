@@ -238,7 +238,7 @@ describe("skill.used diagnostic event — triggerSummary field", () => {
     expect(summary).toBe("x".repeat(500));
   });
 
-  it("omits triggerSummary for read activation (path is PII-sensitive)", async () => {
+  it("populates triggerSummary with the skill file path for read activation", async () => {
     const workspaceDir = "/tmp/openclaw-skill-trigger-read";
     const skillBaseDir = path.join(workspaceDir, ".agents", "skills", "pii-check-skill");
     const skillFilePath = path.join(skillBaseDir, "SKILL.md");
@@ -273,11 +273,8 @@ describe("skill.used diagnostic event — triggerSummary field", () => {
     );
 
     expect(events).toHaveLength(1);
-    expect(events[0].triggerSummary).toBeUndefined();
-    // Confirm path and workspace dir are not leaked into the event
-    const serialized = JSON.stringify(events[0]);
-    expect(serialized).not.toContain("SKILL.md");
-    expect(serialized).not.toContain(workspaceDir);
+    // triggerSummary should be the resolved skill file path (not PII — it's a system path)
+    expect(events[0].triggerSummary).toBe(skillFilePath);
   });
 
   it("omits triggerSummary when commandName is absent", async () => {

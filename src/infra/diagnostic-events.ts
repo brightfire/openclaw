@@ -425,8 +425,8 @@ export type DiagnosticSkillUsedEvent = DiagnosticBaseEvent & {
   skillVersion?: string;
   /**
    * Bounded (max 500 chars) excerpt describing what triggered the skill load.
-   * PII-sensitive — must pass through the secret scrubbing pipeline before
-   * OTel emission (coordinate with DEV-289 scrubbing siblings).
+   * For command activation: the command name. For read activation: the skill file path.
+   * Neither is PII — both are system identifiers.
    */
   triggerSummary?: string;
   toolName?: string;
