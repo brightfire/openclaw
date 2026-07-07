@@ -413,7 +413,7 @@ function emitSkillUsedDiagnostic(params: {
   // omitted for read activation (file path is PII — scrub before OTel, coordinate with DEV-289).
   const triggerSummary =
     params.match.activation === "command" && params.ctx?.skillCommand?.commandName
-      ? params.ctx.skillCommand.commandName.slice(0, 200)
+      ? params.ctx.skillCommand.commandName.slice(0, 500)
       : undefined;
   emitTrustedDiagnosticEvent({
     type: "skill.used",

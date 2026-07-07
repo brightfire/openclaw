@@ -424,7 +424,7 @@ export type DiagnosticSkillUsedEvent = DiagnosticBaseEvent & {
   /** sha256 fingerprint from the <available_skills> <version> tag for the loaded skill. */
   skillVersion?: string;
   /**
-   * Bounded (max 200 chars) excerpt describing what triggered the skill load.
+   * Bounded (max 500 chars) excerpt describing what triggered the skill load.
    * PII-sensitive — must pass through the secret scrubbing pipeline before
    * OTel emission (coordinate with DEV-289 scrubbing siblings).
    */

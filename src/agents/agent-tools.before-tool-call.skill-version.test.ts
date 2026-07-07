@@ -214,8 +214,8 @@ describe("skill.used diagnostic event — triggerSummary field", () => {
     expect(events[0].triggerSummary).toBe("run_audit");
   });
 
-  it("truncates triggerSummary at 200 chars when commandName exceeds the limit", async () => {
-    const longCommandName = "x".repeat(250);
+  it("truncates triggerSummary at 500 chars when commandName exceeds the limit", async () => {
+    const longCommandName = "x".repeat(550);
     const execute = vi.fn().mockResolvedValue({ content: [{ type: "text", text: "ok" }] });
     const tool = wrapToolWithBeforeToolCallHook({ name: "my_tool", execute } as any, {
       skillCommand: {
@@ -234,8 +234,8 @@ describe("skill.used diagnostic event — triggerSummary field", () => {
     expect(events).toHaveLength(1);
     const summary = events[0].triggerSummary;
     expect(summary).toBeDefined();
-    expect(summary!.length).toBe(200);
-    expect(summary).toBe("x".repeat(200));
+    expect(summary!.length).toBe(500);
+    expect(summary).toBe("x".repeat(500));
   });
 
   it("omits triggerSummary for read activation (path is PII-sensitive)", async () => {
