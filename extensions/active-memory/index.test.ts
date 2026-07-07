@@ -4307,7 +4307,12 @@ describe("active-memory plugin", () => {
     testing.setSetupGraceTimeoutMsForTests(0);
     api.pluginConfig = {
       agents: ["main"],
-      timeoutMs: 1_000,
+      // Raised from 1_000 to 10_000: the 1s budget caused intermittent CI
+      // failures when the mock's file I/O took longer than the watchdog under
+      // load, producing a timeout result instead of the expected
+      // no_relevant_memory status. The actual assertion is independent of the
+      // timeout value; the budget just needs to be wide enough for the mock.
+      timeoutMs: 10_000,
       logging: true,
     };
     plugin.register(api as unknown as OpenClawPluginApi);
