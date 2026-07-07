@@ -23,7 +23,7 @@ is maintained, the merge-not-rebase philosophy, and the new-entry template.
 | skip changelog trimming for Brightfire -bf versions | `brightfire/changelog-bf-version` | `c41a70f132` | — | 2026-06-16 |
 | configurable sessionTarget for hook mappings | `brightfire/webhook-sessiontarget-support` | `ef22d62d59` | https://github.com/brightfire/openclaw/pull/106 | 2026-06-17 |
 | fix(otel): use agentLabel for openclaw.agent span attribute | `brightfire/otel-agent-identity` | `326f6add9f` | https://github.com/brightfire/openclaw/pull/109 | 2026-07-02 |
-| chore(plugins): enable diagnostics-otel and slack by default | `brightfire/default-installed-plugins` | `ce200ee715` | https://github.com/brightfire/openclaw/pull/111 | 2026-07-02 |
+| chore(plugins): enable diagnostics-otel and slack by default | `brightfire/default-installed-plugins` | `3ce3ef734f` | https://github.com/brightfire/openclaw/pull/113 | 2026-07-07 |
 
 ## Slack Markdown
 
