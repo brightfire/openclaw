@@ -286,22 +286,35 @@ jobs:
           restore-keys: |
             upstream-${{ steps.upstream-tag.outputs.tag }}-vite-
 
-      # Both checks are independent (different input trees, no shared writes)
-      # so run them concurrently — UI lint overlaps with the heavier arch/lint
-      # suite on the idle vCPUs rather than waiting behind it.
-      - name: Lint, architecture, and UI checks
+      # Lint and build run concurrently. Lint (pnpm check + UI lint) is
+      # read-only source analysis — tsgo, oxlint, policy guards — and never
+      # reads from dist/. Build writes to dist/ and ui/dist/. No shared paths,
+      # so they are safe to overlap. Combined peak heap on the 64 GB XL runner:
+      # ~12 GB (build) + ~6 GB (tsgo) + ~2 GB (oxlint) ≈ 20 GB, well within budget.
+      - name: Lint and build
         run: |
           pnpm check                       & CHECK_PID=$!
           pnpm lint:ui:no-raw-window-open  & UI_LINT_PID=$!
+          NODE_OPTIONS="--max-old-space-size=12000" pnpm build & BUILD_PID=$!
           FAIL=0
-          wait "$CHECK_PID"      || { echo "=== FAILED: pnpm check ===" >&2;                      FAIL=1; }
-          wait "$UI_LINT_PID"    || { echo "=== FAILED: pnpm lint:ui:no-raw-window-open ===" >&2; FAIL=1; }
+          wait "$CHECK_PID"    || { echo "=== FAILED: pnpm check ===" >&2;                      FAIL=1; }
+          wait "$UI_LINT_PID"  || { echo "=== FAILED: pnpm lint:ui:no-raw-window-open ===" >&2; FAIL=1; }
+          wait "$BUILD_PID"    || { echo "=== FAILED: pnpm build ===" >&2;                      FAIL=1; }
           [ "$FAIL" -eq 0 ]
 
-      - name: Build
-        run: NODE_OPTIONS="--max-old-space-size=12000" pnpm build
-
+      # Tests run in the foreground. Release-check and tarball pack run in the
+      # background concurrently — neither depends on test results, both depend
+      # only on the already-complete build. Outputs (needs_release,
+      # manifest_sha256, tarball) are written to $GITHUB_OUTPUT by the
+      # background scripts and are available to subsequent steps via
+      # steps.run-tests.outputs.*.
+      #
+      # Note on PINNED_MANIFEST_PATH / PINNED_MANIFEST_SHA256: these are set
+      # via $GITHUB_ENV in the pin-manifest step and are inherited by all
+      # subsequent steps automatically — do NOT re-declare them here via
+      # ${{ env.* }} as that would overwrite them with empty strings.
       - name: Run tests
+        id: run-tests
         env:
           # Per-worker heap budget (V8 old-generation limit). 2 workers x ~6 GB
           # RSS x 8 parallel leaves = ~96 GB theoretical max, fits comfortably
@@ -329,16 +342,8 @@ jobs:
           # matching the 16 vCPU runner (ubuntu-latest-xl). Expected ~50%
           # wall-clock reduction vs the prior 4-parallel baseline (~10m vs ~20m).
           OPENCLAW_TEST_PROJECTS_PARALLEL: "8"
-        run: pnpm test
 
-      # Decide whether the publish steps below should run. Compares sha256 of
-      # BRIGHTFIRE_PATCHES.md against the bf-build-fingerprint.json asset on
-      # the latest bf/v* release. Always emits manifest_sha256 (used by the
-      # fingerprint writer step). force_release=true and a non-empty
-      # upstream_tag input both force needs_release=true.
-      - name: Check whether release is needed
-        id: release-check
-        env:
+          # Required by check-release-needed.sh (runs in background below).
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           FORCE_RELEASE: ${{ inputs.force_release || 'false' }}
           UPSTREAM_TAG_INPUT: ${{ inputs.upstream_tag || '' }}
@@ -350,19 +355,45 @@ jobs:
           # empty strings and force check-release-needed.sh into its
           # origin/brightfire/ci fallback, defeating the whole point of
           # pinning the manifest source.
-        run: /tmp/bf-build-stable/check-release-needed.sh
-
-      # Tarball is built unconditionally. `npm pack` is cheap (~10s) and
-      # exercises the patched tree's pack lifecycle, which is real signal
-      # worth keeping even when we don't publish.
-      - name: Package tarball
-        id: tarball
         run: |
-          npm pack
-          echo "tarball=$(ls openclaw-*.tgz | head -1)" >> "$GITHUB_OUTPUT"
+          # Release-need check: manifest sha256 compare + one GitHub API call.
+          # No dependency on test results — start immediately.
+          /tmp/bf-build-stable/check-release-needed.sh & RELEASE_CHECK_PID=$!
+
+          # Tarball pack: generates dist/postinstall-inventory.json (skipped by
+          # --ignore-scripts) then packs the already-built dist/ tree (~10 s).
+          # No dependency on test results — start immediately.
+          # --ignore-scripts prevents prepack from re-running pnpm build +
+          # pnpm ui:build (which would run under the 4 GB Vitest heap limit
+          # and concurrently with pnpm test, potentially corrupting dist/).
+          # prepare/restore mirror what prepack does: narrow CHANGELOG.md to
+          # the current release section so the tarball doesn't ship the full
+          # cumulative changelog (~2.4 MB). The bundled-channel smoke check
+          # (runBuildSmoke in openclaw-prepack.ts) is also preserved here so
+          # a patch that breaks a built channel/setup entry import is caught
+          # before the tarball is uploaded.
+          (
+            node scripts/package-changelog.mjs prepare
+            node --import tsx scripts/write-package-dist-inventory.ts
+            node scripts/test-built-bundled-channel-entry-smoke.mjs
+            npm pack --ignore-scripts
+            node scripts/package-changelog.mjs restore
+            echo "tarball=$(ls openclaw-*.tgz | head -1)" >> "$GITHUB_OUTPUT"
+          ) & PACK_PID=$!
+
+          # Tests run in the foreground.
+          pnpm test
+          TEST_EXIT=$?
+
+          # Collect background job results. Failures are reported individually
+          # so the log clearly identifies which of the three tasks failed.
+          FAIL=$TEST_EXIT
+          wait "$RELEASE_CHECK_PID" || { echo "=== FAILED: check-release-needed ===" >&2; FAIL=1; }
+          wait "$PACK_PID"          || { echo "=== FAILED: npm pack ===" >&2;              FAIL=1; }
+          [ "$FAIL" -eq 0 ]
 
       - name: Push stable branch
-        if: steps.release-check.outputs.needs_release == 'true' || inputs.force_release == true
+        if: steps.run-tests.outputs.needs_release == 'true' || inputs.force_release == true
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
@@ -371,7 +402,7 @@ jobs:
           echo "Pushed $STABLE_BRANCH"
 
       - name: Tag stable build
-        if: steps.release-check.outputs.needs_release == 'true' || inputs.force_release == true
+        if: steps.run-tests.outputs.needs_release == 'true' || inputs.force_release == true
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
@@ -381,15 +412,15 @@ jobs:
           echo "Tagged: $TAG"
 
       - name: Write build fingerprint
-        if: steps.release-check.outputs.needs_release == 'true' || inputs.force_release == true
+        if: steps.run-tests.outputs.needs_release == 'true' || inputs.force_release == true
         env:
-          MANIFEST_SHA256: ${{ steps.release-check.outputs.manifest_sha256 }}
+          MANIFEST_SHA256: ${{ steps.run-tests.outputs.manifest_sha256 }}
           RELEASE_TAG: ${{ steps.version.outputs.tag }}
           OUTPUT_PATH: bf-build-fingerprint.json
         run: /tmp/bf-build-stable/write-build-fingerprint.sh
 
       - name: Create GitHub Release
-        if: steps.release-check.outputs.needs_release == 'true' || inputs.force_release == true
+        if: steps.run-tests.outputs.needs_release == 'true' || inputs.force_release == true
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
@@ -397,5 +428,5 @@ jobs:
           target_commitish: stable/${{ steps.upstream-tag.outputs.version }}
           draft: false
           files: |
-            ${{ steps.tarball.outputs.tarball }}
+            ${{ steps.run-tests.outputs.tarball }}
             bf-build-fingerprint.json
