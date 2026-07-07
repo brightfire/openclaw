@@ -28,7 +28,7 @@ on:
   workflow_dispatch:
     inputs:
       upstream_tag:
-        description: 'Upstream tag to build from (e.g. v2026.5.7). Defaults to latest.)'
+        description: 'Upstream tag to build from (e.g. v2026.5.7). Defaults to latest.'
         required: false
         type: string
       force_release:
@@ -142,11 +142,12 @@ jobs:
 
       # Generate a ## {VERSION} CHANGELOG section from the pinned patch
       # manifest and inject it before the first upstream heading. Each patch
-      # is listed with its name and an exact commit SHA link so consumers of
-      # the tarball can trace precisely what is included in this build.
-      # Uses the pinned manifest (/tmp/BRIGHTFIRE_PATCHES.pinned.md) rather
-      # than the working-tree copy so the section always reflects the manifest
-      # that was frozen at the start of this run.
+      # is listed with its name and the SHA that was actually merged into
+      # stable, resolved from origin/<canonical-branch> via git rev-parse.
+      # Reading from git (after fetch-all-brightfire-branches) rather than
+      # the manifest Branch HEAD column ensures the link matches what
+      # merge-patches.sh actually incorporated, even when the manifest is
+      # ahead of or behind the live branch tip.
       - name: Inject brightfire CHANGELOG entry
         env:
           BF_VERSION: ${{ steps.version.outputs.version }}
@@ -154,7 +155,7 @@ jobs:
           REPO: https://github.com/brightfire/openclaw
         run: |
           python3 - << 'PYEOF'
-          import os, re, sys
+          import os, re, subprocess, sys
 
           version  = os.environ['BF_VERSION']
           upstream = os.environ['UPSTREAM_VERSION']
@@ -163,7 +164,11 @@ jobs:
           changelog = 'CHANGELOG.md'
 
           # Parse patch table: Name | Canonical branch | Branch HEAD | ...
-          patches = []
+          # We read name (cols[0]) and canonical branch (cols[1]); the
+          # Branch HEAD column (cols[2]) is intentionally ignored — instead
+          # we resolve the SHA live from the fetched remote ref so the
+          # CHANGELOG always links what merge-patches.sh actually merged.
+          entries = []
           in_table = False
           with open(manifest) as f:
               for line in f:
@@ -178,16 +183,33 @@ jobs:
                   if re.match(r'^\|[-| ]+\|\s*$', line):
                       continue  # separator row
                   cols = [c.strip() for c in line.split('|')[1:-1]]
-                  if len(cols) < 3:
+                  if len(cols) < 2:
                       continue
                   name = cols[0].strip()
-                  sha_m = re.search(r'`([0-9a-f]+)`', cols[2])
-                  sha = sha_m.group(1) if sha_m else ''
-                  if name and sha:
-                      patches.append((name, sha))
+                  branch = cols[1].strip()
+                  if name and branch:
+                      entries.append((name, branch))
+
+          if not entries:
+              print(f'No patches found in {manifest}', file=sys.stderr)
+              sys.exit(1)
+
+          # Resolve each patch's actual merged SHA from the fetched remote ref.
+          patches = []
+          for name, branch in entries:
+              ref = f'origin/{branch}'
+              result = subprocess.run(
+                  ['git', 'rev-parse', ref],
+                  capture_output=True, text=True
+              )
+              if result.returncode != 0:
+                  print(f'WARNING: could not resolve {ref}: {result.stderr.strip()}', file=sys.stderr)
+                  continue
+              sha = result.stdout.strip()[:10]
+              patches.append((name, sha))
 
           if not patches:
-              print(f'No patches found in {manifest}', file=sys.stderr)
+              print('No patch SHAs could be resolved from git refs', file=sys.stderr)
               sys.exit(1)
 
           # Build the section
