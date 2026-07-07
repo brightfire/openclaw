@@ -30,7 +30,14 @@ export function resolvePackageChangelogVersions(packageVersion) {
     );
   }
   if (PRERELEASE_VERSION_PATTERN.test(packageVersion)) {
+    // Alpha/beta prerelease: accept the exact version, the base version, or Unreleased.
     return [packageVersion, match[1], UNRELEASED_HEADING];
+  }
+  if (packageVersion !== match[1]) {
+    // Brightfire numeric-suffix build (e.g. 2026.6.8-1): accept the exact
+    // version or the upstream base version. The upstream changelog entry
+    // covers this build — no separate entry is needed.
+    return [packageVersion, match[1]];
   }
   return [packageVersion];
 }
@@ -78,119 +85,3 @@ export function extractCurrentPackageChangelog(content, packageVersion) {
   const preamble = extractPreamble(lines, firstLevelTwoHeadingIndex);
   const releaseSection = lines
     .slice(heading.index, nextHeading?.index ?? lines.length)
-    .join("\n")
-    .trimEnd();
-  const releaseBody = releaseSection.split(/\r?\n/u).slice(1).join("\n").trim();
-  const releaseBodyBytes = Buffer.byteLength(releaseBody, "utf8");
-  if (releaseBodyBytes < MIN_RELEASE_SECTION_BODY_BYTES) {
-    throw new Error(
-      `Packaged changelog section for ${heading.version} is only ${releaseBodyBytes} body bytes, which is below the ${MIN_RELEASE_SECTION_BODY_BYTES} byte safety minimum.`,
-    );
-  }
-  const packaged = `${preamble}\n\n${releaseSection}\n`;
-  const packagedBytes = Buffer.byteLength(packaged, "utf8");
-  if (packagedBytes > MAX_PACKAGED_CHANGELOG_BYTES) {
-    throw new Error(
-      `Packaged changelog is ${packagedBytes} bytes, which exceeds the ${MAX_PACKAGED_CHANGELOG_BYTES} byte safety limit.`,
-    );
-  }
-  return packaged;
-}
-
-async function readPackageVersion(cwd) {
-  const packageJsonPath = path.join(cwd, PACKAGE_JSON_PATH);
-  const packageJson = JSON.parse(await readFile(packageJsonPath, "utf8"));
-  if (typeof packageJson.version !== "string") {
-    throw new Error("package.json version must be a string.");
-  }
-  return packageJson.version;
-}
-
-/**
- * Restores the source changelog from a package-changelog backup.
- */
-export async function restorePackageChangelog(cwd = process.cwd()) {
-  const backupPath = path.join(cwd, BACKUP_PATH);
-  if (!existsSync(backupPath)) {
-    return false;
-  }
-  const changelogPath = path.join(cwd, CHANGELOG_PATH);
-  const [backup, current] = await Promise.all([
-    readFile(backupPath, "utf8"),
-    readFile(changelogPath, "utf8"),
-  ]);
-  if (current !== backup) {
-    const packageVersion = await readPackageVersion(cwd);
-    let expectedPackaged;
-    try {
-      expectedPackaged = extractCurrentPackageChangelog(backup, packageVersion);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      throw new Error(
-        `Refusing to restore stale packaged changelog backup from ${BACKUP_PATH}: ${message}`,
-        { cause: error },
-      );
-    }
-    if (current !== expectedPackaged) {
-      throw new Error(
-        `Refusing to restore packaged changelog backup from ${BACKUP_PATH} because CHANGELOG.md has changed since the backup was written.`,
-      );
-    }
-  }
-  await writeFile(changelogPath, backup, "utf8");
-  await rm(backupPath, { force: true });
-  return true;
-}
-
-/**
- * Writes packaged changelog content while preserving a restorable backup.
- */
-export async function preparePackageChangelog(cwd = process.cwd()) {
-  await restorePackageChangelog(cwd);
-  const changelogPath = path.join(cwd, CHANGELOG_PATH);
-  const backupPath = path.join(cwd, BACKUP_PATH);
-  const original = await readFile(changelogPath, "utf8");
-  const packageVersion = await readPackageVersion(cwd);
-  // Brightfire fork versions use a -bf<N> suffix. Ship the full changelog
-  // so users upgrading across upstream versions (e.g. 2026.5.7 → 2026.6.1)
-  // can see all changes, not just the current release section.
-  if (/-bf\d+$/u.test(packageVersion)) {
-    return false;
-  }
-  const packaged = extractCurrentPackageChangelog(original, packageVersion);
-  if (packaged === original) {
-    return false;
-  }
-  await mkdir(path.dirname(backupPath), { recursive: true });
-  await writeFile(backupPath, original, "utf8");
-  await writeFile(changelogPath, packaged, "utf8");
-  return true;
-}
-
-async function main(argv = process.argv.slice(2)) {
-  const command = argv[0];
-  if (command === "prepare") {
-    const changed = await preparePackageChangelog();
-    console.error(
-      changed
-        ? "package-changelog: wrote current release notes for package tarball."
-        : "package-changelog: source changelog already matches package notes.",
-    );
-    return;
-  }
-  if (command === "restore") {
-    const restored = await restorePackageChangelog();
-    console.error(
-      restored
-        ? "package-changelog: restored source CHANGELOG.md."
-        : "package-changelog: no packaged changelog backup to restore.",
-    );
-    return;
-  }
-  console.error("Usage: node scripts/package-changelog.mjs <prepare|restore>");
-  process.exitCode = 1;
-}
-
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  await main();
-}
