@@ -806,6 +806,8 @@ export function logMessageProcessed(params: {
   outcome: "completed" | "skipped" | "error";
   reason?: string;
   error?: string;
+  userPrompt?: string;
+  finalResponse?: string;
 }) {
   if (!areDiagnosticsEnabledForProcess()) {
     return;
@@ -838,6 +840,8 @@ export function logMessageProcessed(params: {
     outcome: params.outcome,
     reason: params.reason,
     error: params.error,
+    userPrompt: params.userPrompt,
+    finalResponse: params.finalResponse,
   });
   markActivity();
 }

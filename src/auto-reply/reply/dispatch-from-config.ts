@@ -1146,6 +1146,8 @@ export async function dispatchReplyFromConfig(
         reason: opts?.reason,
       });
     }
+    // DEV-379: userPrompt and finalResponse are not yet available here; wire them in once
+    // ctx.Body/text and the visible reply text can be threaded through recordProcessed.
     messageLifecycle.markProcessed(outcome, opts);
   };
 

@@ -135,6 +135,8 @@ export type DiagnosticMessageProcessedEvent = DiagnosticBaseEvent & {
   outcome: "completed" | "skipped" | "error";
   reason?: string;
   error?: string;
+  userPrompt?: string;
+  finalResponse?: string;
 };
 
 export type DiagnosticMessageDeliveryKind = "text" | "media" | "edit" | "reaction" | "other";
