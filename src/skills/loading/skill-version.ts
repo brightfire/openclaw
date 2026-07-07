@@ -22,7 +22,7 @@ function walkFiles(dir: string): string[] {
 export function computeSkillPromptVersion(skillDir: string): string {
   const allFiles = walkFiles(skillDir)
     .map((f) => path.relative(skillDir, f))
-    .sort();
+    .toSorted();
   const hash = crypto.createHash("sha256");
   for (const rel of allFiles) {
     hash.update(rel);

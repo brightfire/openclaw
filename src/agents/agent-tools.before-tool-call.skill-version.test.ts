@@ -7,7 +7,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   onInternalDiagnosticEvent,
   resetDiagnosticEventsForTest,
-  type DiagnosticEventPayload,
   type DiagnosticSkillUsedEvent,
 } from "../infra/diagnostic-events.js";
 import { createCanonicalFixtureSkill } from "../skills/test-support/test-helpers.js";
@@ -31,12 +30,12 @@ afterEach(() => {
 });
 
 async function collectSkillUsedEvents(
-  run: () => Promise<void>,
+  run: () => Promise<unknown>,
 ): Promise<DiagnosticSkillUsedEvent[]> {
   const events: DiagnosticSkillUsedEvent[] = [];
   const stop = onInternalDiagnosticEvent((evt) => {
     if (evt.type === "skill.used") {
-      events.push(evt as DiagnosticSkillUsedEvent);
+      events.push(evt);
     }
   });
   const flush = () =>

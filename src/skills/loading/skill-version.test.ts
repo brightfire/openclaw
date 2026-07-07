@@ -147,7 +147,7 @@ describe("computeSkillPromptVersion", () => {
       writeFile(dir1, rel, content);
     }
     // Write in reverse order to dir2 to test determinism against insertion order
-    for (const [rel, content] of [...files].reverse()) {
+    for (const [rel, content] of [...files].toReversed()) {
       writeFile(dir2, rel, content);
     }
 
