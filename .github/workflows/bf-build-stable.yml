@@ -28,7 +28,7 @@ on:
   workflow_dispatch:
     inputs:
       upstream_tag:
-        description: 'Upstream tag to build from (e.g. v2026.5.7). Defaults to latest.'
+        description: 'Upstream tag to build from (e.g. v2026.5.7). Defaults to latest.)'
         required: false
         type: string
       force_release:
@@ -275,15 +275,15 @@ jobs:
 
       - name: Run tests
         env:
-          # Per-worker heap budget (V8 old-generation limit). 2 workers × ~6 GB
-          # RSS × 8 parallel leaves = ~96 GB theoretical max, fits comfortably
+          # Per-worker heap budget (V8 old-generation limit). 2 workers x ~6 GB
+          # RSS x 8 parallel leaves = ~96 GB theoretical max, fits comfortably
           # in the 64 GB runner since not every worker hits peak RSS
           # simultaneously and many tests are I/O-bound rather than CPU-bound.
           NODE_OPTIONS: "--max-old-space-size=4096"
 
-          # Workers per leaf shard. Reduced from 6 → 2 because LEAF_SHARDS
+          # Workers per leaf shard. Reduced from 6 to 2 because LEAF_SHARDS
           # expansion makes most leaves small enough that they don't benefit
-          # from 6 internal workers — we get more wall-clock benefit from
+          # from 6 internal workers -- we get more wall-clock benefit from
           # running multiple leaves concurrently (PARALLEL=8) than from
           # over-parallelizing each individual leaf.
           OPENCLAW_VITEST_MAX_WORKERS: "2"
@@ -297,7 +297,7 @@ jobs:
           OPENCLAW_TEST_PROJECTS_LEAF_SHARDS: "1"
 
           # Run 8 leaves in parallel (instead of the CI default of 1).
-          # Combined with MAX_WORKERS=2, that's 8 × 2 = 16 worker procs total,
+          # Combined with MAX_WORKERS=2, that's 8 x 2 = 16 worker procs total,
           # matching the 16 vCPU runner (ubuntu-latest-xl). Expected ~50%
           # wall-clock reduction vs the prior 4-parallel baseline (~10m vs ~20m).
           OPENCLAW_TEST_PROJECTS_PARALLEL: "8"
@@ -311,12 +311,12 @@ jobs:
       - name: Check whether release is needed
         id: release-check
         env:
-          GITHUB_TOKEN: *** secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           FORCE_RELEASE: ${{ inputs.force_release || 'false' }}
           UPSTREAM_TAG_INPUT: ${{ inputs.upstream_tag || '' }}
           # PINNED_MANIFEST_PATH and PINNED_MANIFEST_SHA256 are inherited from
           # the runner environment, written via $GITHUB_ENV in the pin-manifest
-          # step above. Do NOT re-declare them here via ${{ env.* }} —
+          # step above. Do NOT re-declare them here via ${{ env.* }} --
           # the workflow `env` context does not include vars set through
           # $GITHUB_ENV, so doing so would overwrite the inherited values with
           # empty strings and force check-release-needed.sh into its
@@ -336,7 +336,7 @@ jobs:
       - name: Push stable branch
         if: steps.release-check.outputs.needs_release == 'true' || inputs.force_release == true
         env:
-          GITHUB_TOKEN: *** steps.app-token.outputs.token }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           STABLE_BRANCH="stable/${{ steps.upstream-tag.outputs.version }}"
           git push --force origin "$STABLE_BRANCH"
@@ -345,7 +345,7 @@ jobs:
       - name: Tag stable build
         if: steps.release-check.outputs.needs_release == 'true' || inputs.force_release == true
         env:
-          GITHUB_TOKEN: *** steps.app-token.outputs.token }}
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           TAG="${{ steps.version.outputs.tag }}"
           git tag "$TAG"
