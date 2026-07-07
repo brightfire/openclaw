@@ -187,6 +187,12 @@ jobs:
                       continue
                   name = cols[0].strip()
                   branch = cols[1].strip()
+                  # Strip markdown code formatting — the manifest template
+                  # wraps canonical branch cells in backticks, e.g.
+                  # `brightfire/example`. parse-patches.py uses a regex for
+                  # the same reason; mirror that here so git rev-parse gets
+                  # the bare branch name rather than the backtick-wrapped one.
+                  branch = re.sub(r'^`(.+)`$', r'\1', branch)
                   if name and branch:
                       entries.append((name, branch))
 
