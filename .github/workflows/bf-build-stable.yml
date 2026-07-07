@@ -366,9 +366,14 @@ jobs:
           # --ignore-scripts prevents prepack from re-running pnpm build +
           # pnpm ui:build (which would run under the 4 GB Vitest heap limit
           # and concurrently with pnpm test, potentially corrupting dist/).
+          # prepare/restore mirror what prepack does: narrow CHANGELOG.md to
+          # the current release section so the tarball doesn't ship the full
+          # cumulative changelog (~2.4 MB).
           (
+            node scripts/package-changelog.mjs prepare
             node --import tsx scripts/write-package-dist-inventory.ts
             npm pack --ignore-scripts
+            node scripts/package-changelog.mjs restore
             echo "tarball=$(ls openclaw-*.tgz | head -1)" >> "$GITHUB_OUTPUT"
           ) & PACK_PID=$!
 
