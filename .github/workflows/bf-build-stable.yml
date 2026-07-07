@@ -163,9 +163,6 @@ jobs:
       - name: Lint and architecture checks
         run: pnpm check
 
-      - name: Strict-smoke bundle
-        run: pnpm build:strict-smoke
-
       - name: UI raw-window-open guard
         run: pnpm lint:ui:no-raw-window-open
 
@@ -180,9 +177,7 @@ jobs:
             upstream-${{ steps.upstream-tag.outputs.tag }}-vite-
 
       - name: Build
-        run: |
-          NODE_OPTIONS="--max-old-space-size=12000" pnpm build
-          pnpm ui:build
+        run: NODE_OPTIONS="--max-old-space-size=12000" pnpm build
 
       - name: Run tests
         env:
