@@ -17,6 +17,7 @@ export const formatResponseUsageLine = (params: {
     cacheWrite?: number;
   };
   showCost: boolean;
+  cacheRetention?: "short" | "long" | "none";
   costConfig?: ModelCostConfig;
 }): string | null => {
   const usage = params.usage;
@@ -42,6 +43,7 @@ export const formatResponseUsageLine = (params: {
             cacheWrite: usage.cacheWrite,
           },
           cost: params.costConfig,
+          cacheRetention: params.cacheRetention,
         })
       : undefined;
   const costLabel = params.showCost ? formatUsd(cost) : undefined;
