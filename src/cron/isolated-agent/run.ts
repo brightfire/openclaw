@@ -1436,6 +1436,8 @@ export async function runCronIsolatedAgentTurn(params: {
       sessionKey: prepared.context.runSessionKey,
     };
     messageLifecycle.markIdle(undefined, finalSessionRef);
+    // DEV-379: userPrompt and finalResponse are not yet available here; wire them in once
+    // the job prompt and outputText from finalizeCronRun are accessible in this finally scope.
     messageLifecycle.markProcessed(outcome, {
       ...finalSessionRef,
       error: outcomeError,

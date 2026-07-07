@@ -2264,6 +2264,20 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         if (evt.reason) {
           spanAttrs["openclaw.reason"] = lowCardinalityAttr(evt.reason, "unknown");
         }
+        if (contentCapturePolicy.outputMessages) {
+          if (evt.userPrompt) {
+            spanAttrs["input.value"] = normalizeOtelLogString(
+              evt.userPrompt,
+              MAX_OTEL_CONTENT_ATTRIBUTE_CHARS,
+            );
+          }
+          if (evt.finalResponse) {
+            spanAttrs["output.value"] = normalizeOtelLogString(
+              evt.finalResponse,
+              MAX_OTEL_CONTENT_ATTRIBUTE_CHARS,
+            );
+          }
+        }
         const trackedSpan = getTrackedInternalOrTrustedSpan(evt, metadata);
         const span =
           trackedSpan ??
