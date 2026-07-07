@@ -30,14 +30,7 @@ export function resolvePackageChangelogVersions(packageVersion) {
     );
   }
   if (PRERELEASE_VERSION_PATTERN.test(packageVersion)) {
-    // Alpha/beta prerelease: accept the exact version, the base version, or Unreleased.
     return [packageVersion, match[1], UNRELEASED_HEADING];
-  }
-  if (packageVersion !== match[1]) {
-    // Brightfire numeric-suffix build (e.g. 2026.6.8-1): accept the exact
-    // version or the upstream base version. The upstream changelog entry
-    // covers this build — no separate entry is needed.
-    return [packageVersion, match[1]];
   }
   return [packageVersion];
 }
@@ -159,7 +152,7 @@ export async function preparePackageChangelog(cwd = process.cwd()) {
   const original = await readFile(changelogPath, "utf8");
   const packageVersion = await readPackageVersion(cwd);
   // Brightfire fork versions use a -bf<N> suffix. Ship the full changelog
-  // so users upgrading across upstream versions (e.g. 2026.5.7 → 2026.6.1)
+  // so users upgrading across upstream versions (e.g. 2026.5.7 -> 2026.6.1)
   // can see all changes, not just the current release section.
   if (/-bf\d+$/u.test(packageVersion)) {
     return false;
