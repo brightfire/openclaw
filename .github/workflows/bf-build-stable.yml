@@ -362,8 +362,11 @@ jobs:
 
           # Tarball pack: packs the already-built dist/ tree (~10 s).
           # No dependency on test results — start immediately.
+          # --ignore-scripts prevents prepack from re-running pnpm build +
+          # pnpm ui:build (which would run under the 4 GB Vitest heap limit
+          # and concurrently with pnpm test, potentially corrupting dist/).
           (
-            npm pack
+            npm pack --ignore-scripts
             echo "tarball=$(ls openclaw-*.tgz | head -1)" >> "$GITHUB_OUTPUT"
           ) & PACK_PID=$!
 
