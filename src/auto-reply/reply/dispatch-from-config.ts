@@ -1130,11 +1130,15 @@ export async function dispatchReplyFromConfig(
     );
   let agentDispatchStartedAt = 0;
 
+  const inboundUserPrompt = normalizeOptionalString(ctx.Body) || undefined;
+
   const recordProcessed = (
     outcome: "completed" | "skipped" | "error",
     opts?: {
       reason?: string;
       error?: string;
+      userPrompt?: string;
+      finalResponse?: string;
     },
   ) => {
     if (diagnosticsEnabled) {
@@ -1146,8 +1150,6 @@ export async function dispatchReplyFromConfig(
         reason: opts?.reason,
       });
     }
-    // DEV-379: userPrompt and finalResponse are not yet available here; wire them in once
-    // ctx.Body/text and the visible reply text can be threaded through recordProcessed.
     messageLifecycle.markProcessed(outcome, opts);
   };
 
@@ -3360,10 +3362,16 @@ export async function dispatchReplyFromConfig(
     counts.final += routedFinalCount;
     commitInboundDedupeIfClaimed();
     recordAgentDispatchCompleted("completed");
-    recordProcessed(
-      "completed",
-      pluginFallbackReason ? { reason: pluginFallbackReason } : undefined,
-    );
+    const finalResponseText =
+      replies
+        .map((r) => normalizeOptionalString(r.text))
+        .filter(Boolean)
+        .join("\n") || undefined;
+    recordProcessed("completed", {
+      ...(pluginFallbackReason ? { reason: pluginFallbackReason } : {}),
+      userPrompt: inboundUserPrompt,
+      finalResponse: finalResponseText,
+    });
     markIdle("message_completed");
     completeDispatchReplyOperation();
     return attachSourceReplyDeliveryMode({
