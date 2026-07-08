@@ -37,7 +37,7 @@ async function collectSkillUsedEvents(
     [];
   const stop = onTrustedInternalDiagnosticEvent((evt, _metadata, privateData) => {
     if (evt.type === "skill.used") {
-      entries.push({ event: evt as DiagnosticSkillUsedEvent, privateData });
+      entries.push({ event: evt, privateData });
     }
   });
   const flush = () =>
