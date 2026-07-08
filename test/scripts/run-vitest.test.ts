@@ -667,7 +667,9 @@ describe("scripts/run-vitest", () => {
       const result = await waitForClose(runner);
 
       expect(result).toEqual({ code: 143, signal: null });
-      await waitFor(() => !isProcessAlive(childPid), 5_000);
+      // Increased from 5 s to 15 s: OS scheduling under high test parallelism
+      // (16 workers) can delay child process cleanup beyond the old budget.
+      await waitFor(() => !isProcessAlive(childPid), 15_000);
     } finally {
       if (runner.pid && isProcessAlive(runner.pid)) {
         process.kill(runner.pid, "SIGKILL");
