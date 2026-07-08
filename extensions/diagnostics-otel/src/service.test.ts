@@ -1949,7 +1949,7 @@ describe("diagnostics-otel service", () => {
     const skillSpanCall = telemetryState.tracer.startSpan.mock.calls.find(
       (call) => call[0] === "openclaw.skill.used",
     );
-    const spanAttrs = skillSpanCall?.[1]?.attributes as Record<string, unknown> | undefined;
+    const spanAttrs = (skillSpanCall?.[1] as { attributes?: Record<string, unknown> } | undefined)?.attributes;
     // skillVersion is still emitted (it's a content-free hash fingerprint).
     expect(spanAttrs).toHaveProperty("openclaw.skill.version", "sha256:abc123def456");
     // trigger_summary MUST NOT be exported for read activation — the value is a local
@@ -1984,7 +1984,7 @@ describe("diagnostics-otel service", () => {
     const skillSpanCall = telemetryState.tracer.startSpan.mock.calls.find(
       (call) => call[0] === "openclaw.skill.used",
     );
-    const spanAttrs = skillSpanCall?.[1]?.attributes as Record<string, unknown> | undefined;
+    const spanAttrs = (skillSpanCall?.[1] as { attributes?: Record<string, unknown> } | undefined)?.attributes;
     expect(spanAttrs).not.toHaveProperty("openclaw.skill.version");
     expect(spanAttrs).not.toHaveProperty("openclaw.skill.trigger_summary");
     await service.stop?.(ctx);
