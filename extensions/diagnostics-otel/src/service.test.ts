@@ -1922,15 +1922,14 @@ describe("diagnostics-otel service", () => {
     await service.stop?.(ctx);
   });
 
-  test("emits openclaw.skill.trigger on the skill.used span for read-activated skills with a user message excerpt when captureContent.inputMessages is enabled", async () => {
+  test("emits openclaw.skill.trigger on the skill.used span for read-activated skills when passed via skillContent private data", async () => {
     const service = createDiagnosticsOtelService();
-    const ctx = createOtelContext(OTEL_TEST_ENDPOINT, {
-      traces: true,
-      metrics: true,
-      captureContent: { enabled: true, inputMessages: true },
-    });
+    const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });
     await service.start(ctx);
 
+    // Read-activated trigger must arrive in privateData.skillContent, not the event payload.
+    // emitSkillUsedDiagnostic puts it there only when captureInputMessages is opted in;
+    // the OTel exporter reads from privateData regardless of its own captureContent setting.
     emitTrustedDiagnosticEventWithPrivateData(
       {
         type: "skill.used",
@@ -1962,39 +1961,35 @@ describe("diagnostics-otel service", () => {
     await service.stop?.(ctx);
   });
 
-  test("suppresses openclaw.skill.trigger for read-activated skills when captureContent is off (default privacy contract)", async () => {
+  test("suppresses openclaw.skill.trigger for read-activated skills when no skillContent private data is present", async () => {
     const service = createDiagnosticsOtelService();
-    // No captureContent — default off.
     const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });
     await service.start(ctx);
 
-    emitTrustedDiagnosticEventWithPrivateData(
-      {
-        type: "skill.used",
-        agentId: "main",
-        runId: "run-1",
-        sessionKey: "session-key",
-        skillName: "my-skill",
-        skillSource: "workspace",
-        activation: "read",
-        trace: {
-          traceId: TRACE_ID,
-          spanId: TOOL_SPAN_ID,
-          parentSpanId: CHILD_SPAN_ID,
-          traceFlags: "01",
-        },
+    // When captureInputMessages is off at the emission site, emitSkillUsedDiagnostic calls
+    // emitTrustedDiagnosticEvent (no private data) — trigger is absent everywhere.
+    emitTrustedDiagnosticEvent({
+      type: "skill.used",
+      agentId: "main",
+      runId: "run-1",
+      sessionKey: "session-key",
+      skillName: "my-skill",
+      skillSource: "workspace",
+      activation: "read",
+      trace: {
+        traceId: TRACE_ID,
+        spanId: TOOL_SPAN_ID,
+        parentSpanId: CHILD_SPAN_ID,
+        traceFlags: "01",
       },
-      { skillContent: { trigger: "can you run the pii check on the latest export?" } },
-    );
+    });
     await flushDiagnosticEvents();
 
     const skillSpanCall = telemetryState.tracer.startSpan.mock.calls.find(
       (call) => call[0] === "openclaw.skill.used",
     );
-    // trigger must not appear — it contains user message text
-    expect(
-      (skillSpanCall?.[1] as { attributes?: Record<string, unknown> } | undefined)?.attributes,
-    ).not.toHaveProperty("openclaw.skill.trigger");
+    // trigger must not appear — no skillContent private data was provided.
+    expect(skillSpanCall?.[1]?.attributes).not.toHaveProperty("openclaw.skill.trigger");
     await service.stop?.(ctx);
   });
 

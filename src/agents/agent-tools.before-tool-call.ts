@@ -419,13 +419,15 @@ function emitSkillUsedDiagnostic(params: {
   match: SkillUsageMatch;
   toolName: string;
   toolCallId?: string;
+  captureInputMessages: boolean;
 }): void {
   const trace = params.ctx?.trace
     ? freezeDiagnosticTraceContext(createChildDiagnosticTraceContext(params.ctx.trace))
     : undefined;
 
   // For command activation: trigger is the command name — safe in the public payload.
-  // For read activation: trigger is user message text — must go in privateData only.
+  // For read activation: trigger is user message text — must go in privateData only,
+  // and only when captureInputMessages is opted in (same gate as tool/model content).
   const commandTrigger =
     params.match.activation === "command" && params.ctx?.skillCommand?.commandName
       ? params.ctx.skillCommand.commandName.slice(0, 4000)
@@ -451,7 +453,7 @@ function emitSkillUsedDiagnostic(params: {
     ...(params.toolCallId && { toolCallId: params.toolCallId }),
   };
 
-  if (readTrigger) {
+  if (readTrigger && params.captureInputMessages) {
     emitTrustedDiagnosticEventWithPrivateData(eventPayload, {
       skillContent: { trigger: readTrigger },
     });
@@ -1306,6 +1308,7 @@ export function wrapToolWithBeforeToolCallHook(
               match: skillMatch,
               toolName: normalizedToolName,
               toolCallId,
+              captureInputMessages: toolContentPolicy.inputMessages,
             });
           }
           emitTrustedDiagnosticEventWithPrivateData(

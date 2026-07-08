@@ -3034,16 +3034,13 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         if (evt.skillVersion) {
           spanAttrs["openclaw.skill.version"] = evt.skillVersion;
         }
-        // Command-activation trigger (command name) lives on the event payload — always safe.
+        // Command-activated trigger (command name) is always safe in the public event payload.
         if (evt.trigger) {
           spanAttrs["openclaw.skill.trigger"] = evt.trigger;
         }
-        // Read-activation trigger (user message excerpt) lives in privateData — gated on captureContent.
-        if (
-          evt.activation === "read" &&
-          contentCapturePolicy.inputMessages &&
-          skillContent?.trigger
-        ) {
+        // Read-activated trigger is user message text — emitted only in privateData when
+        // captureContent.inputMessages was opted in at the emission site.
+        if (skillContent?.trigger) {
           spanAttrs["openclaw.skill.trigger"] = skillContent.trigger;
         }
         const span = spanWithDuration("openclaw.skill.used", spanAttrs, 0, {
