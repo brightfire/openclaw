@@ -421,6 +421,13 @@ export type DiagnosticSkillUsedEvent = DiagnosticBaseEvent & {
   skillName: string;
   skillSource: DiagnosticSkillTelemetrySource;
   activation: DiagnosticSkillActivation;
+  /** sha256 fingerprint from the <available_skills> <version> tag for the loaded skill. */
+  skillVersion?: string;
+  /**
+   * Bounded (max 500 chars) excerpt describing what triggered the skill load.
+   * For command activation: the command name. For read activation: the skill file path.
+   */
+  triggerSummary?: string;
   toolName?: string;
   toolCallId?: string;
 };
