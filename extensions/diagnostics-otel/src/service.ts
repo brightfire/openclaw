@@ -461,7 +461,7 @@ function sanitizeLowCardinalityLabel(label: string): string {
 // stripping the "agent:" session-key prefix from agentId as fallback.
 function resolveAgentLabelAttr(evt: { agentId?: string; agentLabel?: string }): string {
   if (evt.agentLabel) {
-    return lowCardinalityAttr(sanitizeLowCardinalityLabel(evt.agentLabel));
+    return lowCardinalityAttr(sanitizeLowCardinalityLabel(redactSensitiveText(evt.agentLabel)));
   }
   const id = evt.agentId;
   if (!id) {
