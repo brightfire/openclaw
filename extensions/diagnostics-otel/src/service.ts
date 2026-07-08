@@ -454,7 +454,7 @@ function lowCardinalityQueueLaneAttr(value: string | undefined, fallback = "unkn
 // lowercasing and replacing any character outside [a-z0-9_.-] with "_".
 // Agents named e.g. "Support Bot" become "support_bot" rather than "unknown".
 function sanitizeLowCardinalityLabel(label: string): string {
-  return label.toLowerCase().replace(/[^a-z0-9_.\-]/g, "_");
+  return label.toLowerCase().replace(/[^a-z0-9_.-]/g, "_");
 }
 
 // Resolves the openclaw.agent span attribute from agentLabel (preferred) or by
