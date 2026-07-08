@@ -450,6 +450,26 @@ function lowCardinalityQueueLaneAttr(value: string | undefined, fallback = "unkn
   return LOW_CARDINALITY_VALUE_RE.test(lane) ? lane : fallback;
 }
 
+// Resolves the openclaw.agent span attribute from agentLabel (preferred) or by
+// stripping the "agent:" session-key prefix from agentId as fallback.
+function resolveAgentLabelAttr(evt: { agentId?: string; agentLabel?: string }): string {
+  if (evt.agentLabel) {
+    const candidate = lowCardinalityAttr(evt.agentLabel);
+    if (candidate !== "unknown") {
+      return candidate;
+    }
+  }
+  const id = evt.agentId;
+  if (!id) {
+    return "unknown";
+  }
+  const lower = id.toLowerCase();
+  const stripped = lower.startsWith("agent:") ? id.slice("agent:".length) : id;
+  const colonIdx = stripped.indexOf(":");
+  const label = colonIdx >= 0 ? stripped.slice(0, colonIdx) : stripped;
+  return lowCardinalityAttr(label || undefined);
+}
+
 function shouldCaptureOtelLogBody(policy: OtelContentCapturePolicy): boolean {
   return policy.logBodies;
 }
@@ -2583,7 +2603,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
       ) => {
         const attrs = {
           "openclaw.channel": evt.channel ?? "unknown",
-          "openclaw.agent": lowCardinalityAttr(evt.agentId),
+          "openclaw.agent": resolveAgentLabelAttr(evt),
           "openclaw.provider": evt.provider ?? "unknown",
           "openclaw.model": evt.model ?? "unknown",
         };
@@ -2947,7 +2967,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         evt: Extract<DiagnosticEventPayload, { type: "session.turn.created" }>,
       ) => {
         sessionTurnCreatedCounter.add(1, {
-          "openclaw.agent": lowCardinalityAttr(evt.agentId, "unknown"),
+          "openclaw.agent": resolveAgentLabelAttr(evt),
           "openclaw.channel": lowCardinalityAttr(evt.channel, "unknown"),
           "openclaw.trigger": evt.trigger,
         });
@@ -3592,7 +3612,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         "openclaw.skill.name": lowCardinalityAttr(evt.skillName, "skill"),
         "openclaw.skill.source": lowCardinalityAttr(evt.skillSource),
         "openclaw.skill.activation": lowCardinalityAttr(evt.activation),
-        ...(evt.agentId ? { "openclaw.agent": lowCardinalityAttr(evt.agentId) } : {}),
+        ...(evt.agentId || evt.agentLabel ? { "openclaw.agent": resolveAgentLabelAttr(evt) } : {}),
         ...(evt.toolName ? { "openclaw.toolName": lowCardinalityAttr(evt.toolName, "tool") } : {}),
       });
 

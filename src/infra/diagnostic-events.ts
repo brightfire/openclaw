@@ -23,6 +23,7 @@ export type DiagnosticUsageEvent = DiagnosticBaseEvent & {
   sessionId?: string;
   channel?: string;
   agentId?: string;
+  agentLabel?: string;
   provider?: string;
   model?: string;
   usage: {
@@ -331,6 +332,7 @@ export type DiagnosticSessionTurnCreatedEvent = DiagnosticBaseEvent & {
   sessionKey?: string;
   sessionId?: string;
   agentId?: string;
+  agentLabel?: string;
   channel?: string;
   trigger: "user" | "heartbeat";
 };
@@ -491,6 +493,7 @@ export type DiagnosticSkillUsedEvent = DiagnosticBaseEvent & {
   sessionKey?: string;
   sessionId?: string;
   agentId?: string;
+  agentLabel?: string;
   skillName: string;
   skillSource: DiagnosticSkillTelemetrySource;
   activation: DiagnosticSkillActivation;

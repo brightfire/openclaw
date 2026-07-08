@@ -2387,7 +2387,7 @@ describe("diagnostics-otel service", () => {
 
     expect(telemetryState.counters.get("openclaw.tokens")?.add).toHaveBeenCalledWith(2, {
       "openclaw.channel": "unknown",
-      "openclaw.agent": "unknown",
+      "openclaw.agent": "qa",
       "openclaw.provider": "openai",
       "openclaw.model": "gpt-5.4",
       "openclaw.token": "input",

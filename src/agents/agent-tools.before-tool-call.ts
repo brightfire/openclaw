@@ -71,6 +71,7 @@ import {
 import type { SkillSnapshot, SkillTelemetrySource, SkillUsagePath } from "../skills/types.js";
 import { resolveSkillWorkshopToolApproval } from "../skills/workshop/policy.js";
 import { isPlainObject, truncateUtf16Safe } from "../utils.js";
+import { resolveAgentConfig } from "./agent-scope.js";
 import {
   adjustedParamsByToolCallId,
   buildAdjustedParamsKey,
@@ -744,6 +745,10 @@ function emitSkillUsedDiagnostic(params: {
   const trace = params.ctx?.trace
     ? freezeDiagnosticTraceContext(createChildDiagnosticTraceContext(params.ctx.trace))
     : undefined;
+  const agentLabel =
+    params.ctx?.config && params.ctx?.agentId
+      ? resolveAgentConfig(params.ctx.config, params.ctx.agentId)?.name
+      : undefined;
   // Skill file paths are trusted-internal accounting data. Public diagnostic
   // payloads stay path-free even when diagnostics are enabled.
   emitTrustedSkillUsedDiagnosticEvent(
@@ -753,6 +758,7 @@ function emitSkillUsedDiagnostic(params: {
       ...(params.ctx?.sessionKey && { sessionKey: params.ctx.sessionKey }),
       ...(params.ctx?.sessionId && { sessionId: params.ctx.sessionId }),
       ...(params.ctx?.agentId && { agentId: params.ctx.agentId }),
+      ...(agentLabel && { agentLabel }),
       ...(trace && { trace }),
       skillName: params.match.skillName,
       skillSource: params.match.skillSource,

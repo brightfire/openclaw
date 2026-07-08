@@ -17,6 +17,7 @@ import {
   entryMatchesAutoFallbackPrimaryProbe,
   hasSessionAutoModelFallbackProvenance,
   markAutoFallbackPrimaryProbe,
+  resolveAgentConfig,
   resolveAutoFallbackPrimaryProbe,
 } from "../../agents/agent-scope.js";
 import { formatAuthProfileFailureMessage } from "../../agents/auth-profiles/failure-copy.js";
@@ -1787,6 +1788,7 @@ async function runAgentTurnWithFallbackInternal(
       sessionKey: params.sessionKey,
       sessionId: params.followupRun.run.sessionId,
       agentId: params.followupRun.run.agentId,
+      agentLabel: resolveAgentConfig(runtimeConfig, params.followupRun.run.agentId)?.name,
       channel:
         params.followupRun.run.messageProvider ??
         params.sessionCtx.Surface ??
