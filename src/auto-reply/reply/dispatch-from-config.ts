@@ -3364,9 +3364,12 @@ export async function dispatchReplyFromConfig(
     recordAgentDispatchCompleted("completed");
     const finalResponseText =
       replies
+        .filter((r) => r.isReasoning !== true)
         .map((r) => normalizeOptionalString(r.text))
         .filter(Boolean)
-        .join("\n") || undefined;
+        .join("\n") ||
+      accumulatedBlockText.trim() ||
+      undefined;
     recordProcessed("completed", {
       ...(pluginFallbackReason ? { reason: pluginFallbackReason } : {}),
       userPrompt: inboundUserPrompt,
