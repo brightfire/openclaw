@@ -2398,6 +2398,35 @@ describe("diagnostics-otel service", () => {
     await service.stop?.(ctx);
   });
 
+  test("drops session-key-shaped agentIds containing :agent: from metric attributes", async () => {
+    const service = createDiagnosticsOtelService();
+    const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { metrics: true });
+    await service.start(ctx);
+
+    // agentId like "session:agent:worker:telegram:direct:alice" must NOT truncate
+    // to the "session" prefix and emit it as a bogus low-cardinality label.
+    emitDiagnosticEvent({
+      type: "model.usage",
+      agentId: "session:agent:worker:telegram:direct:alice",
+      provider: "openai",
+      model: "gpt-5.4",
+      usage: { input: 1 },
+    });
+    await flushDiagnosticEvents();
+
+    expect(telemetryState.counters.get("openclaw.tokens")?.add).toHaveBeenCalledWith(1, {
+      "openclaw.channel": "unknown",
+      "openclaw.agent": "unknown",
+      "openclaw.provider": "openai",
+      "openclaw.model": "gpt-5.4",
+      "openclaw.token": "input",
+    });
+    expect(
+      JSON.stringify(telemetryState.counters.get("openclaw.tokens")?.add.mock.calls),
+    ).not.toContain("session:agent");
+    await service.stop?.(ctx);
+  });
+
   test("drops session-shaped queue lane metric attributes", async () => {
     const service = createDiagnosticsOtelService();
     const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { metrics: true });

@@ -464,6 +464,13 @@ function resolveAgentLabelAttr(evt: { agentId?: string; agentLabel?: string }): 
     return "unknown";
   }
   const lower = id.toLowerCase();
+  // Preserve the guard: session-key-like agentIds that contain ":agent:" must not
+  // produce a bogus low-cardinality label from the truncated prefix (e.g.
+  // "session:agent:worker:telegram:direct:alice" → "session" is wrong; return
+  // "unknown" to match the old lowCardinalityAttr(fullId) behaviour).
+  if (lower.includes(":agent:")) {
+    return "unknown";
+  }
   const stripped = lower.startsWith("agent:") ? id.slice("agent:".length) : id;
   const colonIdx = stripped.indexOf(":");
   const label = colonIdx >= 0 ? stripped.slice(0, colonIdx) : stripped;
