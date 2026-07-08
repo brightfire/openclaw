@@ -1129,6 +1129,14 @@ export function emitInternalDiagnosticEvent(event: DiagnosticEventInput) {
   emitDiagnosticEventWithTrust(event, false, { internal: true });
 }
 
+/** Emits an untrusted internal diagnostic event with private data only for trusted listeners. */
+export function emitInternalDiagnosticEventWithPrivateData(
+  event: DiagnosticEventInput,
+  privateData?: DiagnosticEventPrivateData,
+): void {
+  emitDiagnosticEventWithTrust(event, false, { internal: true, privateData });
+}
+
 /** Returns the latest diagnostic event sequence number assigned in this process. */
 export function getInternalDiagnosticEventSequence(): number {
   return getDiagnosticEventsState().seq;

@@ -6,7 +6,7 @@ import type { OpenClawConfig } from "../config/types.openclaw.js";
 import {
   areDiagnosticsEnabledForProcess,
   emitInternalDiagnosticEvent as emitDiagnosticEvent,
-  emitTrustedDiagnosticEventWithPrivateData,
+  emitInternalDiagnosticEventWithPrivateData,
   isDiagnosticsEnabled,
   type DiagnosticPhaseSnapshot,
   type DiagnosticLivenessWarningReason,
@@ -848,7 +848,7 @@ export function logMessageProcessed(params: {
     params.userPrompt !== undefined || params.finalResponse !== undefined
       ? { userPrompt: params.userPrompt, finalResponse: params.finalResponse }
       : undefined;
-  emitTrustedDiagnosticEventWithPrivateData(
+  emitInternalDiagnosticEventWithPrivateData(
     messageProcessedEvent,
     messageContent ? { messageContent } : undefined,
   );
