@@ -1922,9 +1922,13 @@ describe("diagnostics-otel service", () => {
     await service.stop?.(ctx);
   });
 
-  test("emits openclaw.skill.trigger on the skill.used span for read-activated skills with a user message excerpt", async () => {
+  test("emits openclaw.skill.trigger on the skill.used span for read-activated skills with a user message excerpt when captureContent.inputMessages is enabled", async () => {
     const service = createDiagnosticsOtelService();
-    const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });
+    const ctx = createOtelContext(OTEL_TEST_ENDPOINT, {
+      traces: true,
+      metrics: true,
+      captureContent: { enabled: true, inputMessages: true },
+    });
     await service.start(ctx);
 
     emitTrustedDiagnosticEvent({
@@ -1953,6 +1957,38 @@ describe("diagnostics-otel service", () => {
         "openclaw.skill.trigger": "can you run the pii check on the latest export?",
       },
     });
+    await service.stop?.(ctx);
+  });
+
+  test("suppresses openclaw.skill.trigger for read-activated skills when captureContent is off (default privacy contract)", async () => {
+    const service = createDiagnosticsOtelService();
+    // No captureContent — default off.
+    const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });
+    await service.start(ctx);
+
+    emitTrustedDiagnosticEvent({
+      type: "skill.used",
+      agentId: "main",
+      runId: "run-1",
+      sessionKey: "session-key",
+      skillName: "my-skill",
+      skillSource: "workspace",
+      activation: "read",
+      trigger: "can you run the pii check on the latest export?",
+      trace: {
+        traceId: TRACE_ID,
+        spanId: TOOL_SPAN_ID,
+        parentSpanId: CHILD_SPAN_ID,
+        traceFlags: "01",
+      },
+    });
+    await flushDiagnosticEvents();
+
+    const skillSpanCall = telemetryState.tracer.startSpan.mock.calls.find(
+      (call) => call[0] === "openclaw.skill.used",
+    );
+    // trigger must not appear — it contains user message text
+    expect(skillSpanCall?.[1]?.attributes).not.toHaveProperty("openclaw.skill.trigger");
     await service.stop?.(ctx);
   });
 

@@ -3032,7 +3032,14 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
           spanAttrs["openclaw.skill.version"] = evt.skillVersion;
         }
         if (evt.trigger) {
-          spanAttrs["openclaw.skill.trigger"] = evt.trigger;
+          // For read-activated skills, trigger contains user message text; gate on
+          // captureContent to honour the documented privacy contract. For command-
+          // activated skills, trigger is just the command name and is always safe.
+          const triggerAllowed =
+            evt.activation !== "read" || contentCapturePolicy.inputMessages;
+          if (triggerAllowed) {
+            spanAttrs["openclaw.skill.trigger"] = evt.trigger;
+          }
         }
         const span = spanWithDuration("openclaw.skill.used", spanAttrs, 0, {
           parentContext: activeTrustedParentContext(evt, metadata),
