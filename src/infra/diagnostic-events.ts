@@ -424,9 +424,9 @@ export type DiagnosticSkillUsedEvent = DiagnosticBaseEvent & {
   /** sha256 fingerprint from the <available_skills> <version> tag for the loaded skill. */
   skillVersion?: string;
   /**
-   * Bounded (max 4000 chars) excerpt of what triggered the skill load.
-   * For command activation: the command name.
-   * For read activation: the first 4000 chars of the preceding user message.
+   * Command name for command-activated skills (always safe to emit).
+   * For read-activated skills, trigger is passed via DiagnosticEventPrivateData.skillContent
+   * instead to prevent user message content from riding the public event payload.
    */
   trigger?: string;
   toolName?: string;
@@ -728,9 +728,15 @@ export type DiagnosticToolCallContent = Readonly<{
   toolOutput?: unknown;
 }>;
 
+export type DiagnosticSkillCallContent = Readonly<{
+  /** Read-activation trigger text (first 4000 chars of preceding user message). */
+  trigger?: string;
+}>;
+
 export type DiagnosticEventPrivateData = Readonly<{
   modelContent?: DiagnosticModelCallContent;
   toolContent?: DiagnosticToolCallContent;
+  skillContent?: DiagnosticSkillCallContent;
 }>;
 
 type DiagnosticEventListener = (

@@ -423,14 +423,20 @@ function emitSkillUsedDiagnostic(params: {
   const trace = params.ctx?.trace
     ? freezeDiagnosticTraceContext(createChildDiagnosticTraceContext(params.ctx.trace))
     : undefined;
-  const trigger =
+
+  // For command activation: trigger is the command name — safe in the public payload.
+  // For read activation: trigger is user message text — must go in privateData only.
+  const commandTrigger =
     params.match.activation === "command" && params.ctx?.skillCommand?.commandName
       ? params.ctx.skillCommand.commandName.slice(0, 4000)
-      : params.match.activation === "read" && params.ctx?.lastUserMessageExcerpt
-        ? params.ctx.lastUserMessageExcerpt
-        : undefined;
-  emitTrustedDiagnosticEvent({
-    type: "skill.used",
+      : undefined;
+  const readTrigger =
+    params.match.activation === "read" && params.ctx?.lastUserMessageExcerpt
+      ? params.ctx.lastUserMessageExcerpt
+      : undefined;
+
+  const eventPayload = {
+    type: "skill.used" as const,
     ...(params.ctx?.runId && { runId: params.ctx.runId }),
     ...(params.ctx?.sessionKey && { sessionKey: params.ctx.sessionKey }),
     ...(params.ctx?.sessionId && { sessionId: params.ctx.sessionId }),
@@ -440,10 +446,18 @@ function emitSkillUsedDiagnostic(params: {
     skillSource: params.match.skillSource,
     activation: params.match.activation,
     ...(params.match.skillVersion && { skillVersion: params.match.skillVersion }),
-    ...(trigger && { trigger }),
+    ...(commandTrigger && { trigger: commandTrigger }),
     toolName: params.toolName,
     ...(params.toolCallId && { toolCallId: params.toolCallId }),
-  });
+  };
+
+  if (readTrigger) {
+    emitTrustedDiagnosticEventWithPrivateData(eventPayload, {
+      skillContent: { trigger: readTrigger },
+    });
+  } else {
+    emitTrustedDiagnosticEvent(eventPayload);
+  }
 }
 
 function notifyPluginApprovalResolution(

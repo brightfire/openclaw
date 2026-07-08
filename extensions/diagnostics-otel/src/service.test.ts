@@ -1931,22 +1931,24 @@ describe("diagnostics-otel service", () => {
     });
     await service.start(ctx);
 
-    emitTrustedDiagnosticEvent({
-      type: "skill.used",
-      agentId: "main",
-      runId: "run-1",
-      sessionKey: "session-key",
-      skillName: "my-skill",
-      skillSource: "workspace",
-      activation: "read",
-      trigger: "can you run the pii check on the latest export?",
-      trace: {
-        traceId: TRACE_ID,
-        spanId: TOOL_SPAN_ID,
-        parentSpanId: CHILD_SPAN_ID,
-        traceFlags: "01",
+    emitTrustedDiagnosticEventWithPrivateData(
+      {
+        type: "skill.used",
+        agentId: "main",
+        runId: "run-1",
+        sessionKey: "session-key",
+        skillName: "my-skill",
+        skillSource: "workspace",
+        activation: "read",
+        trace: {
+          traceId: TRACE_ID,
+          spanId: TOOL_SPAN_ID,
+          parentSpanId: CHILD_SPAN_ID,
+          traceFlags: "01",
+        },
       },
-    });
+      { skillContent: { trigger: "can you run the pii check on the latest export?" } },
+    );
     await flushDiagnosticEvents();
 
     const skillSpanCall = telemetryState.tracer.startSpan.mock.calls.find(
@@ -1966,22 +1968,24 @@ describe("diagnostics-otel service", () => {
     const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });
     await service.start(ctx);
 
-    emitTrustedDiagnosticEvent({
-      type: "skill.used",
-      agentId: "main",
-      runId: "run-1",
-      sessionKey: "session-key",
-      skillName: "my-skill",
-      skillSource: "workspace",
-      activation: "read",
-      trigger: "can you run the pii check on the latest export?",
-      trace: {
-        traceId: TRACE_ID,
-        spanId: TOOL_SPAN_ID,
-        parentSpanId: CHILD_SPAN_ID,
-        traceFlags: "01",
+    emitTrustedDiagnosticEventWithPrivateData(
+      {
+        type: "skill.used",
+        agentId: "main",
+        runId: "run-1",
+        sessionKey: "session-key",
+        skillName: "my-skill",
+        skillSource: "workspace",
+        activation: "read",
+        trace: {
+          traceId: TRACE_ID,
+          spanId: TOOL_SPAN_ID,
+          parentSpanId: CHILD_SPAN_ID,
+          traceFlags: "01",
+        },
       },
-    });
+      { skillContent: { trigger: "can you run the pii check on the latest export?" } },
+    );
     await flushDiagnosticEvents();
 
     const skillSpanCall = telemetryState.tracer.startSpan.mock.calls.find(

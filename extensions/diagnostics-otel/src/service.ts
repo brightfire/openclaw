@@ -114,6 +114,10 @@ type OtelToolCallContent = {
   toolOutput?: unknown;
 };
 
+type OtelSkillCallContent = {
+  trigger?: string;
+};
+
 type MessageDeliveryDiagnosticEvent = Extract<
   DiagnosticEventPayload,
   {
@@ -3013,6 +3017,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
       const recordSkillUsed = (
         evt: Extract<DiagnosticEventPayload, { type: "skill.used" }>,
         metadata: DiagnosticEventMetadata,
+        skillContent?: OtelSkillCallContent,
       ) => {
         if (!metadata.trusted) {
           return;
@@ -3026,20 +3031,20 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         addRunAttrs(spanAttrs, evt);
         // skillVersion (sha256 fingerprint) and trigger are high-cardinality and must not
         // appear in metric labels, so they are span-only.
-        // trigger carries the command name (command activation) or the first 500 chars of the
-        // preceding user message (read activation).
         if (evt.skillVersion) {
           spanAttrs["openclaw.skill.version"] = evt.skillVersion;
         }
+        // Command-activation trigger (command name) lives on the event payload — always safe.
         if (evt.trigger) {
-          // For read-activated skills, trigger contains user message text; gate on
-          // captureContent to honour the documented privacy contract. For command-
-          // activated skills, trigger is just the command name and is always safe.
-          const triggerAllowed =
-            evt.activation !== "read" || contentCapturePolicy.inputMessages;
-          if (triggerAllowed) {
-            spanAttrs["openclaw.skill.trigger"] = evt.trigger;
-          }
+          spanAttrs["openclaw.skill.trigger"] = evt.trigger;
+        }
+        // Read-activation trigger (user message excerpt) lives in privateData — gated on captureContent.
+        if (
+          evt.activation === "read" &&
+          contentCapturePolicy.inputMessages &&
+          skillContent?.trigger
+        ) {
+          spanAttrs["openclaw.skill.trigger"] = skillContent.trigger;
         }
         const span = spanWithDuration("openclaw.skill.used", spanAttrs, 0, {
           parentContext: activeTrustedParentContext(evt, metadata),
@@ -3452,7 +3457,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
               recordToolExecutionBlocked(evt, metadata);
               return;
             case "skill.used":
-              recordSkillUsed(evt, metadata);
+              recordSkillUsed(evt, metadata, privateData.skillContent);
               return;
             case "exec.process.completed":
               recordExecProcessCompleted(evt);
