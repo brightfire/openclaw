@@ -461,7 +461,16 @@ function sanitizeLowCardinalityLabel(label: string): string {
 // stripping the "agent:" session-key prefix from agentId as fallback.
 function resolveAgentLabelAttr(evt: { agentId?: string; agentLabel?: string }): string {
   if (evt.agentLabel) {
-    return lowCardinalityAttr(sanitizeLowCardinalityLabel(evt.agentLabel));
+    const raw = evt.agentLabel.trim();
+    // Redact before sanitizing: sanitizeLowCardinalityLabel() replaces whitespace and
+    // separators with "_", which obscures patterns that redactSensitiveText() matches on
+    // (e.g. "Bearer <token>" -> "bearer_<token>" bypasses the bearer-token pattern).
+    // If redaction changes the label at all, the value contained a sensitive pattern;
+    // return "unknown" rather than emitting a partial/sanitized form.
+    if (redactSensitiveText(raw) !== raw) {
+      return "unknown";
+    }
+    return lowCardinalityAttr(sanitizeLowCardinalityLabel(raw));
   }
   const id = evt.agentId;
   if (!id) {

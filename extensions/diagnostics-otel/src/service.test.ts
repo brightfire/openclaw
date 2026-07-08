@@ -5537,6 +5537,36 @@ describe("diagnostics-otel service", () => {
     await service.stop?.(ctx);
   });
 
+  test("redacts agentLabel secrets before sanitizing (bearer token pattern must not bypass redaction)", async () => {
+    const service = createDiagnosticsOtelService();
+    const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });
+    await service.start(ctx);
+
+    emitTrustedDiagnosticEvent({
+      type: "run.completed",
+      runId: "run-bearer-label",
+      agentId: "agent:main:main",
+      agentLabel: "Bearer sk-test-secret-value", // pragma: allowlist secret
+      provider: "anthropic",
+      model: "claude-sonnet-4-6",
+      outcome: "completed",
+      durationMs: 30,
+      trace: {
+        traceId: TRACE_ID,
+        spanId: SPAN_ID,
+        traceFlags: "01",
+      },
+    });
+    await flushDiagnosticEvents();
+
+    const runSpanAttrs = startedSpanOptions("openclaw.run")?.attributes;
+    // The bearer token must be redacted before sanitize runs;
+    // the result won't match LOW_CARDINALITY_VALUE_RE so it collapses to "unknown".
+    // Critically it must NOT appear as e.g. "bearer_sk-test-secret-value".
+    expect(runSpanAttrs?.["openclaw.agent"]).toBe("unknown");
+    await service.stop?.(ctx);
+  });
+
   test("omits openclaw.agent from run span when neither agentId nor agentLabel is set", async () => {
     const service = createDiagnosticsOtelService();
     const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });
