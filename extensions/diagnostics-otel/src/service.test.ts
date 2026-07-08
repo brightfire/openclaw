@@ -1885,7 +1885,44 @@ describe("diagnostics-otel service", () => {
     await service.stop?.(ctx);
   });
 
-  test("emits openclaw.skill.version and openclaw.skill.trigger_summary on the skill.used span when present", async () => {
+  test("emits openclaw.skill.version and openclaw.skill.trigger_summary on the skill.used span for command-activated skills", async () => {
+    const service = createDiagnosticsOtelService();
+    const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });
+    await service.start(ctx);
+
+    emitTrustedDiagnosticEvent({
+      type: "skill.used",
+      agentId: "main",
+      runId: "run-1",
+      sessionKey: "session-key",
+      skillName: "my-skill",
+      skillSource: "workspace",
+      activation: "command",
+      skillVersion: "sha256:abc123def456",
+      triggerSummary: "run_audit",
+      trace: {
+        traceId: TRACE_ID,
+        spanId: TOOL_SPAN_ID,
+        parentSpanId: CHILD_SPAN_ID,
+        traceFlags: "01",
+      },
+    });
+    await flushDiagnosticEvents();
+
+    const skillSpanCall = telemetryState.tracer.startSpan.mock.calls.find(
+      (call) => call[0] === "openclaw.skill.used",
+    );
+    // Both high-cardinality attrs must appear on the span for command-activated skills.
+    expect(skillSpanCall?.[1]).toMatchObject({
+      attributes: {
+        "openclaw.skill.version": "sha256:abc123def456",
+        "openclaw.skill.trigger_summary": "run_audit",
+      },
+    });
+    await service.stop?.(ctx);
+  });
+
+  test("does not emit openclaw.skill.trigger_summary on the skill.used span for read-activated skills (privacy contract)", async () => {
     const service = createDiagnosticsOtelService();
     const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });
     await service.start(ctx);
@@ -1912,13 +1949,12 @@ describe("diagnostics-otel service", () => {
     const skillSpanCall = telemetryState.tracer.startSpan.mock.calls.find(
       (call) => call[0] === "openclaw.skill.used",
     );
-    // Both high-cardinality attrs must appear on the span.
-    expect(skillSpanCall?.[1]).toMatchObject({
-      attributes: {
-        "openclaw.skill.version": "sha256:abc123def456",
-        "openclaw.skill.trigger_summary": "~/repos/gpt-skills/my-skill/SKILL.md",
-      },
-    });
+    const spanAttrs = skillSpanCall?.[1]?.attributes as Record<string, unknown> | undefined;
+    // skillVersion is still emitted (it's a content-free hash fingerprint).
+    expect(spanAttrs).toHaveProperty("openclaw.skill.version", "sha256:abc123def456");
+    // trigger_summary MUST NOT be exported for read activation — the value is a local
+    // filesystem path, which is excluded per docs/gateway/opentelemetry.md privacy contract.
+    expect(spanAttrs).not.toHaveProperty("openclaw.skill.trigger_summary");
     await service.stop?.(ctx);
   });
 
