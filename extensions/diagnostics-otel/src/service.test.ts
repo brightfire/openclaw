@@ -1885,6 +1885,109 @@ describe("diagnostics-otel service", () => {
     await service.stop?.(ctx);
   });
 
+  test("emits openclaw.skill.version and openclaw.skill.trigger_summary on the skill.used span when present", async () => {
+    const service = createDiagnosticsOtelService();
+    const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });
+    await service.start(ctx);
+
+    emitTrustedDiagnosticEvent({
+      type: "skill.used",
+      agentId: "main",
+      runId: "run-1",
+      sessionKey: "session-key",
+      skillName: "my-skill",
+      skillSource: "workspace",
+      activation: "read",
+      skillVersion: "sha256:abc123def456",
+      triggerSummary: "~/repos/gpt-skills/my-skill/SKILL.md",
+      trace: {
+        traceId: TRACE_ID,
+        spanId: TOOL_SPAN_ID,
+        parentSpanId: CHILD_SPAN_ID,
+        traceFlags: "01",
+      },
+    });
+    await flushDiagnosticEvents();
+
+    const skillSpanCall = telemetryState.tracer.startSpan.mock.calls.find(
+      (call) => call[0] === "openclaw.skill.used",
+    );
+    // Both high-cardinality attrs must appear on the span.
+    expect(skillSpanCall?.[1]).toMatchObject({
+      attributes: {
+        "openclaw.skill.version": "sha256:abc123def456",
+        "openclaw.skill.trigger_summary": "~/repos/gpt-skills/my-skill/SKILL.md",
+      },
+    });
+    await service.stop?.(ctx);
+  });
+
+  test("omits openclaw.skill.version and openclaw.skill.trigger_summary on the skill.used span when absent", async () => {
+    const service = createDiagnosticsOtelService();
+    const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });
+    await service.start(ctx);
+
+    emitTrustedDiagnosticEvent({
+      type: "skill.used",
+      agentId: "main",
+      runId: "run-1",
+      sessionKey: "session-key",
+      skillName: "my-skill",
+      skillSource: "workspace",
+      activation: "read",
+      // skillVersion and triggerSummary intentionally omitted.
+      trace: {
+        traceId: TRACE_ID,
+        spanId: TOOL_SPAN_ID,
+        parentSpanId: CHILD_SPAN_ID,
+        traceFlags: "01",
+      },
+    });
+    await flushDiagnosticEvents();
+
+    const skillSpanCall = telemetryState.tracer.startSpan.mock.calls.find(
+      (call) => call[0] === "openclaw.skill.used",
+    );
+    const spanAttrs = skillSpanCall?.[1]?.attributes as Record<string, unknown> | undefined;
+    expect(spanAttrs).not.toHaveProperty("openclaw.skill.version");
+    expect(spanAttrs).not.toHaveProperty("openclaw.skill.trigger_summary");
+    await service.stop?.(ctx);
+  });
+
+  test("does not include openclaw.skill.version or openclaw.skill.trigger_summary in the skill.used counter labels", async () => {
+    const service = createDiagnosticsOtelService();
+    const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });
+    await service.start(ctx);
+
+    emitTrustedDiagnosticEvent({
+      type: "skill.used",
+      agentId: "main",
+      runId: "run-1",
+      sessionKey: "session-key",
+      skillName: "my-skill",
+      skillSource: "workspace",
+      activation: "read",
+      skillVersion: "sha256:abc123def456",
+      triggerSummary: "~/repos/gpt-skills/my-skill/SKILL.md",
+      trace: {
+        traceId: TRACE_ID,
+        spanId: TOOL_SPAN_ID,
+        parentSpanId: CHILD_SPAN_ID,
+        traceFlags: "01",
+      },
+    });
+    await flushDiagnosticEvents();
+
+    // The counter labels must NOT contain the high-cardinality attrs to avoid metric explosion.
+    const counterAddCalls = telemetryState.counters.get("openclaw.skill.used")?.add.mock.calls;
+    expect(counterAddCalls?.length).toBeGreaterThan(0);
+    for (const [, counterAttrs] of counterAddCalls ?? []) {
+      expect(counterAttrs).not.toHaveProperty("openclaw.skill.version");
+      expect(counterAttrs).not.toHaveProperty("openclaw.skill.trigger_summary");
+    }
+    await service.stop?.(ctx);
+  });
+
   test("exports run, model call, and tool execution lifecycle spans", async () => {
     const service = createDiagnosticsOtelService();
     const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });

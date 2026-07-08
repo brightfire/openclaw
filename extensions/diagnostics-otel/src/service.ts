@@ -3024,6 +3024,10 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         }
         const spanAttrs: Record<string, string | number | boolean> = { ...attrs };
         addRunAttrs(spanAttrs, evt);
+        // skillVersion (sha256 fingerprint) and triggerSummary (file path / command name) are
+        // high-cardinality and must not appear in metric labels, so they are span-only.
+        if (evt.skillVersion) spanAttrs["openclaw.skill.version"] = evt.skillVersion;
+        if (evt.triggerSummary) spanAttrs["openclaw.skill.trigger_summary"] = evt.triggerSummary;
         const span = spanWithDuration("openclaw.skill.used", spanAttrs, 0, {
           parentContext: activeTrustedParentContext(evt, metadata),
           endTimeMs: evt.ts,
