@@ -24,6 +24,7 @@ is maintained, the merge-not-rebase philosophy, and the new-entry template.
 | configurable sessionTarget for hook mappings | `brightfire/webhook-sessiontarget-support` | `ef22d62d59` | https://github.com/brightfire/openclaw/pull/106 | 2026-06-17 |
 | fix(otel): use agentLabel for openclaw.agent span attribute | `brightfire/otel-agent-identity` | `326f6add9f` | https://github.com/brightfire/openclaw/pull/109 | 2026-07-02 |
 | chore(plugins): enable diagnostics-otel and slack by default | `brightfire/default-installed-plugins` | `d017181ce4` | https://github.com/brightfire/openclaw/pull/129 | 2026-07-08 |
+| feat(diagnostics): add skillVersion and triggerSummary to skill.used event | `brightfire/skill-used-version` | `263a47d628` | https://github.com/brightfire/openclaw/pull/116 | 2026-07-08 |
 
 ## Slack Markdown
 
@@ -348,6 +349,25 @@ what tends to conflict and how to resolve it._
 ## chore(plugins): enable diagnostics-otel and slack by default
 
 (canonical: `brightfire/default-installed-plugins`)
+
+### Rationale
+
+_Add description of what this patch does and why._
+
+### Files touched
+
+TBD — update after first stable merge
+
+### Upgrade guidance
+
+_Describe upstream changes that have historically conflicted and how they
+were resolved. Patches are absorbed by `bf-build-stable` via squash-merge of
+the canonical branch — do **not** prescribe `git cherry-pick` here. Describe
+what tends to conflict and how to resolve it._
+
+## feat(diagnostics): add skillVersion and triggerSummary to skill.used event
+
+(canonical: `brightfire/skill-used-version`)
 
 ### Rationale
 
