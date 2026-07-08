@@ -5509,6 +5509,34 @@ describe("diagnostics-otel service", () => {
     await service.stop?.(ctx);
   });
 
+  test("sanitizes agentLabel with spaces/special chars instead of falling back to unknown", async () => {
+    const service = createDiagnosticsOtelService();
+    const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });
+    await service.start(ctx);
+
+    emitTrustedDiagnosticEvent({
+      type: "run.completed",
+      runId: "run-spaced-label",
+      agentId: "agent:main:main",
+      agentLabel: "Support Bot",
+      provider: "anthropic",
+      model: "claude-sonnet-4-6",
+      outcome: "completed",
+      durationMs: 40,
+      trace: {
+        traceId: TRACE_ID,
+        spanId: SPAN_ID,
+        traceFlags: "01",
+      },
+    });
+    await flushDiagnosticEvents();
+
+    const runSpanAttrs = startedSpanOptions("openclaw.run")?.attributes;
+    // "Support Bot" -> sanitize -> "support_bot" (not "unknown" or the agentId fallback)
+    expect(runSpanAttrs?.["openclaw.agent"]).toBe("support_bot");
+    await service.stop?.(ctx);
+  });
+
   test("omits openclaw.agent from run span when neither agentId nor agentLabel is set", async () => {
     const service = createDiagnosticsOtelService();
     const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });

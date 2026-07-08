@@ -450,11 +450,18 @@ function lowCardinalityQueueLaneAttr(value: string | undefined, fallback = "unkn
   return LOW_CARDINALITY_VALUE_RE.test(lane) ? lane : fallback;
 }
 
+// Sanitizes a human-readable agent label into a low-cardinality-safe value by
+// lowercasing and replacing any character outside [a-z0-9_.-] with "_".
+// Agents named e.g. "Support Bot" become "support_bot" rather than "unknown".
+function sanitizeLowCardinalityLabel(label: string): string {
+  return label.toLowerCase().replace(/[^a-z0-9_.\-]/g, "_");
+}
+
 // Resolves the openclaw.agent span attribute from agentLabel (preferred) or by
 // stripping the "agent:" session-key prefix from agentId as fallback.
 function resolveAgentLabelAttr(evt: { agentId?: string; agentLabel?: string }): string {
   if (evt.agentLabel) {
-    return lowCardinalityAttr(evt.agentLabel);
+    return lowCardinalityAttr(sanitizeLowCardinalityLabel(evt.agentLabel));
   }
   const id = evt.agentId;
   if (!id) {
