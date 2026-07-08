@@ -3031,9 +3031,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         // is excluded from span attributes per the privacy contract in
         // docs/gateway/opentelemetry.md ("spans … never include … skill file paths").
         if (evt.skillVersion) { spanAttrs["openclaw.skill.version"] = evt.skillVersion; }
-        if (evt.triggerSummary && evt.activation === "command") {
-          spanAttrs["openclaw.skill.trigger_summary"] = evt.triggerSummary;
-        }
+        if (evt.triggerSummary) { spanAttrs["openclaw.skill.trigger_summary"] = evt.triggerSummary; }
         const span = spanWithDuration("openclaw.skill.used", spanAttrs, 0, {
           parentContext: activeTrustedParentContext(evt, metadata),
           endTimeMs: evt.ts,

@@ -417,13 +417,13 @@ function emitSkillUsedDiagnostic(params: {
   const trace = params.ctx?.trace
     ? freezeDiagnosticTraceContext(createChildDiagnosticTraceContext(params.ctx.trace))
     : undefined;
-  // triggerSummary: command name for command activation, file path for read activation.
+  // triggerSummary: the command name for command-activated skills. Undefined for read-activated
+  // skills — the skill path is already captured by skillName/skillSource, so repeating it here
+  // adds no useful signal.
   const triggerSummary =
     params.match.activation === "command" && params.ctx?.skillCommand?.commandName
       ? params.ctx.skillCommand.commandName.slice(0, 500)
-      : params.match.activation === "read" && params.match.triggerPath
-        ? params.match.triggerPath.slice(0, 500)
-        : undefined;
+      : undefined;
   emitTrustedDiagnosticEvent({
     type: "skill.used",
     ...(params.ctx?.runId && { runId: params.ctx.runId }),

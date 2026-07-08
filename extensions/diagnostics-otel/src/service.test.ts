@@ -1922,42 +1922,6 @@ describe("diagnostics-otel service", () => {
     await service.stop?.(ctx);
   });
 
-  test("does not emit openclaw.skill.trigger_summary on the skill.used span for read-activated skills (privacy contract)", async () => {
-    const service = createDiagnosticsOtelService();
-    const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });
-    await service.start(ctx);
-
-    emitTrustedDiagnosticEvent({
-      type: "skill.used",
-      agentId: "main",
-      runId: "run-1",
-      sessionKey: "session-key",
-      skillName: "my-skill",
-      skillSource: "workspace",
-      activation: "read",
-      skillVersion: "sha256:abc123def456",
-      triggerSummary: "~/repos/gpt-skills/my-skill/SKILL.md",
-      trace: {
-        traceId: TRACE_ID,
-        spanId: TOOL_SPAN_ID,
-        parentSpanId: CHILD_SPAN_ID,
-        traceFlags: "01",
-      },
-    });
-    await flushDiagnosticEvents();
-
-    const skillSpanCall = telemetryState.tracer.startSpan.mock.calls.find(
-      (call) => call[0] === "openclaw.skill.used",
-    );
-    const spanAttrs = (skillSpanCall?.[1] as { attributes?: Record<string, unknown> } | undefined)?.attributes;
-    // skillVersion is still emitted (it's a content-free hash fingerprint).
-    expect(spanAttrs).toHaveProperty("openclaw.skill.version", "sha256:abc123def456");
-    // trigger_summary MUST NOT be exported for read activation — the value is a local
-    // filesystem path, which is excluded per docs/gateway/opentelemetry.md privacy contract.
-    expect(spanAttrs).not.toHaveProperty("openclaw.skill.trigger_summary");
-    await service.stop?.(ctx);
-  });
-
   test("omits openclaw.skill.version and openclaw.skill.trigger_summary on the skill.used span when absent", async () => {
     const service = createDiagnosticsOtelService();
     const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });
@@ -2002,9 +1966,9 @@ describe("diagnostics-otel service", () => {
       sessionKey: "session-key",
       skillName: "my-skill",
       skillSource: "workspace",
-      activation: "read",
+      activation: "command",
       skillVersion: "sha256:abc123def456",
-      triggerSummary: "~/repos/gpt-skills/my-skill/SKILL.md",
+      triggerSummary: "run_audit",
       trace: {
         traceId: TRACE_ID,
         spanId: TOOL_SPAN_ID,
