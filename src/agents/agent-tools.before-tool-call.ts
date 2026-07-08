@@ -121,7 +121,7 @@ export type HookContext = {
     bridge: SandboxFsBridge;
   };
   /**
-   * First 500 chars of the most recent user-role message in the conversation,
+   * First 4000 chars of the most recent user-role message in the conversation,
    * used as the trigger context when a skill is read-activated. Populated by
    * the agent runner; absent in other call sites (subagent wrappers, etc.).
    */
@@ -425,7 +425,7 @@ function emitSkillUsedDiagnostic(params: {
     : undefined;
   const trigger =
     params.match.activation === "command" && params.ctx?.skillCommand?.commandName
-      ? params.ctx.skillCommand.commandName.slice(0, 500)
+      ? params.ctx.skillCommand.commandName.slice(0, 4000)
       : params.match.activation === "read" && params.ctx?.lastUserMessageExcerpt
         ? params.ctx.lastUserMessageExcerpt
         : undefined;
