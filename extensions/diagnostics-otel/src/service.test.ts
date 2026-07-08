@@ -1988,7 +1988,9 @@ describe("diagnostics-otel service", () => {
       (call) => call[0] === "openclaw.skill.used",
     );
     // trigger must not appear — it contains user message text
-    expect(skillSpanCall?.[1]?.attributes).not.toHaveProperty("openclaw.skill.trigger");
+    expect(
+      (skillSpanCall?.[1] as { attributes?: Record<string, unknown> } | undefined)?.attributes,
+    ).not.toHaveProperty("openclaw.skill.trigger");
     await service.stop?.(ctx);
   });
 

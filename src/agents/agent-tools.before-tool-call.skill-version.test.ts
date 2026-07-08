@@ -213,8 +213,8 @@ describe("skill.used diagnostic event — trigger field", () => {
     expect(events[0].trigger).toBe("run_audit");
   });
 
-  it("truncates trigger at 500 chars when commandName exceeds the limit", async () => {
-    const longCommandName = "x".repeat(550);
+  it("truncates trigger at 4000 chars when commandName exceeds the limit", async () => {
+    const longCommandName = "x".repeat(4100);
     const execute = vi.fn().mockResolvedValue({ content: [{ type: "text", text: "ok" }] });
     const tool = wrapToolWithBeforeToolCallHook({ name: "my_tool", execute } as any, {
       skillCommand: {
@@ -233,8 +233,8 @@ describe("skill.used diagnostic event — trigger field", () => {
     expect(events).toHaveLength(1);
     const trigger = events[0].trigger;
     expect(trigger).toBeDefined();
-    expect(trigger!.length).toBe(500);
-    expect(trigger).toBe("x".repeat(500));
+    expect(trigger!.length).toBe(4000);
+    expect(trigger).toBe("x".repeat(4000));
   });
 
   it("populates trigger with lastUserMessageExcerpt for read activation", async () => {
