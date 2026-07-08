@@ -1307,6 +1307,7 @@ export async function runEmbeddedAttempt(
             recordToolPrepStage: (name) => corePluginToolStages.mark(name),
             onToolOutcome: params.onToolOutcome,
             skillsSnapshot: skillsSnapshotForRun,
+            lastUserMessageExcerpt: (params.transcriptPrompt ?? params.prompt).slice(0, 500),
             onYield: (message) => {
               yieldDetected = true;
               yieldMessage = message;

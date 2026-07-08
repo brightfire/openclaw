@@ -3024,14 +3024,16 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         }
         const spanAttrs: Record<string, string | number | boolean> = { ...attrs };
         addRunAttrs(spanAttrs, evt);
-        // skillVersion (sha256 fingerprint) and triggerSummary are high-cardinality and must not
+        // skillVersion (sha256 fingerprint) and trigger are high-cardinality and must not
         // appear in metric labels, so they are span-only.
-        // triggerSummary is only exported for command-activated skills (where the value is a
-        // command name). For read-activated skills the value is a local filesystem path, which
-        // is excluded from span attributes per the privacy contract in
-        // docs/gateway/opentelemetry.md ("spans … never include … skill file paths").
-        if (evt.skillVersion) { spanAttrs["openclaw.skill.version"] = evt.skillVersion; }
-        if (evt.triggerSummary) { spanAttrs["openclaw.skill.trigger_summary"] = evt.triggerSummary; }
+        // trigger carries the command name (command activation) or the first 500 chars of the
+        // preceding user message (read activation).
+        if (evt.skillVersion) {
+          spanAttrs["openclaw.skill.version"] = evt.skillVersion;
+        }
+        if (evt.trigger) {
+          spanAttrs["openclaw.skill.trigger"] = evt.trigger;
+        }
         const span = spanWithDuration("openclaw.skill.used", spanAttrs, 0, {
           parentContext: activeTrustedParentContext(evt, metadata),
           endTimeMs: evt.ts,

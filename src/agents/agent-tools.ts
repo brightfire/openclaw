@@ -551,6 +551,11 @@ export function createOpenClawCodingTools(options?: {
   onToolOutcome?: ToolOutcomeObserver;
   /** Runtime-only resolved skill paths that the read tool may load under workspaceOnly. */
   skillsSnapshot?: SkillSnapshot;
+  /**
+   * First 500 chars of the most recent user-role message. Forwarded to hook context so
+   * read-activated skill spans can carry a useful trigger excerpt instead of a file path.
+   */
+  lastUserMessageExcerpt?: string;
 }): AnyAgentTool[] {
   const execToolName = "exec";
   const sandbox = options?.sandbox?.enabled ? options.sandbox : undefined;
@@ -1185,6 +1190,9 @@ export function createOpenClawCodingTools(options?: {
     ...(options?.trace ? { trace: options.trace } : {}),
     loopDetection: resolveToolLoopDetectionConfig({ cfg: options?.config, agentId }),
     onToolOutcome: options?.onToolOutcome,
+    ...(options?.lastUserMessageExcerpt
+      ? { lastUserMessageExcerpt: options.lastUserMessageExcerpt }
+      : {}),
   };
   const hookOptions = { emitDiagnostics: options?.emitBeforeToolCallDiagnostics };
   const withHooks = normalized.map((tool) =>

@@ -120,6 +120,12 @@ export type HookContext = {
     root: string;
     bridge: SandboxFsBridge;
   };
+  /**
+   * First 500 chars of the most recent user-role message in the conversation,
+   * used as the trigger context when a skill is read-activated. Populated by
+   * the agent runner; absent in other call sites (subagent wrappers, etc.).
+   */
+  lastUserMessageExcerpt?: string;
 };
 
 type HookBlockedKind = "veto" | "failure";
@@ -417,13 +423,12 @@ function emitSkillUsedDiagnostic(params: {
   const trace = params.ctx?.trace
     ? freezeDiagnosticTraceContext(createChildDiagnosticTraceContext(params.ctx.trace))
     : undefined;
-  // triggerSummary: the command name for command-activated skills. Undefined for read-activated
-  // skills — the skill path is already captured by skillName/skillSource, so repeating it here
-  // adds no useful signal.
-  const triggerSummary =
+  const trigger =
     params.match.activation === "command" && params.ctx?.skillCommand?.commandName
       ? params.ctx.skillCommand.commandName.slice(0, 500)
-      : undefined;
+      : params.match.activation === "read" && params.ctx?.lastUserMessageExcerpt
+        ? params.ctx.lastUserMessageExcerpt
+        : undefined;
   emitTrustedDiagnosticEvent({
     type: "skill.used",
     ...(params.ctx?.runId && { runId: params.ctx.runId }),
@@ -435,7 +440,7 @@ function emitSkillUsedDiagnostic(params: {
     skillSource: params.match.skillSource,
     activation: params.match.activation,
     ...(params.match.skillVersion && { skillVersion: params.match.skillVersion }),
-    ...(triggerSummary && { triggerSummary }),
+    ...(trigger && { trigger }),
     toolName: params.toolName,
     ...(params.toolCallId && { toolCallId: params.toolCallId }),
   });

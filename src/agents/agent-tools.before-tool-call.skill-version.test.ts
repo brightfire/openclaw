@@ -1,5 +1,5 @@
 /**
- * Unit tests for skillVersion and triggerSummary fields on the skill.used diagnostic event.
+ * Unit tests for skillVersion and trigger fields on the skill.used diagnostic event.
  * DEV-318: https://linear.app/brightfire/issue/DEV-318
  */
 import path from "node:path";
@@ -192,8 +192,8 @@ describe("skill.used diagnostic event — skillVersion field", () => {
   });
 });
 
-describe("skill.used diagnostic event — triggerSummary field", () => {
-  it("populates triggerSummary with the commandName for command activation", async () => {
+describe("skill.used diagnostic event — trigger field", () => {
+  it("populates trigger with the commandName for command activation", async () => {
     const execute = vi.fn().mockResolvedValue({ content: [{ type: "text", text: "ok" }] });
     const tool = wrapToolWithBeforeToolCallHook({ name: "my_tool", execute } as any, {
       skillCommand: {
@@ -210,10 +210,10 @@ describe("skill.used diagnostic event — triggerSummary field", () => {
     );
 
     expect(events).toHaveLength(1);
-    expect(events[0].triggerSummary).toBe("run_audit");
+    expect(events[0].trigger).toBe("run_audit");
   });
 
-  it("truncates triggerSummary at 500 chars when commandName exceeds the limit", async () => {
+  it("truncates trigger at 500 chars when commandName exceeds the limit", async () => {
     const longCommandName = "x".repeat(550);
     const execute = vi.fn().mockResolvedValue({ content: [{ type: "text", text: "ok" }] });
     const tool = wrapToolWithBeforeToolCallHook({ name: "my_tool", execute } as any, {
@@ -231,20 +231,22 @@ describe("skill.used diagnostic event — triggerSummary field", () => {
     );
 
     expect(events).toHaveLength(1);
-    const summary = events[0].triggerSummary;
-    expect(summary).toBeDefined();
-    expect(summary!.length).toBe(500);
-    expect(summary).toBe("x".repeat(500));
+    const trigger = events[0].trigger;
+    expect(trigger).toBeDefined();
+    expect(trigger!.length).toBe(500);
+    expect(trigger).toBe("x".repeat(500));
   });
 
-  it("populates triggerSummary with the skill file path for read activation", async () => {
+  it("populates trigger with lastUserMessageExcerpt for read activation", async () => {
     const workspaceDir = "/tmp/openclaw-skill-trigger-read";
     const skillBaseDir = path.join(workspaceDir, ".agents", "skills", "pii-check-skill");
     const skillFilePath = path.join(skillBaseDir, "SKILL.md");
+    const userExcerpt = "can you run the pii check on the latest export?";
 
     const execute = vi.fn().mockResolvedValue({ content: [{ type: "text", text: "ok" }] });
     const tool = wrapToolWithBeforeToolCallHook({ name: "read", execute } as any, {
       workspaceDir,
+      lastUserMessageExcerpt: userExcerpt,
       skillsSnapshot: {
         prompt: "",
         skills: [{ name: "pii-check-skill" }],
@@ -272,11 +274,49 @@ describe("skill.used diagnostic event — triggerSummary field", () => {
     );
 
     expect(events).toHaveLength(1);
-    // triggerSummary should be the resolved skill file path
-    expect(events[0].triggerSummary).toBe(skillFilePath);
+    expect(events[0].trigger).toBe(userExcerpt);
   });
 
-  it("omits triggerSummary when commandName is absent", async () => {
+  it("omits trigger for read activation when lastUserMessageExcerpt is absent", async () => {
+    const workspaceDir = "/tmp/openclaw-skill-trigger-read-no-excerpt";
+    const skillBaseDir = path.join(workspaceDir, ".agents", "skills", "pii-check-skill");
+    const skillFilePath = path.join(skillBaseDir, "SKILL.md");
+
+    const execute = vi.fn().mockResolvedValue({ content: [{ type: "text", text: "ok" }] });
+    const tool = wrapToolWithBeforeToolCallHook({ name: "read", execute } as any, {
+      workspaceDir,
+      // lastUserMessageExcerpt intentionally absent
+      skillsSnapshot: {
+        prompt: "",
+        skills: [{ name: "pii-check-skill" }],
+        resolvedSkills: [
+          createCanonicalFixtureSkill({
+            name: "pii-check-skill",
+            description: "Skill for PII check",
+            filePath: skillFilePath,
+            baseDir: skillBaseDir,
+            source: "workspace",
+            promptVersion: "sha256:aabbccdd",
+          }),
+        ],
+      },
+      loopDetection: { enabled: false },
+    });
+
+    const events = await collectSkillUsedEvents(() =>
+      tool.execute(
+        "call-7b",
+        { path: path.join(".agents", "skills", "pii-check-skill", "SKILL.md") },
+        undefined,
+        undefined,
+      ),
+    );
+
+    expect(events).toHaveLength(1);
+    expect(events[0].trigger).toBeUndefined();
+  });
+
+  it("omits trigger when commandName is absent", async () => {
     const execute = vi.fn().mockResolvedValue({ content: [{ type: "text", text: "ok" }] });
     const tool = wrapToolWithBeforeToolCallHook({ name: "my_tool", execute } as any, {
       skillCommand: {
@@ -294,6 +334,6 @@ describe("skill.used diagnostic event — triggerSummary field", () => {
     );
 
     expect(events).toHaveLength(1);
-    expect(events[0].triggerSummary).toBeUndefined();
+    expect(events[0].trigger).toBeUndefined();
   });
 });

@@ -424,10 +424,11 @@ export type DiagnosticSkillUsedEvent = DiagnosticBaseEvent & {
   /** sha256 fingerprint from the <available_skills> <version> tag for the loaded skill. */
   skillVersion?: string;
   /**
-   * Bounded (max 500 chars) excerpt describing what triggered the skill load.
-   * For command activation: the command name. For read activation: the skill file path.
+   * Bounded (max 500 chars) excerpt of what triggered the skill load.
+   * For command activation: the command name.
+   * For read activation: the first 500 chars of the preceding user message.
    */
-  triggerSummary?: string;
+  trigger?: string;
   toolName?: string;
   toolCallId?: string;
 };
