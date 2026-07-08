@@ -2807,6 +2807,107 @@ describe("diagnostics-otel service", () => {
     await service.stop?.(ctx);
   });
 
+  test("sets openclaw.model_call_id on the usage span when model.call.started fires before model.usage", async () => {
+    const service = createDiagnosticsOtelService();
+    const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });
+    await service.start(ctx);
+
+    emitTrustedDiagnosticEvent({
+      type: "model.call.started",
+      runId: "run-1",
+      callId: "call-1",
+      provider: "openai",
+      model: "gpt-5.4",
+      trace: {
+        traceId: TRACE_ID,
+        spanId: MODEL_CALL_SPAN_ID,
+        parentSpanId: SPAN_ID,
+        traceFlags: "01",
+      },
+    });
+    await flushDiagnosticEvents();
+    emitTrustedDiagnosticEvent({
+      type: "model.usage",
+      provider: "openai",
+      model: "gpt-5.4",
+      usage: { input: 3, output: 2, total: 5 },
+      durationMs: 10,
+      trace: {
+        traceId: TRACE_ID,
+        spanId: MODEL_USAGE_SPAN_ID,
+        parentSpanId: SPAN_ID,
+        traceFlags: "01",
+      },
+    });
+    await flushDiagnosticEvents();
+
+    const modelCallSpan = spanByName("openclaw.model.call");
+    const usageSpanOptions = startedSpanOptions("openclaw.model.usage");
+    expect(usageSpanOptions?.attributes?.["openclaw.model_call_id"]).toBe(
+      modelCallSpan.spanContext().spanId,
+    );
+    await service.stop?.(ctx);
+  });
+
+  test("clears lastModelCallOtelSpanIdByTraceId on model.call.error so error-path entries do not leak", async () => {
+    const service = createDiagnosticsOtelService();
+    const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });
+    await service.start(ctx);
+
+    // Start a call and let it error — no model.usage will follow.
+    emitTrustedDiagnosticEvent({
+      type: "model.call.started",
+      runId: "run-1",
+      callId: "call-err",
+      provider: "openai",
+      model: "gpt-5.4",
+      trace: {
+        traceId: TRACE_ID,
+        spanId: MODEL_CALL_SPAN_ID,
+        parentSpanId: SPAN_ID,
+        traceFlags: "01",
+      },
+    });
+    emitTrustedDiagnosticEvent({
+      type: "model.call.error",
+      runId: "run-1",
+      callId: "call-err",
+      provider: "openai",
+      model: "gpt-5.4",
+      durationMs: 10,
+      errorCategory: "NetworkError",
+      trace: {
+        traceId: TRACE_ID,
+        spanId: MODEL_CALL_SPAN_ID,
+        parentSpanId: SPAN_ID,
+        traceFlags: "01",
+      },
+    });
+    await flushDiagnosticEvents();
+
+    // A subsequent usage event on the SAME trace ID (e.g. a retry call) should NOT
+    // inherit the stale span ID from the errored call.
+    emitTrustedDiagnosticEvent({
+      type: "model.usage",
+      provider: "openai",
+      model: "gpt-5.4",
+      usage: { input: 1, output: 1, total: 2 },
+      durationMs: 5,
+      trace: {
+        traceId: TRACE_ID,
+        spanId: MODEL_USAGE_SPAN_ID,
+        parentSpanId: SPAN_ID,
+        traceFlags: "01",
+      },
+    });
+    await flushDiagnosticEvents();
+
+    const usageSpanOptions = startedSpanOptions("openclaw.model.usage");
+    // The errored call's span ID must NOT appear on the usage span — the map was cleared.
+    expect(usageSpanOptions?.attributes?.["openclaw.model_call_id"]).toBeUndefined();
+    await service.stop?.(ctx);
+  });
+
   test("uses production message lifecycle helpers as the message span anchor", async () => {
     const service = createDiagnosticsOtelService();
     const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });

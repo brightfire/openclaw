@@ -3003,6 +3003,12 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
           message: redactSensitiveText(evt.errorCategory),
         });
         span.end(evt.ts);
+        // Error calls never emit model.usage (agent-runner's hasNonzeroUsage guard).
+        // Clear the map entry so it doesn't leak for the lifetime of the gateway.
+        const errorTraceId = trustedTraceContext(evt, metadata)?.traceId;
+        if (errorTraceId) {
+          lastModelCallOtelSpanIdByTraceId.delete(errorTraceId);
+        }
       };
 
       const toolExecutionBaseAttrs = (
