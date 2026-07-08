@@ -135,8 +135,6 @@ export type DiagnosticMessageProcessedEvent = DiagnosticBaseEvent & {
   outcome: "completed" | "skipped" | "error";
   reason?: string;
   error?: string;
-  userPrompt?: string;
-  finalResponse?: string;
 };
 
 export type DiagnosticMessageDeliveryKind = "text" | "media" | "edit" | "reaction" | "other";
@@ -742,6 +740,8 @@ export type DiagnosticEventPrivateData = Readonly<{
   modelContent?: DiagnosticModelCallContent;
   toolContent?: DiagnosticToolCallContent;
   skillContent?: DiagnosticSkillCallContent;
+  // Content gated by captureContent policy; routed privately so it never reaches untrusted onDiagnosticEvent listeners.
+  messageContent?: { userPrompt?: string; finalResponse?: string };
 }>;
 
 type DiagnosticEventListener = (

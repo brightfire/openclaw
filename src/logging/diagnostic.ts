@@ -6,6 +6,7 @@ import type { OpenClawConfig } from "../config/types.openclaw.js";
 import {
   areDiagnosticsEnabledForProcess,
   emitInternalDiagnosticEvent as emitDiagnosticEvent,
+  emitTrustedDiagnosticEventWithPrivateData,
   isDiagnosticsEnabled,
   type DiagnosticPhaseSnapshot,
   type DiagnosticLivenessWarningReason,
@@ -829,8 +830,8 @@ export function logMessageProcessed(params: {
       diag.debug(payload);
     }
   }
-  emitDiagnosticEvent({
-    type: "message.processed",
+  const messageProcessedEvent = {
+    type: "message.processed" as const,
     channel: params.channel,
     chatId: params.chatId,
     messageId: params.messageId,
@@ -840,9 +841,17 @@ export function logMessageProcessed(params: {
     outcome: params.outcome,
     reason: params.reason,
     error: params.error,
-    userPrompt: params.userPrompt,
-    finalResponse: params.finalResponse,
-  });
+  };
+  // Route content through privateData so it never reaches untrusted onDiagnosticEvent listeners;
+  // the OTEL extension reads it via onTrustedInternalDiagnosticEvent / privateData.messageContent.
+  const messageContent =
+    params.userPrompt !== undefined || params.finalResponse !== undefined
+      ? { userPrompt: params.userPrompt, finalResponse: params.finalResponse }
+      : undefined;
+  emitTrustedDiagnosticEventWithPrivateData(
+    messageProcessedEvent,
+    messageContent ? { messageContent } : undefined,
+  );
   markActivity();
 }
 
