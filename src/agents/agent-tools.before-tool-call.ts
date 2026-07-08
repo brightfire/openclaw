@@ -58,6 +58,7 @@ import {
 import type { SkillSnapshot, SkillTelemetrySource } from "../skills/types.js";
 import { resolveSkillWorkshopToolApproval } from "../skills/workshop/policy.js";
 import { isPlainObject } from "../utils.js";
+import { resolveAgentConfig } from "./agent-scope.js";
 import { adjustedParamsByToolCallId } from "./agent-tools.before-tool-call.state.js";
 import { copyChannelAgentToolMeta, getChannelAgentToolMeta } from "./channel-tools.js";
 import {
@@ -402,12 +403,17 @@ function emitSkillUsedDiagnostic(params: {
   const trace = params.ctx?.trace
     ? freezeDiagnosticTraceContext(createChildDiagnosticTraceContext(params.ctx.trace))
     : undefined;
+  const agentLabel =
+    params.ctx?.config && params.ctx?.agentId
+      ? resolveAgentConfig(params.ctx.config, params.ctx.agentId)?.name
+      : undefined;
   emitTrustedDiagnosticEvent({
     type: "skill.used",
     ...(params.ctx?.runId && { runId: params.ctx.runId }),
     ...(params.ctx?.sessionKey && { sessionKey: params.ctx.sessionKey }),
     ...(params.ctx?.sessionId && { sessionId: params.ctx.sessionId }),
     ...(params.ctx?.agentId && { agentId: params.ctx.agentId }),
+    ...(agentLabel && { agentLabel }),
     ...(trace && { trace }),
     skillName: params.match.skillName,
     skillSource: params.match.skillSource,

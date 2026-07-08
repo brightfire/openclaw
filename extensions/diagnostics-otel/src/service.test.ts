@@ -1646,7 +1646,7 @@ describe("diagnostics-otel service", () => {
     await service.stop?.(ctx);
   });
 
-  test("drops session-shaped agent identifiers from model usage metric attributes", async () => {
+  test("extracts agent name from session-shaped agent identifiers in model usage metric attributes", async () => {
     const service = createDiagnosticsOtelService();
     const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { metrics: true });
     await service.start(ctx);
@@ -1662,7 +1662,7 @@ describe("diagnostics-otel service", () => {
 
     expect(telemetryState.counters.get("openclaw.tokens")?.add).toHaveBeenCalledWith(2, {
       "openclaw.channel": "unknown",
-      "openclaw.agent": "unknown",
+      "openclaw.agent": "qa",
       "openclaw.provider": "openai",
       "openclaw.model": "gpt-5.4",
       "openclaw.token": "input",
