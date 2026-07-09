@@ -580,6 +580,13 @@ function createSkillsPathWatcher(target: WatchTarget, debounceMs: number): Skill
         return;
       }
       scheduleRawSkillFile(changedPath);
+    } else if (changedPath && !DEFAULT_SKILLS_WATCH_IGNORED.some((re) => re.test(changedPath))) {
+      // Support file under a skill root (assets/, examples/, templates/, scripts/, etc.).
+      // SKILL.md changes already went through scheduleRawSkillFile above; all other file
+      // changes in the watched tree should still invalidate the snapshot so that the new
+      // directory-wide promptVersion hash computed by computeSkillPromptVersion() takes
+      // effect without requiring a gateway restart.
+      schedule(changedPath);
     }
   });
   watcher.on("error", (err) => {
