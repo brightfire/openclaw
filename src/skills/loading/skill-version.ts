@@ -31,7 +31,15 @@ function buildIgnoreMatcher(rootDir: string): IgnoreMatcher {
 
 function walkFiles(dir: string, rootDir: string, ig: IgnoreMatcher): string[] {
   const results: string[] = [];
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    // Unreadable support directory (permissions, race, etc.) — skip rather than aborting
+    // the entire skill load. Matches the same tolerance used for file reads below.
+    return results;
+  }
+  for (const entry of entries) {
     const rel = path.relative(rootDir, path.join(dir, entry.name));
     const relPosix = rel.split(path.sep).join("/");
     const checkPath = entry.isDirectory() ? `${relPosix}/` : relPosix;
