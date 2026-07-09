@@ -44,10 +44,10 @@ type IgnoreMatcher = ReturnType<typeof ignore>;
 
 function buildIgnoreMatcher(rootDir: string): IgnoreMatcher {
   const ig = ignore();
-  // Always skip hidden entries and dependency trees, matching the discovery rules in
-  // loadSkillsFromDirInternal (session.ts). These are unconditional because no skill
-  // root should version-hash its own node_modules or .git internals.
-  ig.add(SKILLS_IGNORED_IGNORE_PATTERNS);
+  // Load user ignore files first so the hard excludes added below always win.
+  // The `ignore` library applies rules in order with later rules taking precedence;
+  // adding SKILLS_IGNORED_IGNORE_PATTERNS last ensures a `.gitignore` with a negating
+  // `!node_modules/` or `!.cache/` cannot re-include those paths.
   for (const name of IGNORE_FILE_NAMES) {
     const filePath = path.join(rootDir, name);
     try {
@@ -56,6 +56,8 @@ function buildIgnoreMatcher(rootDir: string): IgnoreMatcher {
       // File absent — skip.
     }
   }
+  // Hard excludes applied after user rules so they cannot be negated.
+  ig.add(SKILLS_IGNORED_IGNORE_PATTERNS);
   return ig;
 }
 
