@@ -25,6 +25,13 @@ export const SKILLS_IGNORED_PATH_PATTERNS: RegExp[] = [
 ];
 
 /**
+ * Maximum directory depth the skills watcher observes below a skill root.
+ * `walkFiles` in skill-version.ts uses this as a recursion cap so the version hash
+ * never covers files deeper than what the watcher can detect a change to.
+ */
+export const SKILL_VERSION_MAX_DEPTH = 6;
+
+/**
  * Gitignore-style patterns derived from SKILLS_IGNORED_PATH_PATTERNS for use with the
  * `ignore` npm package. Each entry matches the corresponding segment at any depth.
  */

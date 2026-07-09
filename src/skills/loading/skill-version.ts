@@ -6,7 +6,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import ignore from "ignore";
-import { SKILLS_IGNORED_IGNORE_PATTERNS } from "./watch-ignored.js";
+import { SKILL_VERSION_MAX_DEPTH, SKILLS_IGNORED_IGNORE_PATTERNS } from "./watch-ignored.js";
 
 // The same ignore-file names respected by the skill-discovery traversal in session.ts.
 const IGNORE_FILE_NAMES = [".gitignore", ".ignore", ".fdignore"];
@@ -69,6 +69,10 @@ function walkFiles(
   // Real path of the skill root; symlinked directories resolving outside this boundary
   // are skipped so that `assets -> ..` or similar cannot pull in unrelated workspace files.
   rootRealPath = "",
+  // Remaining recursion depth. Capped at SKILL_VERSION_MAX_DEPTH so the hash surface
+  // stays aligned with the watcher's bounded depth — files deeper than the watcher
+  // can observe would be hashed but never trigger a refresh on change.
+  depth = SKILL_VERSION_MAX_DEPTH,
 ): string[] {
   const results: string[] = [];
   let entries: fs.Dirent[];
@@ -123,7 +127,10 @@ function walkFiles(
         continue;
       }
       visited.add(realFull);
-      results.push(...walkFiles(full, rootDir, ig, visited, rootRealPath));
+      if (depth <= 0) {
+        continue;
+      }
+      results.push(...walkFiles(full, rootDir, ig, visited, rootRealPath, depth - 1));
     } else if (isFile) {
       // Apply out-of-root boundary to all symlinked files, with one narrow exception:
       // a symlinked SKILL.md directly in the skill root may point at a shared instruction
