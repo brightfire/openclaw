@@ -100,11 +100,13 @@ function walkFiles(
       visited.add(realFull);
       results.push(...walkFiles(full, rootDir, ig, visited, rootRealPath));
     } else if (isFile) {
-      // Apply out-of-root boundary to symlinked files inside subdirectories only.
-      // Direct children of the skill root (e.g. a symlinked SKILL.md pointing at a
-      // shared instruction file) are intentionally allowed — loadSkillsFromDirInternal
-      // follows and accepts them, so the version hash must cover them too.
-      if (entry.isSymbolicLink() && rootRealPath && dir !== rootDir) {
+      // Apply out-of-root boundary to all symlinked files, with one narrow exception:
+      // a symlinked SKILL.md directly in the skill root may point at a shared instruction
+      // file outside the root (loadSkillsFromDirInternal follows and accepts it, so the
+      // version hash must cover it). Every other symlinked file — including other root-level
+      // ones — must resolve inside the root to prevent credential/config file reads.
+      const isSkillMdRoot = dir === rootDir && entry.name === "SKILL.md";
+      if (entry.isSymbolicLink() && rootRealPath && !isSkillMdRoot) {
         let realFull: string;
         try {
           realFull = fs.realpathSync(full);
