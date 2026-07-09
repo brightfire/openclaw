@@ -69,9 +69,17 @@ export function computeSkillPromptVersion(skillDir: string): string {
     .toSorted();
   const hash = crypto.createHash("sha256");
   for (const rel of allFiles) {
+    let content: Buffer;
+    try {
+      content = fs.readFileSync(path.join(skillDir, rel));
+    } catch {
+      // File disappeared or became unreadable between walkFiles() and here (TOCTOU race).
+      // Skip it so one transiently missing support file cannot abort the whole skill load.
+      continue;
+    }
     hash.update(rel);
     hash.update("\0");
-    hash.update(fs.readFileSync(path.join(skillDir, rel)));
+    hash.update(content);
     hash.update("\0");
   }
   return `sha256:${hash.digest("hex").slice(0, 16)}`;
