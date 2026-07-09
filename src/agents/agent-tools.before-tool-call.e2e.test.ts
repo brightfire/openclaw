@@ -1934,7 +1934,7 @@ describe("before_tool_call skill content private-data capture", () => {
     }
   }
 
-  function makeReadSkillTool(config?: unknown) {
+  function makeReadSkillTool(config?: import("../config/types.openclaw.js").OpenClawConfig) {
     const workspaceDir = path.join("/tmp", "openclaw-skill-content-capture");
     const skillBaseDir = path.join(workspaceDir, ".agents", "skills", "audit-skill");
     const skillFilePath = path.join(skillBaseDir, "SKILL.md");

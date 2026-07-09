@@ -264,6 +264,12 @@ describe("skill.used diagnostic event — trigger field", () => {
         ],
       },
       loopDetection: { enabled: false },
+      config: {
+        diagnostics: {
+          enabled: true,
+          otel: { enabled: true, traces: true, captureContent: { enabled: true, inputMessages: true } },
+        },
+      } as unknown as import("../config/types.openclaw.js").OpenClawConfig,
     });
 
     const entries = await collectSkillUsedEvents(() =>
