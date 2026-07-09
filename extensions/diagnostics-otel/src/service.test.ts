@@ -1989,7 +1989,10 @@ describe("diagnostics-otel service", () => {
       (call) => call[0] === "openclaw.skill.used",
     );
     // trigger must not appear — no skillContent private data was provided.
-    expect(skillSpanCall?.[1]?.attributes).not.toHaveProperty("openclaw.skill.trigger");
+    const noPrivateDataAttrs = (
+      skillSpanCall?.[1] as { attributes?: Record<string, unknown> } | undefined
+    )?.attributes;
+    expect(noPrivateDataAttrs).not.toHaveProperty("openclaw.skill.trigger");
     await service.stop?.(ctx);
   });
 
