@@ -25,11 +25,18 @@ export const SKILLS_IGNORED_PATH_PATTERNS: RegExp[] = [
 ];
 
 /**
- * Maximum directory depth the skills watcher observes below a skill root.
- * `walkFiles` in skill-version.ts uses this as a recursion cap so the version hash
- * never covers files deeper than what the watcher can detect a change to.
+ * Maximum directory depth the skills watcher observes below a grouped-skills root
+ * (i.e. a directory named "skills"). Used by both the watcher and the version hasher
+ * so the hash surface never covers files deeper than chokidar can detect a change to.
  */
 export const SKILL_VERSION_MAX_DEPTH = 6;
+
+/**
+ * Maximum directory depth the skills watcher observes below a configured-root extraDir
+ * that is NOT a grouped-skills root (i.e. not named "skills"). Must stay equal to
+ * `CONFIGURED_ROOT_WATCH_DEPTH` in `src/skills/runtime/refresh.ts`.
+ */
+export const SKILL_VERSION_CONFIGURED_ROOT_MAX_DEPTH = 2;
 
 /**
  * Gitignore-style patterns derived from SKILLS_IGNORED_PATH_PATTERNS for use with the

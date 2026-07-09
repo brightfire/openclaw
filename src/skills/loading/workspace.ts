@@ -35,6 +35,7 @@ import { resolvePluginSkillDirs } from "./plugin-skills.js";
 import { serializeByKey } from "./serialize.js";
 import { formatSkillsForPrompt, type Skill } from "./skill-contract.js";
 import { resolveAllowedSkillSymlinkTargetRealPaths, tryRealpath } from "./symlink-targets.js";
+import { SKILL_VERSION_CONFIGURED_ROOT_MAX_DEPTH } from "./watch-ignored.js";
 
 const fsp = fs.promises;
 const skillsLogger = createSubsystemLogger("skills");
@@ -150,7 +151,9 @@ const DEFAULT_MAX_RAW_ENTRIES_PER_DIRECTORY_SCAN = 10_000;
 // Match Codex's bounded recursive skills discovery without letting broad
 // workspace roots turn into unbounded filesystem walks.
 const MAX_GROUPED_SKILL_SCAN_DEPTH = 6;
-const MAX_CONFIGURED_ROOT_GROUPED_SKILL_SCAN_DEPTH = 2;
+// Imported from watch-ignored.ts so this stays in sync with CONFIGURED_ROOT_WATCH_DEPTH
+// in refresh.ts. Both the scan limit and the hash depth budget use this value.
+const MAX_CONFIGURED_ROOT_GROUPED_SKILL_SCAN_DEPTH = SKILL_VERSION_CONFIGURED_ROOT_MAX_DEPTH;
 
 type ResolvedSkillsLimits = {
   maxCandidatesPerRoot: number;
