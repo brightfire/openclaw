@@ -3058,10 +3058,11 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         if (evt.trigger) {
           spanAttrs["openclaw.skill.trigger"] = evt.trigger;
         }
-        // Read-activated trigger is user message text — emitted only in privateData when
-        // captureContent.inputMessages was opted in at the emission site.
-        // Redact before export: the excerpt may contain keys/tokens despite the opt-in gate.
-        if (skillContent?.trigger) {
+        // Read-activated trigger is user message text — only export it when the
+        // exporter-side captureContent.inputMessages is enabled, not just when the
+        // emission site opted in. A config mismatch or reload must not leak the excerpt.
+        // Redact before export regardless: the excerpt may contain keys/tokens.
+        if (skillContent?.trigger && contentCapturePolicy.inputMessages) {
           spanAttrs["openclaw.skill.trigger"] = redactSensitiveText(skillContent.trigger);
         }
         const span = spanWithDuration("openclaw.skill.used", spanAttrs, 0, {

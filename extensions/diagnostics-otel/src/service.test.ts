@@ -1924,12 +1924,16 @@ describe("diagnostics-otel service", () => {
 
   test("emits openclaw.skill.trigger on the skill.used span for read-activated skills when passed via skillContent private data", async () => {
     const service = createDiagnosticsOtelService();
-    const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });
+    const ctx = createOtelContext(OTEL_TEST_ENDPOINT, {
+      traces: true,
+      metrics: true,
+      captureContent: { enabled: true, inputMessages: true },
+    });
     await service.start(ctx);
 
-    // Read-activated trigger must arrive in privateData.skillContent, not the event payload.
-    // emitSkillUsedDiagnostic puts it there only when captureInputMessages is opted in;
-    // the OTel exporter reads from privateData regardless of its own captureContent setting.
+    // Read-activated trigger arrives in privateData.skillContent and is only exported
+    // when the exporter's captureContent.inputMessages is also enabled. Both the emission
+    // site AND the exporter must opt in.
     emitTrustedDiagnosticEventWithPrivateData(
       {
         type: "skill.used",
@@ -1958,6 +1962,42 @@ describe("diagnostics-otel service", () => {
         "openclaw.skill.trigger": "can you run the pii check on the latest export?",
       },
     });
+    await service.stop?.(ctx);
+  });
+
+  test("suppresses openclaw.skill.trigger for read-activated skills when captureContent.inputMessages is false even if skillContent private data is present", async () => {
+    const service = createDiagnosticsOtelService();
+    // captureContent.inputMessages defaults to false — no explicit override.
+    const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });
+    await service.start(ctx);
+
+    emitTrustedDiagnosticEventWithPrivateData(
+      {
+        type: "skill.used",
+        agentId: "main",
+        runId: "run-1",
+        sessionKey: "session-key",
+        skillName: "my-skill",
+        skillSource: "workspace",
+        activation: "read",
+        trace: {
+          traceId: TRACE_ID,
+          spanId: TOOL_SPAN_ID,
+          parentSpanId: CHILD_SPAN_ID,
+          traceFlags: "01",
+        },
+      },
+      { skillContent: { trigger: "secret user prompt" } },
+    );
+    await flushDiagnosticEvents();
+
+    const skillSpanCall = telemetryState.tracer.startSpan.mock.calls.find(
+      (call) => call[0] === "openclaw.skill.used",
+    );
+    // trigger must be absent — exporter-side captureContent.inputMessages is false.
+    const attrs = (skillSpanCall?.[1] as { attributes?: Record<string, unknown> } | undefined)
+      ?.attributes;
+    expect(attrs).not.toHaveProperty("openclaw.skill.trigger");
     await service.stop?.(ctx);
   });
 
