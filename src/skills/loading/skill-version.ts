@@ -5,21 +5,42 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import ignore from "ignore";
 
-// Directories excluded from the skill-version hash. These either contain
-// generated/dependency files that are not part of the prompt contract, or are
-// conventionally ignored by traversal tools.
-const SKIP_DIRS = new Set(["node_modules", ".git", ".pnpm", ".yarn"]);
+// The same ignore-file names respected by the skill-discovery traversal in session.ts.
+const IGNORE_FILE_NAMES = [".gitignore", ".ignore", ".fdignore"];
 
-function walkFiles(dir: string): string[] {
+type IgnoreMatcher = ReturnType<typeof ignore>;
+
+function buildIgnoreMatcher(rootDir: string): IgnoreMatcher {
+  const ig = ignore();
+  // Always skip hidden entries and dependency trees, matching the discovery rules in
+  // loadSkillsFromDirInternal (session.ts). These are unconditional because no skill
+  // root should version-hash its own node_modules or .git internals.
+  ig.add([".*", "node_modules/"]);
+  for (const name of IGNORE_FILE_NAMES) {
+    const filePath = path.join(rootDir, name);
+    try {
+      ig.add(fs.readFileSync(filePath, "utf-8"));
+    } catch {
+      // File absent — skip.
+    }
+  }
+  return ig;
+}
+
+function walkFiles(dir: string, rootDir: string, ig: IgnoreMatcher): string[] {
   const results: string[] = [];
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    if (entry.name.startsWith(".") || SKIP_DIRS.has(entry.name)) {
+    const rel = path.relative(rootDir, path.join(dir, entry.name));
+    const relPosix = rel.split(path.sep).join("/");
+    const checkPath = entry.isDirectory() ? `${relPosix}/` : relPosix;
+    if (ig.ignores(checkPath)) {
       continue;
     }
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) {
-      results.push(...walkFiles(full));
+      results.push(...walkFiles(full, rootDir, ig));
     } else if (entry.isFile()) {
       results.push(full);
     }
@@ -42,7 +63,8 @@ export function computeSkillFileVersion(filePath: string): string {
 }
 
 export function computeSkillPromptVersion(skillDir: string): string {
-  const allFiles = walkFiles(skillDir)
+  const ig = buildIgnoreMatcher(skillDir);
+  const allFiles = walkFiles(skillDir, skillDir, ig)
     .map((f) => path.relative(skillDir, f))
     .toSorted();
   const hash = crypto.createHash("sha256");
