@@ -11,10 +11,34 @@ import { SKILLS_IGNORED_IGNORE_PATTERNS } from "./watch-ignored.js";
 // The same ignore-file names respected by the skill-discovery traversal in session.ts.
 const IGNORE_FILE_NAMES = [".gitignore", ".ignore", ".fdignore"];
 
-// Support files larger than this are included in the hash via filename + size only,
-// not their full contents, to avoid buffering large assets (images, archives, etc.)
-// on every skill load. SKILL.md itself is always small (bounded by maxSkillFileBytes).
-const MAX_CONTENT_HASH_BYTES = 512 * 1024; // 512 KiB
+// Chunk size for streaming large support files into the hash. Keeps peak allocation
+// bounded regardless of individual file size while preserving content accuracy.
+const HASH_CHUNK_BYTES = 64 * 1024; // 64 KiB
+
+/**
+ * Stream a file into `hash` in fixed-size chunks so that large assets are content-hashed
+ * without buffering the whole file into memory. Returns false if the file was unreadable.
+ */
+function hashFileStreamed(hash: crypto.Hash, absPath: string): boolean {
+  let fd: number;
+  try {
+    fd = fs.openSync(absPath, "r");
+  } catch {
+    return false;
+  }
+  try {
+    const buf = Buffer.allocUnsafe(HASH_CHUNK_BYTES);
+    let bytesRead: number;
+    while ((bytesRead = fs.readSync(fd, buf, 0, HASH_CHUNK_BYTES, null)) > 0) {
+      hash.update(buf.subarray(0, bytesRead));
+    }
+    return true;
+  } catch {
+    return false;
+  } finally {
+    fs.closeSync(fd);
+  }
+}
 
 type IgnoreMatcher = ReturnType<typeof ignore>;
 
@@ -157,30 +181,14 @@ export function computeSkillPromptVersion(skillDir: string): string {
   const hash = crypto.createHash("sha256");
   for (const rel of allFiles) {
     const absPath = path.join(skillDir, ...rel.split("/"));
-    let stat: fs.Stats;
-    try {
-      stat = fs.statSync(absPath);
-    } catch {
-      // File disappeared between walkFiles() and here — skip.
-      continue;
-    }
     hash.update(rel);
     hash.update("\0");
-    if (stat.size <= MAX_CONTENT_HASH_BYTES) {
-      let content: Buffer;
-      try {
-        content = fs.readFileSync(absPath);
-      } catch {
-        // Became unreadable after stat — fall through to size-only contribution.
-        hash.update(String(stat.size));
-        hash.update("\0");
-        continue;
-      }
-      hash.update(content);
-    } else {
-      // Large support file: contribute filename + size so presence/rename changes
-      // the version without buffering the full asset into memory.
-      hash.update(String(stat.size));
+    // Stream the file content in chunks so peak memory is bounded by HASH_CHUNK_BYTES
+    // regardless of file size, while still detecting content changes in large assets.
+    if (!hashFileStreamed(hash, absPath)) {
+      // File became unreadable after stat (TOCTOU race) — skip this file entirely so
+      // a transient unreadable asset does not abort the whole skill-version computation.
+      continue;
     }
     hash.update("\0");
   }
