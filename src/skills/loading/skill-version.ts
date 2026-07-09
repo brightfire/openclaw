@@ -36,6 +36,9 @@ function walkFiles(
   // Tracks real paths of visited directories to prevent infinite recursion through
   // symlink cycles (e.g. a support symlink pointing at the skill root or an ancestor).
   visited: Set<string> = new Set(),
+  // Real path of the skill root; symlinked directories resolving outside this boundary
+  // are skipped so that `assets -> ..` or similar cannot pull in unrelated workspace files.
+  rootRealPath = "",
 ): string[] {
   const results: string[] = [];
   let entries: fs.Dirent[];
@@ -79,8 +82,18 @@ function walkFiles(
       if (visited.has(realFull)) {
         continue;
       }
+      // Reject symlinks that escape the skill root (e.g. `assets -> ..`).
+      // rootRealPath is empty only for non-symlink subdirs of the root itself, which
+      // are fine to recurse into unconditionally.
+      if (
+        rootRealPath &&
+        realFull !== rootRealPath &&
+        !realFull.startsWith(rootRealPath + path.sep)
+      ) {
+        continue;
+      }
       visited.add(realFull);
-      results.push(...walkFiles(full, rootDir, ig, visited));
+      results.push(...walkFiles(full, rootDir, ig, visited, rootRealPath));
     } else if (isFile) {
       results.push(full);
     }
@@ -115,7 +128,7 @@ export function computeSkillPromptVersion(skillDir: string): string {
   const visited = new Set([rootRealPath]);
   // Normalize to POSIX separators before sorting and hashing so the version is
   // identical across OS (Windows path.relative() returns backslash-separated paths).
-  const allFiles = walkFiles(skillDir, skillDir, ig, visited)
+  const allFiles = walkFiles(skillDir, skillDir, ig, visited, rootRealPath)
     .map((f) => path.relative(skillDir, f).split(path.sep).join("/"))
     .toSorted();
   const hash = crypto.createHash("sha256");
