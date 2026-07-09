@@ -171,7 +171,16 @@ export function computeSkillFileVersion(filePath: string): string {
   return `sha256:${hash.digest("hex").slice(0, 16)}`;
 }
 
-export function computeSkillPromptVersion(skillDir: string): string {
+export function computeSkillPromptVersion(
+  skillDir: string,
+  /**
+   * Max directory depth to walk below `skillDir`. Defaults to `SKILL_VERSION_MAX_DEPTH`.
+   * Callers that know the remaining watched depth (e.g. the skill is 2 levels below the
+   * skills root, leaving GROUPED_SKILLS_WATCH_DEPTH - 2 observable levels inside it)
+   * should pass a tighter value so the hash surface never exceeds what the watcher sees.
+   */
+  maxDepth = SKILL_VERSION_MAX_DEPTH,
+): string {
   const ig = buildIgnoreMatcher(skillDir);
   // Seed visited with the skill root's real path so a symlink directly back to the
   // root is caught before the first recursive descent.
@@ -184,7 +193,7 @@ export function computeSkillPromptVersion(skillDir: string): string {
   const visited = new Set([rootRealPath]);
   // Normalize to POSIX separators before sorting and hashing so the version is
   // identical across OS (Windows path.relative() returns backslash-separated paths).
-  const allFiles = walkFiles(skillDir, skillDir, ig, visited, rootRealPath)
+  const allFiles = walkFiles(skillDir, skillDir, ig, visited, rootRealPath, maxDepth)
     .map((f) => path.relative(skillDir, f).split(path.sep).join("/"))
     .toSorted();
   const hash = crypto.createHash("sha256");
