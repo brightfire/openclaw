@@ -116,6 +116,8 @@ export type HookContext = {
     skillName: string;
     skillSource?: SkillTelemetrySource;
     toolName?: string;
+    /** Carried from SkillCommandSpec so command-only skills report the correct version. */
+    skillVersion?: string;
   };
   sandbox?: {
     root: string;
@@ -390,9 +392,13 @@ function findSkillUsageMatch(params: {
   if (command) {
     const commandToolName = normalizeToolName(command.toolName ?? params.toolName);
     if (!commandToolName || commandToolName === params.toolName) {
-      const commandSkillVersion = params.ctx?.skillsSnapshot?.resolvedSkills?.find(
-        (s) => s.name === command.skillName,
-      )?.promptVersion;
+      // Prefer the version carried in skillCommand (populated for all user-invocable skills
+      // including command-only ones). Fall back to resolvedSkills for older callers that
+      // pre-date the skillVersion field (command-only skills are absent from resolvedSkills).
+      const commandSkillVersion =
+        command.skillVersion ??
+        params.ctx?.skillsSnapshot?.resolvedSkills?.find((s) => s.name === command.skillName)
+          ?.promptVersion;
       return {
         skillName: command.skillName,
         skillSource: resolveSkillTelemetrySourceValue(command.skillSource),

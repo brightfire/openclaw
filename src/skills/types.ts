@@ -57,6 +57,13 @@ export type SkillCommandSpec = {
   description: string;
   /** Bounded source label used for diagnostics. */
   skillSource?: SkillTelemetrySource;
+  /**
+   * Snapshot of the skill's `promptVersion` at command-spec build time. Carried here so
+   * that telemetry can report the version for command-only skills (`disable-model-invocation`)
+   * that are absent from `skillsSnapshot.resolvedSkills` (which only contains prompt-visible
+   * entries).
+   */
+  skillVersion?: string;
   /** Localized descriptions for native command surfaces that support them. */
   descriptionLocalizations?: Record<string, string>;
   /** Optional deterministic dispatch behavior for this command. */
