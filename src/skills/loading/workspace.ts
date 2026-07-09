@@ -35,7 +35,6 @@ import { resolvePluginSkillDirs } from "./plugin-skills.js";
 import { serializeByKey } from "./serialize.js";
 import { formatSkillsForPrompt, type Skill } from "./skill-contract.js";
 import { resolveAllowedSkillSymlinkTargetRealPaths, tryRealpath } from "./symlink-targets.js";
-import { SKILL_VERSION_MAX_DEPTH } from "./watch-ignored.js";
 
 const fsp = fs.promises;
 const skillsLogger = createSubsystemLogger("skills");
@@ -173,8 +172,15 @@ type CandidateSkillDir = {
   skillDirRealPath: string;
   name: string;
   skillMdRealPath: string;
-  /** Depth of this skill below the scan root, used to compute remaining watcher depth. */
+  /** Depth of this skill below the scan root. */
   depth: number;
+  /**
+   * The watch-depth base that applies to this skill's location. Mirrors the chokidar
+   * depth the watcher uses: GROUPED_SKILLS_WATCH_DEPTH (6) for skills-root subtrees,
+   * CONFIGURED_ROOT_WATCH_DEPTH (2) for non-skills extraDir roots. Used with `depth` to
+   * compute the remaining depth budget passed to computeSkillPromptVersion.
+   */
+  watchBaseDepth: number;
 };
 
 type ChildDirectoryScan = {
@@ -956,6 +962,7 @@ function loadSkillEntries(
       name,
       skillMdRealPath,
       depth,
+      watchBaseDepth,
     }: CandidateSkillDir) => {
       try {
         const size = fs.statSync(skillMdRealPath).size;
@@ -978,10 +985,10 @@ function loadSkillEntries(
           source: params.source,
           maxSkillFileBytes: limits.maxSkillFileBytes,
           canonicalSkillDir: canonicalSkillDirForSource(params.source, skillDirRealPath),
-          // depth is the number of levels this skill sits below the scan root
-          // (which the watcher observes at SKILL_VERSION_MAX_DEPTH from its root). Passing
-          // the remaining budget keeps the hash surface aligned with what chokidar sees.
-          remainingDepth: Math.max(0, SKILL_VERSION_MAX_DEPTH - depth),
+          // watchBaseDepth mirrors the chokidar depth cap for this skill's location;
+          // subtracting the scan depth gives the remaining levels the watcher can observe
+          // inside the skill directory, keeping the hash surface aligned with chokidar.
+          remainingDepth: Math.max(0, watchBaseDepth - depth),
         }),
       );
     };
@@ -1019,12 +1026,22 @@ function loadSkillEntries(
           candidatePath: skillMd,
         });
         if (skillMdRealPath) {
+          const skillCandidatePath = path.resolve(candidate.skillDir);
+          const isConfiguredRootSkill =
+            params.source === "openclaw-extra" &&
+            !baseDirIsNestedSkillsRoot &&
+            !baseDirLooksLikeSkillsRoot &&
+            skillCandidatePath !== nestedSkillsRootPath &&
+            !isPathInside(nestedSkillsRootPath, skillCandidatePath);
           skillCandidates.push({
             skillDir: candidate.skillDir,
             skillDirRealPath,
             name: candidate.name,
             skillMdRealPath,
             depth: candidate.depth,
+            watchBaseDepth: isConfiguredRootSkill
+              ? MAX_CONFIGURED_ROOT_GROUPED_SKILL_SCAN_DEPTH
+              : MAX_GROUPED_SKILL_SCAN_DEPTH,
           });
         }
         continue;
