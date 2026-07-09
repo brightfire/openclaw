@@ -47,9 +47,23 @@ function walkFiles(dir: string, rootDir: string, ig: IgnoreMatcher): string[] {
       continue;
     }
     const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
+    let isDirectory = entry.isDirectory();
+    let isFile = entry.isFile();
+    if (entry.isSymbolicLink()) {
+      // Follow symlinks so that symlinked SKILL.md or support files are included.
+      // Matches the same resolution used in loadSkillsFromDirInternal (session.ts).
+      try {
+        const stats = fs.statSync(full);
+        isDirectory = stats.isDirectory();
+        isFile = stats.isFile();
+      } catch {
+        // Broken symlink — skip.
+        continue;
+      }
+    }
+    if (isDirectory) {
       results.push(...walkFiles(full, rootDir, ig));
-    } else if (entry.isFile()) {
+    } else if (isFile) {
       results.push(full);
     }
   }
