@@ -35,6 +35,7 @@ import { resolvePluginSkillDirs } from "./plugin-skills.js";
 import { serializeByKey } from "./serialize.js";
 import { formatSkillsForPrompt, type Skill } from "./skill-contract.js";
 import { resolveAllowedSkillSymlinkTargetRealPaths, tryRealpath } from "./symlink-targets.js";
+import { SKILL_VERSION_MAX_DEPTH } from "./watch-ignored.js";
 
 const fsp = fs.promises;
 const skillsLogger = createSubsystemLogger("skills");
@@ -172,6 +173,8 @@ type CandidateSkillDir = {
   skillDirRealPath: string;
   name: string;
   skillMdRealPath: string;
+  /** Depth of this skill below the scan root, used to compute remaining watcher depth. */
+  depth: number;
 };
 
 type ChildDirectoryScan = {
@@ -560,12 +563,17 @@ function loadContainedSkillRecords(params: {
   source: string;
   maxSkillFileBytes: number;
   canonicalSkillDir?: string;
+  // Remaining depth budget relative to the skills watcher root. Pass a tighter value
+  // when the skill directory is nested below the watched root so the hash surface
+  // does not exceed what chokidar can observe.
+  remainingDepth?: number;
 }): LoadedSkillRecord[] {
   const expectedBaseDir = path.resolve(params.skillDir);
   const loaded = loadSkillsFromDirSafe({
     dir: params.skillDir,
     source: params.source,
     maxBytes: params.maxSkillFileBytes,
+    remainingDepth: params.remainingDepth,
   });
   const records = unwrapLoadedSkillRecords(loaded).filter(
     (record) => path.resolve(record.skill.baseDir) === expectedBaseDir,
@@ -947,6 +955,7 @@ function loadSkillEntries(
       skillDirRealPath,
       name,
       skillMdRealPath,
+      depth,
     }: CandidateSkillDir) => {
       try {
         const size = fs.statSync(skillMdRealPath).size;
@@ -969,6 +978,10 @@ function loadSkillEntries(
           source: params.source,
           maxSkillFileBytes: limits.maxSkillFileBytes,
           canonicalSkillDir: canonicalSkillDirForSource(params.source, skillDirRealPath),
+          // depth is the number of levels this skill sits below the scan root
+          // (which the watcher observes at SKILL_VERSION_MAX_DEPTH from its root). Passing
+          // the remaining budget keeps the hash surface aligned with what chokidar sees.
+          remainingDepth: Math.max(0, SKILL_VERSION_MAX_DEPTH - depth),
         }),
       );
     };
@@ -1011,6 +1024,7 @@ function loadSkillEntries(
             skillDirRealPath,
             name: candidate.name,
             skillMdRealPath,
+            depth: candidate.depth,
           });
         }
         continue;
