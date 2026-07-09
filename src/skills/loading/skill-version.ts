@@ -19,6 +19,20 @@ function walkFiles(dir: string): string[] {
   return results;
 }
 
+/**
+ * Hash a single standalone skill file (not a SKILL.md directory root).
+ * Used when skillPaths points directly at a .md file — hashing dirname would
+ * incorrectly include every sibling file under the parent directory.
+ */
+export function computeSkillFileVersion(filePath: string): string {
+  const hash = crypto.createHash("sha256");
+  hash.update(path.basename(filePath));
+  hash.update("\0");
+  hash.update(fs.readFileSync(filePath));
+  hash.update("\0");
+  return `sha256:${hash.digest("hex").slice(0, 16)}`;
+}
+
 export function computeSkillPromptVersion(skillDir: string): string {
   const allFiles = walkFiles(skillDir)
     .map((f) => path.relative(skillDir, f))

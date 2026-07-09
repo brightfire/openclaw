@@ -9,7 +9,7 @@ import { createSyntheticSourceInfo, type SourceInfo } from "../../agents/session
 import { parseFrontmatter } from "../../agents/utils/frontmatter.js";
 import { canonicalizePath } from "../../agents/utils/paths.js";
 import { formatSkillsForPrompt as formatSkillContractForPrompt } from "./skill-contract.js";
-import { computeSkillPromptVersion } from "./skill-version.js";
+import { computeSkillFileVersion, computeSkillPromptVersion } from "./skill-version.js";
 
 /** Max name length per spec */
 const MAX_NAME_LENGTH = 64;
@@ -324,7 +324,12 @@ function loadSkillFromFile(
         description: frontmatter.description,
         filePath,
         baseDir: skillDir,
-        promptVersion: computeSkillPromptVersion(skillDir),
+        // SKILL.md roots hash the whole skill directory; standalone .md files hash
+        // only themselves — hashing dirname would sweep up every sibling file.
+        promptVersion:
+          basename(filePath) === "SKILL.md"
+            ? computeSkillPromptVersion(skillDir)
+            : computeSkillFileVersion(filePath),
         source,
         sourceInfo: createSkillSourceInfo(filePath, skillDir, source),
         disableModelInvocation: frontmatter["disable-model-invocation"] === true,
