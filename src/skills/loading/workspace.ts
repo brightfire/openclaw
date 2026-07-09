@@ -905,11 +905,19 @@ function loadSkillEntries(
         return [];
       }
 
+      // The watcher observes this root at GROUPED_SKILLS_WATCH_DEPTH when the dir is
+      // named "skills" and at CONFIGURED_ROOT_WATCH_DEPTH otherwise. Since baseDir is
+      // the skill directory itself (depth 0), remainingDepth equals the watch base.
+      const directRootWatchDepth =
+        path.basename(baseDir) === "skills"
+          ? MAX_GROUPED_SKILL_SCAN_DEPTH
+          : MAX_CONFIGURED_ROOT_GROUPED_SKILL_SCAN_DEPTH;
       return loadContainedSkillRecords({
         skillDir: baseDir,
         source: params.source,
         maxSkillFileBytes: limits.maxSkillFileBytes,
         canonicalSkillDir: canonicalSkillDirForSource(params.source, baseDirRealPath),
+        remainingDepth: directRootWatchDepth,
       });
     }
 
