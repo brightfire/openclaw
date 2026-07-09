@@ -12,6 +12,7 @@ import {
   resolveAllowedSkillSymlinkTargetRealPaths,
   tryRealpath,
 } from "../loading/symlink-targets.js";
+import { SKILLS_IGNORED_PATH_PATTERNS } from "../loading/watch-ignored.js";
 import {
   bumpSkillsSnapshotVersion,
   clearSkillsSnapshotVersionForWorkspace,
@@ -80,20 +81,8 @@ setSkillsChangeListenerErrorHandler((err) => {
   log.warn(`skills change listener failed: ${String(err)}`);
 });
 
-export const DEFAULT_SKILLS_WATCH_IGNORED: RegExp[] = [
-  /(^|[\\/])\.git([\\/]|$)/,
-  /(^|[\\/])node_modules([\\/]|$)/,
-  /(^|[\\/])dist([\\/]|$)/,
-  // Python virtual environments and caches
-  /(^|[\\/])\.venv([\\/]|$)/,
-  /(^|[\\/])venv([\\/]|$)/,
-  /(^|[\\/])__pycache__([\\/]|$)/,
-  /(^|[\\/])\.mypy_cache([\\/]|$)/,
-  /(^|[\\/])\.pytest_cache([\\/]|$)/,
-  // Build artifacts and caches
-  /(^|[\\/])build([\\/]|$)/,
-  /(^|[\\/])\.cache([\\/]|$)/,
-];
+/** @deprecated Import SKILLS_IGNORED_PATH_PATTERNS from "../loading/watch-ignored.js" instead. */
+export const DEFAULT_SKILLS_WATCH_IGNORED: RegExp[] = SKILLS_IGNORED_PATH_PATTERNS;
 
 function resolveWatchTargets(workspaceDir: string, config?: OpenClawConfig): WatchTarget[] {
   const baseRoots: Array<{ path: string; source: string }> = [];

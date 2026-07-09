@@ -6,6 +6,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import ignore from "ignore";
+import { SKILLS_IGNORED_IGNORE_PATTERNS } from "./watch-ignored.js";
 
 // The same ignore-file names respected by the skill-discovery traversal in session.ts.
 const IGNORE_FILE_NAMES = [".gitignore", ".ignore", ".fdignore"];
@@ -22,7 +23,7 @@ function buildIgnoreMatcher(rootDir: string): IgnoreMatcher {
   // Always skip hidden entries and dependency trees, matching the discovery rules in
   // loadSkillsFromDirInternal (session.ts). These are unconditional because no skill
   // root should version-hash its own node_modules or .git internals.
-  ig.add([".*", "node_modules/"]);
+  ig.add(SKILLS_IGNORED_IGNORE_PATTERNS);
   for (const name of IGNORE_FILE_NAMES) {
     const filePath = path.join(rootDir, name);
     try {
