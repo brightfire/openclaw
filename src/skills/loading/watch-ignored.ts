@@ -35,8 +35,20 @@ export const SKILL_VERSION_MAX_DEPTH = 6;
  * Gitignore-style patterns derived from SKILLS_IGNORED_PATH_PATTERNS for use with the
  * `ignore` npm package. Each entry matches the corresponding segment at any depth.
  */
+// These patterns must remain a strict subset of SKILLS_IGNORED_PATH_PATTERNS above.
+// Do NOT use catch-all dotfile patterns (e.g. ".*") here: the skills watcher only
+// excludes the specific directories listed above, so a catch-all would drop legitimate
+// dot-prefixed support files (e.g. `.env.example`, `.config/template.json`) from the
+// hash while still delivering watcher refresh events for them — producing a stale
+// `<version>` that never changes even though the agent should re-read the skill.
 export const SKILLS_IGNORED_IGNORE_PATTERNS: string[] = [
-  ".*",
+  // Explicit dot-directory excludes matching SKILLS_IGNORED_PATH_PATTERNS:
+  ".git/",
+  ".cache/",
+  ".venv/",
+  ".mypy_cache/",
+  ".pytest_cache/",
+  // Non-dot excludes:
   "node_modules/",
   "dist/",
   "build/",
