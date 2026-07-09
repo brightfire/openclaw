@@ -383,11 +383,14 @@ export function shouldIgnoreSkillsWatchPath(
   if (!stats) {
     return false;
   }
-  if (options.usePolling && isSkillFileWatchPath(watchPath)) {
+  if (options.usePolling) {
+    // In polling mode there are no raw OS events, so support-file changes would go
+    // undetected if regular files were ignored. Polling uses stat() not FDs, so
+    // including all files does not cause an FD leak (unlike inotify/kqueue modes).
     return false;
   }
-  // Regular files are surfaced through raw directory events below. Letting
-  // chokidar include SKILL.md here registers per-file watchers and leaks FDs.
+  // In non-polling (inotify/kqueue) mode, regular files are surfaced through raw
+  // directory events. Including them here would register per-file watchers and leak FDs.
   return true;
 }
 
