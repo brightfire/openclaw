@@ -100,9 +100,11 @@ function walkFiles(
       visited.add(realFull);
       results.push(...walkFiles(full, rootDir, ig, visited, rootRealPath));
     } else if (isFile) {
-      // For symlinked files, apply the same root boundary as symlinked directories
-      // so that `assets/secret -> /path/outside/root` cannot be read during hashing.
-      if (entry.isSymbolicLink() && rootRealPath) {
+      // Apply out-of-root boundary to symlinked files inside subdirectories only.
+      // Direct children of the skill root (e.g. a symlinked SKILL.md pointing at a
+      // shared instruction file) are intentionally allowed — loadSkillsFromDirInternal
+      // follows and accepts them, so the version hash must cover them too.
+      if (entry.isSymbolicLink() && rootRealPath && dir !== rootDir) {
         let realFull: string;
         try {
           realFull = fs.realpathSync(full);
