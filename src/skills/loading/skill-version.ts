@@ -95,6 +95,19 @@ function walkFiles(
       visited.add(realFull);
       results.push(...walkFiles(full, rootDir, ig, visited, rootRealPath));
     } else if (isFile) {
+      // For symlinked files, apply the same root boundary as symlinked directories
+      // so that `assets/secret -> /path/outside/root` cannot be read during hashing.
+      if (entry.isSymbolicLink() && rootRealPath) {
+        let realFull: string;
+        try {
+          realFull = fs.realpathSync(full);
+        } catch {
+          continue;
+        }
+        if (realFull !== rootRealPath && !realFull.startsWith(rootRealPath + path.sep)) {
+          continue;
+        }
+      }
       results.push(full);
     }
   }
