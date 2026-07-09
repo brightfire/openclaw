@@ -29,7 +29,14 @@ function buildIgnoreMatcher(rootDir: string): IgnoreMatcher {
   return ig;
 }
 
-function walkFiles(dir: string, rootDir: string, ig: IgnoreMatcher): string[] {
+function walkFiles(
+  dir: string,
+  rootDir: string,
+  ig: IgnoreMatcher,
+  // Tracks real paths of visited directories to prevent infinite recursion through
+  // symlink cycles (e.g. a support symlink pointing at the skill root or an ancestor).
+  visited: Set<string> = new Set(),
+): string[] {
   const results: string[] = [];
   let entries: fs.Dirent[];
   try {
@@ -62,7 +69,18 @@ function walkFiles(dir: string, rootDir: string, ig: IgnoreMatcher): string[] {
       }
     }
     if (isDirectory) {
-      results.push(...walkFiles(full, rootDir, ig));
+      // Resolve the real path before recursing so symlink cycles are detected.
+      let realFull: string;
+      try {
+        realFull = fs.realpathSync(full);
+      } catch {
+        continue;
+      }
+      if (visited.has(realFull)) {
+        continue;
+      }
+      visited.add(realFull);
+      results.push(...walkFiles(full, rootDir, ig, visited));
     } else if (isFile) {
       results.push(full);
     }
@@ -86,9 +104,18 @@ export function computeSkillFileVersion(filePath: string): string {
 
 export function computeSkillPromptVersion(skillDir: string): string {
   const ig = buildIgnoreMatcher(skillDir);
+  // Seed visited with the skill root's real path so a symlink directly back to the
+  // root is caught before the first recursive descent.
+  let rootRealPath: string;
+  try {
+    rootRealPath = fs.realpathSync(skillDir);
+  } catch {
+    rootRealPath = path.resolve(skillDir);
+  }
+  const visited = new Set([rootRealPath]);
   // Normalize to POSIX separators before sorting and hashing so the version is
   // identical across OS (Windows path.relative() returns backslash-separated paths).
-  const allFiles = walkFiles(skillDir, skillDir, ig)
+  const allFiles = walkFiles(skillDir, skillDir, ig, visited)
     .map((f) => path.relative(skillDir, f).split(path.sep).join("/"))
     .toSorted();
   const hash = crypto.createHash("sha256");
