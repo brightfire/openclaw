@@ -35,7 +35,10 @@ import { resolvePluginSkillDirs } from "./plugin-skills.js";
 import { serializeByKey } from "./serialize.js";
 import { formatSkillsForPrompt, type Skill } from "./skill-contract.js";
 import { resolveAllowedSkillSymlinkTargetRealPaths, tryRealpath } from "./symlink-targets.js";
-import { SKILL_VERSION_CONFIGURED_ROOT_MAX_DEPTH } from "./watch-ignored.js";
+import {
+  SKILL_HASH_SCHEMA_VERSION,
+  SKILL_VERSION_CONFIGURED_ROOT_MAX_DEPTH,
+} from "./watch-ignored.js";
 
 const fsp = fs.promises;
 const skillsLogger = createSubsystemLogger("skills");
@@ -1410,6 +1413,7 @@ export function buildWorkspaceSkillSnapshot(
     ...(skillFilter === undefined ? {} : { skillFilter }),
     resolvedSkills,
     version: opts?.snapshotVersion,
+    hashSchemaVersion: SKILL_HASH_SCHEMA_VERSION,
   };
 }
 

@@ -113,4 +113,11 @@ export type SkillSnapshot = {
   skillFilter?: string[];
   resolvedSkills?: Skill[];
   version?: number;
+  /**
+   * Schema version of the skill hash algorithm used to build this snapshot.
+   * Corresponds to `SKILL_HASH_SCHEMA_VERSION` in `src/skills/loading/watch-ignored.ts`.
+   * A mismatch forces a full rebuild so persisted snapshots from older builds are never
+   * reused after an algorithm change.
+   */
+  hashSchemaVersion?: number;
 };

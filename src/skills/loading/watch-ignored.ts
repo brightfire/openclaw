@@ -39,6 +39,17 @@ export const SKILL_VERSION_MAX_DEPTH = 6;
 export const SKILL_VERSION_CONFIGURED_ROOT_MAX_DEPTH = 2;
 
 /**
+ * Monotonic schema version for the skill-snapshot hash algorithm. Increment this
+ * whenever the content or semantics of `computeSkillPromptVersion` change in a way
+ * that makes old `<version>` strings incomparable to new ones. A persisted snapshot
+ * carrying a different `hashSchemaVersion` is always rebuilt rather than reused.
+ *
+ * History:
+ *   1 — directory-wide support-file hash (PR #136). Replaces SKILL.md-only hashing.
+ */
+export const SKILL_HASH_SCHEMA_VERSION = 1;
+
+/**
  * Gitignore-style patterns derived from SKILLS_IGNORED_PATH_PATTERNS for use with the
  * `ignore` npm package. Each entry matches the corresponding segment at any depth.
  */
