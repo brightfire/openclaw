@@ -9,22 +9,20 @@ is maintained, the merge-not-rebase philosophy, and the new-entry template.
 
 ## Patches
 
-| Name                          | Canonical branch                       | Branch HEAD  | Source PR                                         | Last updated |
-| ----------------------------- | -------------------------------------- | ------------ | ------------------------------------------------- | ------------ |
-| Upstream Test Fixes | `brightfire/upstream-test-fixes` | `748989dfa3` | https://github.com/brightfire/openclaw/pull/123 | 2026-07-07 |
-| Slack Markdown | `brightfire/slack-mrkdwn` | `4db19e0ed5` | — | 2026-06-16 |
-| XGW Cross-Gateway | `brightfire/xgw` | `711c73af36` | https://github.com/brightfire/openclaw/pull/87 | 2026-06-16 |
-| Cache Write TTL Cost | `brightfire/cache-write-ttl-cost` | `18f9ef482d` | <https://github.com/brightfire/openclaw/pull/24> | 2026-06-16 |
-| Context Window Min Cap | `brightfire/context-window-min-cap` | `5c10c1d69f` | <https://github.com/brightfire/openclaw/pull/31> | 2026-06-16 |
-| Session Reset Prompt | `brightfire/session-reset-prompt` | `9dbb036ead` | https://github.com/brightfire/openclaw/pull/67 | 2026-06-16 |
-| Control UI Title | `brightfire/control-ui-title` | `0f886ced90` | <https://github.com/openclaw/openclaw/pull/51067> | 2026-06-16 |
-| Store-Based Session Archiving | `brightfire/sessions-history-archived` | `b4e7fdf7bb` | https://github.com/brightfire/openclaw/pull/97 | 2026-06-16 |
-| CLI HTTP Health Fallback | `brightfire/cli-http-fallback` | `82107367f0` | — | 2026-06-16 |
-| skip changelog trimming for Brightfire -bf versions | `brightfire/changelog-bf-version` | `c41a70f132` | — | 2026-06-16 |
-| configurable sessionTarget for hook mappings | `brightfire/webhook-sessiontarget-support` | `ef22d62d59` | https://github.com/brightfire/openclaw/pull/106 | 2026-06-17 |
-| fix(otel): use agentLabel for openclaw.agent span attribute | `brightfire/otel-agent-identity` | `326f6add9f` | https://github.com/brightfire/openclaw/pull/109 | 2026-07-02 |
-| chore(plugins): enable diagnostics-otel and slack by default | `brightfire/default-installed-plugins` | `d017181ce4` | https://github.com/brightfire/openclaw/pull/129 | 2026-07-08 |
-| feat(diagnostics): add skillVersion and triggerSummary to skill.used event | `brightfire/skill-used-version` | `48a1ff6fb1` | https://github.com/brightfire/openclaw/pull/133 | 2026-07-09 |
+| Name                                                         | Canonical branch                           | Branch HEAD  | Source PR                                         | Last updated |
+| ------------------------------------------------------------ | ------------------------------------------ | ------------ | ------------------------------------------------- | ------------ |
+| Upstream Test Fixes                                          | `brightfire/upstream-test-fixes`           | `748989dfa3` | https://github.com/brightfire/openclaw/pull/123   | 2026-07-07   |
+| Slack Markdown                                               | `brightfire/slack-mrkdwn`                  | `4db19e0ed5` | —                                                 | 2026-06-16   |
+| XGW Cross-Gateway                                            | `brightfire/xgw`                           | `711c73af36` | https://github.com/brightfire/openclaw/pull/87    | 2026-06-16   |
+| Cache Write TTL Cost                                         | `brightfire/cache-write-ttl-cost`          | `18f9ef482d` | <https://github.com/brightfire/openclaw/pull/24>  | 2026-06-16   |
+| Context Window Min Cap                                       | `brightfire/context-window-min-cap`        | `5c10c1d69f` | <https://github.com/brightfire/openclaw/pull/31>  | 2026-06-16   |
+| Session Reset Prompt                                         | `brightfire/session-reset-prompt`          | `9dbb036ead` | https://github.com/brightfire/openclaw/pull/67    | 2026-06-16   |
+| Control UI Title                                             | `brightfire/control-ui-title`              | `0f886ced90` | <https://github.com/openclaw/openclaw/pull/51067> | 2026-06-16   |
+| Store-Based Session Archiving                                | `brightfire/sessions-history-archived`     | `b4e7fdf7bb` | https://github.com/brightfire/openclaw/pull/97    | 2026-06-16   |
+| CLI HTTP Health Fallback                                     | `brightfire/cli-http-fallback`             | `82107367f0` | —                                                 | 2026-06-16   |
+| skip changelog trimming for Brightfire -bf versions          | `brightfire/changelog-bf-version`          | `c41a70f132` | —                                                 | 2026-06-16   |
+| configurable sessionTarget for hook mappings                 | `brightfire/webhook-sessiontarget-support` | `ef22d62d59` | https://github.com/brightfire/openclaw/pull/106   | 2026-06-17   |
+| chore(plugins): enable diagnostics-otel and slack by default | `brightfire/default-installed-plugins`     | `d017181ce4` | https://github.com/brightfire/openclaw/pull/129   | 2026-07-08   |
 
 ## Slack Markdown
 
@@ -327,47 +325,9 @@ were resolved. Patches are absorbed by `bf-build-stable` via squash-merge of
 the canonical branch — do **not** prescribe `git cherry-pick` here. Describe
 what tends to conflict and how to resolve it._
 
-## fix(otel): use agentLabel for openclaw.agent span attribute
-
-(canonical: `brightfire/otel-agent-identity`)
-
-### Rationale
-
-_Add description of what this patch does and why._
-
-### Files touched
-
-TBD — update after first stable merge
-
-### Upgrade guidance
-
-_Describe upstream changes that have historically conflicted and how they
-were resolved. Patches are absorbed by `bf-build-stable` via squash-merge of
-the canonical branch — do **not** prescribe `git cherry-pick` here. Describe
-what tends to conflict and how to resolve it._
-
 ## chore(plugins): enable diagnostics-otel and slack by default
 
 (canonical: `brightfire/default-installed-plugins`)
-
-### Rationale
-
-_Add description of what this patch does and why._
-
-### Files touched
-
-TBD — update after first stable merge
-
-### Upgrade guidance
-
-_Describe upstream changes that have historically conflicted and how they
-were resolved. Patches are absorbed by `bf-build-stable` via squash-merge of
-the canonical branch — do **not** prescribe `git cherry-pick` here. Describe
-what tends to conflict and how to resolve it._
-
-## feat(diagnostics): add skillVersion and triggerSummary to skill.used event
-
-(canonical: `brightfire/skill-used-version`)
 
 ### Rationale
 
