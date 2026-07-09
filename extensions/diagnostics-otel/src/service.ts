@@ -114,6 +114,10 @@ type OtelToolCallContent = {
   toolOutput?: unknown;
 };
 
+type OtelSkillCallContent = {
+  trigger?: string;
+};
+
 type MessageDeliveryDiagnosticEvent = Extract<
   DiagnosticEventPayload,
   {
@@ -330,6 +334,26 @@ function lowCardinalityQueueLaneAttr(value: string | undefined, fallback = "unkn
   const scopedLaneIndex = redacted.indexOf(":");
   const lane = scopedLaneIndex >= 0 ? redacted.slice(0, scopedLaneIndex) : redacted;
   return LOW_CARDINALITY_VALUE_RE.test(lane) ? lane : fallback;
+}
+
+// Resolves the openclaw.agent span attribute from agentLabel (preferred) or by
+// stripping the "agent:" session-key prefix from agentId as fallback.
+function resolveAgentLabelAttr(evt: { agentId?: string; agentLabel?: string }): string {
+  if (evt.agentLabel) {
+    const candidate = lowCardinalityAttr(evt.agentLabel);
+    if (candidate !== "unknown") {
+      return candidate;
+    }
+  }
+  const id = evt.agentId;
+  if (!id) {
+    return "unknown";
+  }
+  const lower = id.toLowerCase();
+  const stripped = lower.startsWith("agent:") ? id.slice("agent:".length) : id;
+  const colonIdx = stripped.indexOf(":");
+  const label = colonIdx >= 0 ? stripped.slice(0, colonIdx) : stripped;
+  return lowCardinalityAttr(label || undefined);
 }
 
 function shouldCaptureOtelLogBody(policy: OtelContentCapturePolicy): boolean {
@@ -2021,7 +2045,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
       ) => {
         const attrs = {
           "openclaw.channel": evt.channel ?? "unknown",
-          "openclaw.agent": lowCardinalityAttr(evt.agentId),
+          "openclaw.agent": resolveAgentLabelAttr(evt),
           "openclaw.provider": evt.provider ?? "unknown",
           "openclaw.model": evt.model ?? "unknown",
         };
@@ -2385,7 +2409,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         evt: Extract<DiagnosticEventPayload, { type: "session.turn.created" }>,
       ) => {
         sessionTurnCreatedCounter.add(1, {
-          "openclaw.agent": lowCardinalityAttr(evt.agentId, "unknown"),
+          "openclaw.agent": resolveAgentLabelAttr(evt),
           "openclaw.channel": lowCardinalityAttr(evt.channel, "unknown"),
           "openclaw.trigger": evt.trigger,
         });
@@ -3006,13 +3030,14 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         "openclaw.skill.name": lowCardinalityAttr(evt.skillName, "skill"),
         "openclaw.skill.source": lowCardinalityAttr(evt.skillSource),
         "openclaw.skill.activation": lowCardinalityAttr(evt.activation),
-        ...(evt.agentId ? { "openclaw.agent": lowCardinalityAttr(evt.agentId) } : {}),
+        ...(evt.agentId || evt.agentLabel ? { "openclaw.agent": resolveAgentLabelAttr(evt) } : {}),
         ...(evt.toolName ? { "openclaw.toolName": lowCardinalityAttr(evt.toolName, "tool") } : {}),
       });
 
       const recordSkillUsed = (
         evt: Extract<DiagnosticEventPayload, { type: "skill.used" }>,
         metadata: DiagnosticEventMetadata,
+        skillContent?: OtelSkillCallContent,
       ) => {
         if (!metadata.trusted) {
           return;
@@ -3024,6 +3049,20 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         }
         const spanAttrs: Record<string, string | number | boolean> = { ...attrs };
         addRunAttrs(spanAttrs, evt);
+        // skillVersion (sha256 fingerprint) and trigger are high-cardinality and must not
+        // appear in metric labels, so they are span-only.
+        if (evt.skillVersion) {
+          spanAttrs["openclaw.skill.version"] = evt.skillVersion;
+        }
+        // Command-activated trigger (command name) is always safe in the public event payload.
+        if (evt.trigger) {
+          spanAttrs["openclaw.skill.trigger"] = evt.trigger;
+        }
+        // Read-activated trigger is user message text — emitted only in privateData when
+        // captureContent.inputMessages was opted in at the emission site.
+        if (skillContent?.trigger) {
+          spanAttrs["openclaw.skill.trigger"] = skillContent.trigger;
+        }
         const span = spanWithDuration("openclaw.skill.used", spanAttrs, 0, {
           parentContext: activeTrustedParentContext(evt, metadata),
           endTimeMs: evt.ts,
@@ -3435,7 +3474,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
               recordToolExecutionBlocked(evt, metadata);
               return;
             case "skill.used":
-              recordSkillUsed(evt, metadata);
+              recordSkillUsed(evt, metadata, privateData.skillContent);
               return;
             case "exec.process.completed":
               recordExecProcessCompleted(evt);

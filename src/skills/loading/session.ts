@@ -324,7 +324,7 @@ function loadSkillFromFile(
         description: frontmatter.description,
         filePath,
         baseDir: skillDir,
-        promptVersion: computeSkillPromptVersion(rawContent),
+        promptVersion: computeSkillPromptVersion(skillDir),
         source,
         sourceInfo: createSkillSourceInfo(filePath, skillDir, source),
         disableModelInvocation: frontmatter["disable-model-invocation"] === true,
