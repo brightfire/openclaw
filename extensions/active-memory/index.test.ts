@@ -3222,11 +3222,11 @@ describe("active-memory plugin", () => {
   });
 
   it("does not cache timeout results", async () => {
-    testing.setMinimumTimeoutMsForTests(1);
+    testing.setMinimumTimeoutMsForTests(50);
     testing.setSetupGraceTimeoutMsForTests(0);
     api.pluginConfig = {
       agents: ["main"],
-      timeoutMs: 1,
+      timeoutMs: 50,
       logging: true,
     };
     plugin.register(api as unknown as OpenClawPluginApi);
@@ -4307,7 +4307,10 @@ describe("active-memory plugin", () => {
     testing.setSetupGraceTimeoutMsForTests(0);
     api.pluginConfig = {
       agents: ["main"],
-      timeoutMs: 1_000,
+      // Use a wider budget so the test always exercises the "no recall
+      // evidence" path rather than occasionally passing via a watchdog
+      // timeout when CI is under load.
+      timeoutMs: 10_000,
       logging: true,
     };
     plugin.register(api as unknown as OpenClawPluginApi);
@@ -4316,7 +4319,11 @@ describe("active-memory plugin", () => {
       sessionId: "s-empty-search-completed-output",
       updatedAt: 0,
     };
-    runEmbeddedAgent.mockImplementationOnce(async (params: { sessionFile: string }) => {
+    // Use mockImplementation (not mockImplementationOnce) so the test is
+    // robust against neighbouring fake-timer tests that leave a deferred
+    // runEmbeddedAgent call in the microtask queue.  Any such call will also
+    // return empty results, keeping the assertion true regardless of ordering.
+    runEmbeddedAgent.mockImplementation(async (params: { sessionFile: string }) => {
       await writeTranscriptJsonl(params.sessionFile, [
         {
           message: {
