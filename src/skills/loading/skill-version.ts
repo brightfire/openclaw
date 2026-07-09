@@ -10,6 +10,11 @@ import ignore from "ignore";
 // The same ignore-file names respected by the skill-discovery traversal in session.ts.
 const IGNORE_FILE_NAMES = [".gitignore", ".ignore", ".fdignore"];
 
+// Support files larger than this are included in the hash via filename + size only,
+// not their full contents, to avoid buffering large assets (images, archives, etc.)
+// on every skill load. SKILL.md itself is always small (bounded by maxSkillFileBytes).
+const MAX_CONTENT_HASH_BYTES = 512 * 1024; // 512 KiB
+
 type IgnoreMatcher = ReturnType<typeof ignore>;
 
 function buildIgnoreMatcher(rootDir: string): IgnoreMatcher {
@@ -146,17 +151,32 @@ export function computeSkillPromptVersion(skillDir: string): string {
     .toSorted();
   const hash = crypto.createHash("sha256");
   for (const rel of allFiles) {
-    let content: Buffer;
+    const absPath = path.join(skillDir, ...rel.split("/"));
+    let stat: fs.Stats;
     try {
-      content = fs.readFileSync(path.join(skillDir, ...rel.split("/")));
+      stat = fs.statSync(absPath);
     } catch {
-      // File disappeared or became unreadable between walkFiles() and here (TOCTOU race).
-      // Skip it so one transiently missing support file cannot abort the whole skill load.
+      // File disappeared between walkFiles() and here — skip.
       continue;
     }
     hash.update(rel);
     hash.update("\0");
-    hash.update(content);
+    if (stat.size <= MAX_CONTENT_HASH_BYTES) {
+      let content: Buffer;
+      try {
+        content = fs.readFileSync(absPath);
+      } catch {
+        // Became unreadable after stat — fall through to size-only contribution.
+        hash.update(String(stat.size));
+        hash.update("\0");
+        continue;
+      }
+      hash.update(content);
+    } else {
+      // Large support file: contribute filename + size so presence/rename changes
+      // the version without buffering the full asset into memory.
+      hash.update(String(stat.size));
+    }
     hash.update("\0");
   }
   return `sha256:${hash.digest("hex").slice(0, 16)}`;
