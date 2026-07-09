@@ -114,6 +114,10 @@ type OtelToolCallContent = {
   toolOutput?: unknown;
 };
 
+type OtelSkillCallContent = {
+  trigger?: string;
+};
+
 type MessageDeliveryDiagnosticEvent = Extract<
   DiagnosticEventPayload,
   {
@@ -3013,6 +3017,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
       const recordSkillUsed = (
         evt: Extract<DiagnosticEventPayload, { type: "skill.used" }>,
         metadata: DiagnosticEventMetadata,
+        skillContent?: OtelSkillCallContent,
       ) => {
         if (!metadata.trusted) {
           return;
@@ -3024,6 +3029,20 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         }
         const spanAttrs: Record<string, string | number | boolean> = { ...attrs };
         addRunAttrs(spanAttrs, evt);
+        // skillVersion (sha256 fingerprint) and trigger are high-cardinality and must not
+        // appear in metric labels, so they are span-only.
+        if (evt.skillVersion) {
+          spanAttrs["openclaw.skill.version"] = evt.skillVersion;
+        }
+        // Command-activated trigger (command name) is always safe in the public event payload.
+        if (evt.trigger) {
+          spanAttrs["openclaw.skill.trigger"] = evt.trigger;
+        }
+        // Read-activated trigger is user message text — emitted only in privateData when
+        // captureContent.inputMessages was opted in at the emission site.
+        if (skillContent?.trigger) {
+          spanAttrs["openclaw.skill.trigger"] = skillContent.trigger;
+        }
         const span = spanWithDuration("openclaw.skill.used", spanAttrs, 0, {
           parentContext: activeTrustedParentContext(evt, metadata),
           endTimeMs: evt.ts,
@@ -3435,7 +3454,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
               recordToolExecutionBlocked(evt, metadata);
               return;
             case "skill.used":
-              recordSkillUsed(evt, metadata);
+              recordSkillUsed(evt, metadata, privateData.skillContent);
               return;
             case "exec.process.completed":
               recordExecProcessCompleted(evt);

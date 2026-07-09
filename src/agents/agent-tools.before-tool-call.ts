@@ -120,6 +120,12 @@ export type HookContext = {
     root: string;
     bridge: SandboxFsBridge;
   };
+  /**
+   * First 4000 chars of the most recent user-role message in the conversation,
+   * used as the trigger context when a skill is read-activated. Populated by
+   * the agent runner; absent in other call sites (subagent wrappers, etc.).
+   */
+  lastUserMessageExcerpt?: string;
 };
 
 type HookBlockedKind = "veto" | "failure";
@@ -413,19 +419,26 @@ function emitSkillUsedDiagnostic(params: {
   match: SkillUsageMatch;
   toolName: string;
   toolCallId?: string;
+  captureInputMessages: boolean;
 }): void {
   const trace = params.ctx?.trace
     ? freezeDiagnosticTraceContext(createChildDiagnosticTraceContext(params.ctx.trace))
     : undefined;
-  // triggerSummary: command name for command activation, file path for read activation.
-  const triggerSummary =
+
+  // For command activation: trigger is the command name — safe in the public payload.
+  // For read activation: trigger is user message text — must go in privateData only,
+  // and only when captureInputMessages is opted in (same gate as tool/model content).
+  const commandTrigger =
     params.match.activation === "command" && params.ctx?.skillCommand?.commandName
-      ? params.ctx.skillCommand.commandName.slice(0, 500)
-      : params.match.activation === "read" && params.match.triggerPath
-        ? params.match.triggerPath.slice(0, 500)
-        : undefined;
-  emitTrustedDiagnosticEvent({
-    type: "skill.used",
+      ? params.ctx.skillCommand.commandName.slice(0, 4000)
+      : undefined;
+  const readTrigger =
+    params.match.activation === "read" && params.ctx?.lastUserMessageExcerpt
+      ? params.ctx.lastUserMessageExcerpt
+      : undefined;
+
+  const eventPayload = {
+    type: "skill.used" as const,
     ...(params.ctx?.runId && { runId: params.ctx.runId }),
     ...(params.ctx?.sessionKey && { sessionKey: params.ctx.sessionKey }),
     ...(params.ctx?.sessionId && { sessionId: params.ctx.sessionId }),
@@ -435,10 +448,18 @@ function emitSkillUsedDiagnostic(params: {
     skillSource: params.match.skillSource,
     activation: params.match.activation,
     ...(params.match.skillVersion && { skillVersion: params.match.skillVersion }),
-    ...(triggerSummary && { triggerSummary }),
+    ...(commandTrigger && { trigger: commandTrigger }),
     toolName: params.toolName,
     ...(params.toolCallId && { toolCallId: params.toolCallId }),
-  });
+  };
+
+  if (readTrigger && params.captureInputMessages) {
+    emitTrustedDiagnosticEventWithPrivateData(eventPayload, {
+      skillContent: { trigger: readTrigger },
+    });
+  } else {
+    emitTrustedDiagnosticEvent(eventPayload);
+  }
 }
 
 function notifyPluginApprovalResolution(
@@ -1287,6 +1308,7 @@ export function wrapToolWithBeforeToolCallHook(
               match: skillMatch,
               toolName: normalizedToolName,
               toolCallId,
+              captureInputMessages: toolContentPolicy.inputMessages,
             });
           }
           emitTrustedDiagnosticEventWithPrivateData(
