@@ -6,9 +6,17 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
+// Directories excluded from the skill-version hash. These either contain
+// generated/dependency files that are not part of the prompt contract, or are
+// conventionally ignored by traversal tools.
+const SKIP_DIRS = new Set(["node_modules", ".git", ".pnpm", ".yarn"]);
+
 function walkFiles(dir: string): string[] {
   const results: string[] = [];
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (entry.name.startsWith(".") || SKIP_DIRS.has(entry.name)) {
+      continue;
+    }
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) {
       results.push(...walkFiles(full));
