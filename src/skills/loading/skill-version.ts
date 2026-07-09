@@ -64,14 +64,16 @@ export function computeSkillFileVersion(filePath: string): string {
 
 export function computeSkillPromptVersion(skillDir: string): string {
   const ig = buildIgnoreMatcher(skillDir);
+  // Normalize to POSIX separators before sorting and hashing so the version is
+  // identical across OS (Windows path.relative() returns backslash-separated paths).
   const allFiles = walkFiles(skillDir, skillDir, ig)
-    .map((f) => path.relative(skillDir, f))
+    .map((f) => path.relative(skillDir, f).split(path.sep).join("/"))
     .toSorted();
   const hash = crypto.createHash("sha256");
   for (const rel of allFiles) {
     let content: Buffer;
     try {
-      content = fs.readFileSync(path.join(skillDir, rel));
+      content = fs.readFileSync(path.join(skillDir, ...rel.split("/")));
     } catch {
       // File disappeared or became unreadable between walkFiles() and here (TOCTOU race).
       // Skip it so one transiently missing support file cannot abort the whole skill load.
