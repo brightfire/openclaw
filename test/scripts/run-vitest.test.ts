@@ -657,7 +657,10 @@ describe("scripts/run-vitest", () => {
     let childPid = 0;
 
     try {
-      await waitFor(() => fs.existsSync(childPidPath), 10_000);
+      // Increased from 10 s to 30 s: nested-vitest cold-start under high shard
+      // parallelism can exceed the old budget before the delegated child
+      // writes its PID file.
+      await waitFor(() => fs.existsSync(childPidPath), 30_000);
       childPid = Number(fs.readFileSync(childPidPath, "utf8"));
       expect(Number.isInteger(childPid)).toBe(true);
       expect(isProcessAlive(childPid)).toBe(true);
