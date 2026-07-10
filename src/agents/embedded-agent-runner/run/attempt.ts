@@ -5384,7 +5384,9 @@ export async function runEmbeddedAttempt(
         preflightRecovery,
         sessionIdUsed,
         sessionFileUsed,
-        diagnosticTrace,
+        // Return the context that identifies the emitted run span. Downstream aggregate
+        // diagnostics use this as their parent and must not fall back to its upstream parent.
+        diagnosticTrace: runTrace,
         bootstrapPromptWarningSignaturesSeen: bootstrapPromptWarning.warningSignaturesSeen,
         bootstrapPromptWarningSignature: bootstrapPromptWarning.signature,
         systemPromptReport,

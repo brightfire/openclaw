@@ -358,6 +358,12 @@ describe("runReplyAgent auto-compaction token update", () => {
     agentMeta: Record<string, unknown>;
     collectDiagnostics?: boolean;
     config?: OpenClawConfig;
+    diagnosticTrace?: {
+      traceId: string;
+      spanId: string;
+      parentSpanId?: string;
+      traceFlags?: string;
+    };
     tmpPrefix: string;
     workspaceDir?: string;
   }) {
@@ -377,6 +383,7 @@ describe("runReplyAgent auto-compaction token update", () => {
       meta: {
         agentMeta: params.agentMeta,
       },
+      ...(params.diagnosticTrace ? { diagnosticTrace: params.diagnosticTrace } : {}),
     });
 
     const diagnostics: DiagnosticEventPayload[] = [];
@@ -528,6 +535,27 @@ describe("runReplyAgent auto-compaction token update", () => {
       },
       "usage diagnostic context",
     );
+  });
+
+  it("parents model usage under the run trace returned by the agent", async () => {
+    const runTrace = {
+      traceId: "4bf92f3577b34da6a3ce929d0e0e4736",
+      spanId: "1111111111111111",
+      parentSpanId: "00f067aa0ba902b7",
+      traceFlags: "01",
+    };
+    const { usageEvent } = await runBaseReplyWithAgentMeta({
+      tmpPrefix: "openclaw-usage-diagnostic-trace-",
+      collectDiagnostics: true,
+      diagnosticTrace: runTrace,
+      agentMeta: {
+        usage: { input: 3, output: 2, total: 5 },
+      },
+    });
+
+    expect(usageEvent?.trace?.traceId).toBe(runTrace.traceId);
+    expect(usageEvent?.trace?.parentSpanId).toBe(runTrace.spanId);
+    expect(usageEvent?.trace?.spanId).not.toBe(runTrace.spanId);
   });
 
   it("falls back to last-call prompt usage for live diagnostic context", async () => {

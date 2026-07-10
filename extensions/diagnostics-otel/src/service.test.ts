@@ -3771,6 +3771,60 @@ describe("diagnostics-otel service", () => {
     await service.stop?.(ctx);
   });
 
+  test("does not resolve post-run usage through an owner-scoped upstream alias", async () => {
+    const service = createDiagnosticsOtelService();
+    const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });
+    await service.start(ctx);
+
+    emitTrustedDiagnosticEvent({
+      type: "run.started",
+      runId: "run-1",
+      provider: "openai",
+      model: "gpt-5.4",
+      trace: {
+        traceId: TRACE_ID,
+        spanId: CHILD_SPAN_ID,
+        parentSpanId: SPAN_ID,
+        traceFlags: "01",
+      },
+    });
+    emitTrustedDiagnosticEvent({
+      type: "run.completed",
+      runId: "run-1",
+      provider: "openai",
+      model: "gpt-5.4",
+      outcome: "completed",
+      durationMs: 100,
+      trace: {
+        traceId: TRACE_ID,
+        spanId: CHILD_SPAN_ID,
+        parentSpanId: SPAN_ID,
+        traceFlags: "01",
+      },
+    });
+    await waitForDiagnosticEventsDrained();
+    telemetryState.tracer.setSpanContext.mockClear();
+    telemetryState.tracer.startSpan.mockClear();
+
+    emitTrustedDiagnosticEvent({
+      type: "model.usage",
+      provider: "openai",
+      model: "gpt-5.4",
+      usage: { input: 3, output: 2, total: 5 },
+      durationMs: 10,
+      trace: {
+        traceId: TRACE_ID,
+        spanId: GRANDCHILD_SPAN_ID,
+        parentSpanId: SPAN_ID,
+        traceFlags: "01",
+      },
+    });
+
+    expect(telemetryState.tracer.setSpanContext).not.toHaveBeenCalled();
+    expect(startedSpanCall("openclaw.model.usage")?.[2]).toBeUndefined();
+    await service.stop?.(ctx);
+  });
+
   test("clears retained run contexts when the service stops", async () => {
     const service = createDiagnosticsOtelService();
     const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });
