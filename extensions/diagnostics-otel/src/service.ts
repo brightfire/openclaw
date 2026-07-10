@@ -322,6 +322,24 @@ function lowCardinalityAttr(value: string | undefined, fallback = "unknown"): st
   return LOW_CARDINALITY_VALUE_RE.test(redacted) ? redacted : fallback;
 }
 
+/**
+ * Sanitizes model IDs for OTel attributes. Unlike lowCardinalityAttr, allows `/`
+ * because provider-prefixed model IDs (e.g. `z-ai/glm-5.2`, `openai/gpt-5.6-sol`)
+ * are legitimate, low-cardinality identifiers used by OpenRouter and similar providers.
+ */
+const MODEL_ID_VALUE_RE = /^[A-Za-z0-9_./:+-]{1,120}$/u;
+function modelIdAttr(value: string | undefined, fallback = "unknown"): string {
+  if (!value) {
+    return fallback;
+  }
+  const redacted = redactSensitiveText(value.trim());
+  const redactedLower = redacted.toLowerCase();
+  if (redactedLower.startsWith("agent:") || redactedLower.includes(":agent:")) {
+    return fallback;
+  }
+  return MODEL_ID_VALUE_RE.test(redacted) ? redacted : fallback;
+}
+
 function lowCardinalityQueueLaneAttr(value: string | undefined, fallback = "unknown"): string {
   if (!value) {
     return fallback;
@@ -434,7 +452,7 @@ function assignGenAiSpanIdentityAttrs(
     attrs["gen_ai.system"] = lowCardinalityAttr(input.provider);
   }
   if (input.model) {
-    attrs["gen_ai.request.model"] = lowCardinalityAttr(input.model);
+    attrs["gen_ai.request.model"] = modelIdAttr(input.model);
   }
   attrs["gen_ai.operation.name"] = genAiOperationName(input.api);
 }
@@ -450,7 +468,7 @@ function modelCallSpanName(evt: { api?: string; model?: string }): string {
   if (!emitLatestGenAiSemconv()) {
     return "openclaw.model.call";
   }
-  return `${genAiOperationName(evt.api)} ${lowCardinalityAttr(evt.model)}`;
+  return `${genAiOperationName(evt.api)} ${modelIdAttr(evt.model)}`;
 }
 
 function modelCallSpanKind(): SpanKind | undefined {
@@ -2052,7 +2070,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         const genAiAttrs: Record<string, string> = {
           "gen_ai.operation.name": "chat",
           "gen_ai.provider.name": lowCardinalityAttr(evt.provider),
-          "gen_ai.request.model": lowCardinalityAttr(evt.model),
+          "gen_ai.request.model": modelIdAttr(evt.model),
         };
 
         const usage = evt.usage;
@@ -2859,7 +2877,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
       ) => ({
         "gen_ai.operation.name": genAiOperationName(evt.api),
         "gen_ai.provider.name": lowCardinalityAttr(evt.provider),
-        "gen_ai.request.model": lowCardinalityAttr(evt.model),
+        "gen_ai.request.model": modelIdAttr(evt.model),
         ...(errorType ? { "error.type": errorType } : {}),
       });
       const recordModelCallSizeTimingMetrics = (
