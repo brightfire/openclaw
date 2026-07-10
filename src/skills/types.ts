@@ -57,6 +57,13 @@ export type SkillCommandSpec = {
   description: string;
   /** Bounded source label used for diagnostics. */
   skillSource?: SkillTelemetrySource;
+  /**
+   * Snapshot of the skill's `promptVersion` at command-spec build time. Carried here so
+   * that telemetry can report the version for command-only skills (`disable-model-invocation`)
+   * that are absent from `skillsSnapshot.resolvedSkills` (which only contains prompt-visible
+   * entries).
+   */
+  skillVersion?: string;
   /** Localized descriptions for native command surfaces that support them. */
   descriptionLocalizations?: Record<string, string>;
   /** Optional deterministic dispatch behavior for this command. */
@@ -106,4 +113,11 @@ export type SkillSnapshot = {
   skillFilter?: string[];
   resolvedSkills?: Skill[];
   version?: number;
+  /**
+   * Schema version of the skill hash algorithm used to build this snapshot.
+   * Corresponds to `SKILL_HASH_SCHEMA_VERSION` in `src/skills/loading/watch-ignored.ts`.
+   * A mismatch forces a full rebuild so persisted snapshots from older builds are never
+   * reused after an algorithm change.
+   */
+  hashSchemaVersion?: number;
 };
