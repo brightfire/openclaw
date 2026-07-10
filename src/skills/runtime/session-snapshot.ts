@@ -98,7 +98,7 @@ export function resolveReusableWorkspaceSkillSnapshot(
 
   const snapshot =
     !params.existingSnapshot || shouldRefresh
-      ? cacheResolvedSkills(snapshotCacheKey, buildSnapshot())
+      ? cachedRebuild()
       : params.hydrateExisting === false
         ? params.existingSnapshot
         : hydrateResolvedSkills(params.existingSnapshot, cachedRebuild);
