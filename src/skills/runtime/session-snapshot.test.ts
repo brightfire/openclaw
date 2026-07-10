@@ -10,6 +10,7 @@ function strippedSnapshot(skillName = "test"): SkillSnapshot {
     prompt: "skills prompt",
     skills: [{ name: skillName }],
     version: 0,
+    hashSchemaVersion: 1,
   };
 }
 
@@ -168,5 +169,35 @@ describe("resolveReusableWorkspaceSkillSnapshot", () => {
     });
 
     expect(buildWorkspaceSkillSnapshotMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns a full snapshot with .skills populated when shouldRefresh is true after cache hit", () => {
+    // Regression test: cachedRebuild() in the rebuild path must return a full snapshot,
+    // not a partial { resolvedSkills } object. A partial return crashes
+    // applySkillEnvOverridesFromSnapshot with "snapshot.skills is not iterable".
+    buildWorkspaceSkillSnapshotMock.mockReturnValue({
+      prompt: "skills prompt",
+      skills: [{ name: "test" }],
+      resolvedSkills: [{ name: "test" }],
+    });
+
+    // First call: cache miss, builds and caches resolvedSkills.
+    resolveReusableWorkspaceSkillSnapshot({
+      workspaceDir: TEST_WORKSPACE_DIR,
+      config: {},
+      existingSnapshot: strippedSnapshot(),
+    });
+    expect(buildWorkspaceSkillSnapshotMock).toHaveBeenCalledTimes(1);
+
+    // Second call: hashSchemaVersion mismatch (0 vs 1) forces shouldRefresh = true.
+    // The rebuild path must return a full snapshot with .skills populated.
+    const result = resolveReusableWorkspaceSkillSnapshot({
+      workspaceDir: TEST_WORKSPACE_DIR,
+      config: {},
+      existingSnapshot: { ...strippedSnapshot(), hashSchemaVersion: 0 },
+    });
+
+    expect(result.snapshot.skills).toBeDefined();
+    expect(result.snapshot.skills).toEqual([{ name: "test" }]);
   });
 });
