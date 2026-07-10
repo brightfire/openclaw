@@ -254,7 +254,9 @@ export async function runAgentHarnessLifecycleAttempt(
     result = agentRunTrace
       ? await runWithDiagnosticTraceContext(agentRunTrace, runAndClassify)
       : await runAndClassify();
-    result = withFallbackDiagnosticTrace(result, activeHarnessTrace);
+    // The result trace is the run span context consumed by post-run diagnostics.
+    // Preserve a backend-provided run trace; otherwise propagate this lifecycle's run span.
+    result = withFallbackDiagnosticTrace(result, agentRunTrace ?? activeHarnessTrace);
   } catch (error) {
     emitAgentHarnessRunError({
       harness,

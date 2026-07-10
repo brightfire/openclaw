@@ -317,7 +317,7 @@ describe("AgentHarness lifecycle runner", () => {
     expect(runCompleted?.channel).toBe("discord-voice");
     expect(harnessCompleted?.trace).toEqual(harnessTrace);
     expect(harnessCompleted?.channel).toBe("discord-voice");
-    expect(attemptResult?.diagnosticTrace).toEqual(harnessTrace);
+    expect(attemptResult?.diagnosticTrace).toEqual(runStarted?.trace);
   });
 
   it("emits plugin before-agent-run hook blocks as blocked run completions", async () => {
