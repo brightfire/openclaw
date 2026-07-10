@@ -231,11 +231,20 @@ describe("ensureSkillsWatcher", () => {
       config: { skills: { load: { watchDebounceMs: 10 } } },
     });
 
+    // Support files (non-SKILL.md) inside a skill root now also trigger a refresh
+    // so that the new directory-wide promptVersion hash takes effect at runtime.
     createdWatchers[0]?.emit("raw", "rename", "README.md", {
       watchedPath: "/tmp/workspace/skills/demo",
     });
     await vi.advanceTimersByTimeAsync(10);
-    expect(seen).toEqual([]);
+    expect(seen).toEqual([
+      {
+        workspaceDir,
+        reason: "watch",
+        changedPath: "/tmp/workspace/skills/demo/README.md",
+      },
+    ]);
+    seen.length = 0;
 
     createdWatchers[0]?.emit("raw", "rename", "SKILL.md", {
       watchedPath: "/tmp/workspace/skills/demo",
