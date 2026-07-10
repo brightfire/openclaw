@@ -273,6 +273,7 @@ export async function compactEmbeddedAgentSession(
         modelContextTokens: readAgentModelContextTokens(ceModel),
         modelContextWindow: ceRuntimeModel?.contextWindow,
         defaultTokens: DEFAULT_CONTEXT_TOKENS,
+        catalogContextWindow: ceRuntimeModel?.contextWindow,
       }).tokens,
     ) ?? DEFAULT_CONTEXT_TOKENS;
   const requestedContextTokenBudget = normalizeContextTokenBudget(params.contextTokenBudget);
