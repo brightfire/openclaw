@@ -452,6 +452,13 @@ export const vi: TranslationMap = {
     dreams: "Mơ bộ nhớ, hợp nhất và phản chiếu.",
   },
   skillWorkshop: {
+    viewSwitcher: {
+      label: "Workshop view",
+      board: "Board",
+      boardTitle: "Board view",
+      today: "Today",
+      todayTitle: "Today view",
+    },
     header: {
       useCurrentChat: "Use current chat",
       useCurrentChatAria: "Use current chat for revision requests",
