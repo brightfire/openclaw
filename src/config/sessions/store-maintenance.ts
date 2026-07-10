@@ -41,9 +41,14 @@ export type ResolvedSessionMaintenanceConfig = {
   pruneAfterMs: number;
   maxEntries: number;
   resetArchiveRetentionMs: number | null;
+  sessionHistoryRetentionMs: number;
   maxDiskBytes: number | null;
   highWaterBytes: number | null;
 };
+
+const DEFAULT_SESSION_HISTORY_RETENTION_DAYS = 30;
+const DEFAULT_SESSION_HISTORY_RETENTION_MS =
+  DEFAULT_SESSION_HISTORY_RETENTION_DAYS * 24 * 60 * 60 * 1000;
 
 function resolvePruneAfterMs(maintenance?: SessionMaintenanceConfig): number {
   const raw = maintenance?.pruneAfter ?? maintenance?.pruneDays;
@@ -56,6 +61,16 @@ function resolvePruneAfterMs(maintenance?: SessionMaintenanceConfig): number {
   } catch {
     return DEFAULT_SESSION_PRUNE_AFTER_MS;
   }
+}
+
+function resolveSessionHistoryRetentionMs(
+  maintenance: SessionMaintenanceConfig | undefined,
+): number {
+  const days = maintenance?.sessionHistoryRetentionDays;
+  if (typeof days === "number" && Number.isFinite(days) && days > 0) {
+    return days * 24 * 60 * 60 * 1000;
+  }
+  return DEFAULT_SESSION_HISTORY_RETENTION_MS;
 }
 
 function resolveResetArchiveRetentionMs(
@@ -139,6 +154,7 @@ export function resolveMaintenanceConfigFromInput(
     pruneAfterMs,
     maxEntries: maintenance?.maxEntries ?? DEFAULT_SESSION_MAX_ENTRIES,
     resetArchiveRetentionMs: resolveResetArchiveRetentionMs(maintenance, pruneAfterMs),
+    sessionHistoryRetentionMs: resolveSessionHistoryRetentionMs(maintenance),
     maxDiskBytes,
     highWaterBytes: resolveHighWaterBytes(maintenance, maxDiskBytes),
   };
@@ -258,6 +274,34 @@ export function pruneQuotaSuspensions(params: {
     });
   }
   return { resumed, cleared };
+}
+
+/**
+ * Remove archived session entries whose `archivedAt` exceeds the retention window.
+ * Mutates `store` in-place.
+ */
+export function compactExpiredArchivedEntries(
+  store: Record<string, SessionEntry>,
+  retentionMs?: number,
+  opts: { log?: boolean } = {},
+): number {
+  const retention = retentionMs ?? resolveMaintenanceConfigFromInput().sessionHistoryRetentionMs;
+  const cutoffMs = Date.now() - retention;
+  let removed = 0;
+  for (const [key, entry] of Object.entries(store)) {
+    if (
+      entry?.archived === true &&
+      typeof entry.archivedAt === "number" &&
+      entry.archivedAt < cutoffMs
+    ) {
+      delete store[key];
+      removed++;
+    }
+  }
+  if (removed > 0 && opts.log !== false) {
+    log.info("compacted expired archived session entries", { removed, retentionMs: retention });
+  }
+  return removed;
 }
 
 function getEntryUpdatedAt(entry?: SessionEntry): number {
