@@ -2975,6 +2975,21 @@ describe("diagnostics-otel service", () => {
       },
     });
     emitTrustedDiagnosticEvent({
+      type: "run.completed",
+      runId: "run-1",
+      provider: "openai",
+      model: "gpt-5.5",
+      channel: "slack",
+      durationMs: 90,
+      outcome: "completed",
+      trace: {
+        traceId: TRACE_ID,
+        spanId: TOOL_SPAN_ID,
+        parentSpanId: GRANDCHILD_SPAN_ID,
+        traceFlags: "01",
+      },
+    });
+    emitTrustedDiagnosticEvent({
       type: "harness.run.completed",
       runId: "run-1",
       harnessId: "codex",
@@ -3004,7 +3019,7 @@ describe("diagnostics-otel service", () => {
       trace: {
         traceId: TRACE_ID,
         spanId: MODEL_USAGE_SPAN_ID,
-        parentSpanId: GRANDCHILD_SPAN_ID,
+        parentSpanId: TOOL_SPAN_ID,
         traceFlags: "01",
       },
     });
@@ -3049,8 +3064,9 @@ describe("diagnostics-otel service", () => {
     expect(parentBySpanName["openclaw.message.processed"]?.spanId).toBe(SPAN_ID);
     expect(parentBySpanName["openclaw.harness.run"]?.spanId).toBe(messageSpanContext.spanId);
     expect(parentBySpanName["openclaw.run"]?.spanId).toBe(harnessSpanContext.spanId);
-    expect(parentBySpanName["openclaw.model.usage"]?.spanId).toBe(harnessSpanContext.spanId);
+    expect(parentBySpanName["openclaw.model.usage"]?.spanId).toBe(runSpanContext.spanId);
     expect(parentBySpanName["openclaw.model.call"]?.spanId).toBe(runSpanContext.spanId);
+    expect(runSpan.end).toHaveBeenCalledTimes(1);
     await service.stop?.(ctx);
   });
 
@@ -3641,7 +3657,7 @@ describe("diagnostics-otel service", () => {
     await service.stop?.(ctx);
   });
 
-  test("removes retained run contexts after queued diagnostics drain", async () => {
+  test("keeps ended run context available for usage emitted after diagnostics drain", async () => {
     const service = createDiagnosticsOtelService();
     const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });
     await service.start(ctx);
@@ -3712,8 +3728,10 @@ describe("diagnostics-otel service", () => {
       },
     });
 
-    expect(telemetryState.tracer.setSpanContext).not.toHaveBeenCalled();
-    expect(startedSpanCall("openclaw.model.usage")?.[2]).toBeUndefined();
+    const runSpanContext = spanByName("openclaw.run").spanContext();
+    const usageParentContext = startedSpanParentContexts("openclaw.model.usage")[0];
+    expect(usageParentContext?.traceId).toBe(TRACE_ID);
+    expect(usageParentContext?.spanId).toBe(runSpanContext.spanId);
     await service.stop?.(ctx);
   });
 

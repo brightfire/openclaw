@@ -28,7 +28,6 @@ import {
   ATTR_GEN_AI_SYSTEM_INSTRUCTIONS,
   ATTR_GEN_AI_TOOL_DEFINITIONS,
 } from "@opentelemetry/semantic-conventions/incubating";
-import { waitForDiagnosticEventsDrained } from "openclaw/plugin-sdk/diagnostic-runtime";
 import { registerUnhandledRejectionHandler } from "openclaw/plugin-sdk/runtime-env";
 import type {
   DiagnosticEventMetadata,
@@ -1930,16 +1929,9 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         }
       };
       const scheduleRetainedTrustedSpanContextCleanup = (token: symbol) => {
-        let drainHandle: ReturnType<typeof setTimeout> | undefined;
         let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
         const cleanup = () => {
-          if (drainHandle) {
-            clearTimeout(drainHandle);
-            retainedTrustedSpanContextCleanupTimers.delete(drainHandle);
-            drainHandle = undefined;
-          }
           if (timeoutHandle) {
-            clearTimeout(timeoutHandle);
             retainedTrustedSpanContextCleanupTimers.delete(timeoutHandle);
             timeoutHandle = undefined;
           }
@@ -1949,15 +1941,8 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
             }
           }
         };
-        drainHandle = setTimeout(() => {
-          if (drainHandle) {
-            retainedTrustedSpanContextCleanupTimers.delete(drainHandle);
-            drainHandle = undefined;
-          }
-          void waitForDiagnosticEventsDrained().then(cleanup, cleanup);
-        }, 0);
-        (drainHandle as { unref?: () => void }).unref?.();
-        retainedTrustedSpanContextCleanupTimers.add(drainHandle);
+        // Aggregate usage can be emitted after the run's queued diagnostics have drained.
+        // Keep the ended run discoverable for the bounded late-event window.
         timeoutHandle = setTimeout(cleanup, RETAINED_TRUSTED_SPAN_CONTEXT_TIMEOUT_MS);
         (timeoutHandle as { unref?: () => void }).unref?.();
         retainedTrustedSpanContextCleanupTimers.add(timeoutHandle);
