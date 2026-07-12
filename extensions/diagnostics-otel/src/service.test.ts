@@ -2909,14 +2909,22 @@ describe("diagnostics-otel service", () => {
     const runSpanId = runSpan?.spanContext.mock.results[0]?.value?.spanId;
     const modelSpanId = modelSpan?.spanContext.mock.results[0]?.value?.spanId;
 
-    expect(telemetryState.tracer.setSpanContext).toHaveBeenCalledTimes(2);
+    // run.started (parentSpanId: SPAN_ID → untracked) triggers the unconditional fallback;
+    // model.call.started and tool.execution.started use the tracked run/model call spans.
+    expect(telemetryState.tracer.setSpanContext).toHaveBeenCalledTimes(3);
     const linkedSpanContexts = telemetryState.tracer.setSpanContext.mock.calls.map(
       (call) => call[1] as Record<string, unknown>,
     );
+    // First: fallback remote parent for run.started (diagnostic parent SPAN_ID).
     expect(linkedSpanContexts[0]?.traceId).toBe(TRACE_ID);
-    expect(linkedSpanContexts[0]?.spanId).toBe(runSpanId);
+    expect(linkedSpanContexts[0]?.spanId).toBe(SPAN_ID);
+    expect(linkedSpanContexts[0]?.isRemote).toBe(true);
+    // Second: tracked run span context for model.call.started.
     expect(linkedSpanContexts[1]?.traceId).toBe(TRACE_ID);
-    expect(linkedSpanContexts[1]?.spanId).toBe(modelSpanId);
+    expect(linkedSpanContexts[1]?.spanId).toBe(runSpanId);
+    // Third: tracked model call span context for tool.execution.started.
+    expect(linkedSpanContexts[2]?.traceId).toBe(TRACE_ID);
+    expect(linkedSpanContexts[2]?.spanId).toBe(modelSpanId);
 
     const parentBySpanName = Object.fromEntries(
       telemetryState.tracer.startSpan.mock.calls.map((call) => [
@@ -2924,7 +2932,8 @@ describe("diagnostics-otel service", () => {
         (call[2] as { spanContext?: { spanId?: string } } | undefined)?.spanContext?.spanId,
       ]),
     );
-    expect(parentBySpanName["openclaw.run"]).toBeUndefined();
+    // run span adopts SPAN_ID as a remote parent from the diagnostic trace context.
+    expect(parentBySpanName["openclaw.run"]).toBe(SPAN_ID);
     expect(parentBySpanName["openclaw.model.call"]).toBe(runSpanId);
     expect(parentBySpanName["openclaw.tool.execution"]).toBe(modelSpanId);
     expect(toolSpan?.setStatus).toHaveBeenCalledWith({
@@ -3380,7 +3389,10 @@ describe("diagnostics-otel service", () => {
     await service.stop?.(ctx);
   });
 
-  test("does not retain fallback message processed spans as active parents", async () => {
+  test("does not retain fallback message processed spans as tracked active parents", async () => {
+    // message.processed spans are not registered in activeTrustedSpans.
+    // The harness.run.started that follows must NOT use a retained message.processed span as
+    // its tracked parent — instead it falls back to the diagnostic remote parent context.
     const service = createDiagnosticsOtelService();
     const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });
     await service.start(ctx);
@@ -3417,8 +3429,16 @@ describe("diagnostics-otel service", () => {
       },
     });
 
-    expect(telemetryState.tracer.setSpanContext).not.toHaveBeenCalled();
-    expect(startedSpanCall("openclaw.harness.run")?.[2]).toBeUndefined();
+    // CHILD_SPAN_ID is not tracked (message.processed spans aren't registered);
+    // the unconditional fallback supplies the diagnostic traceId as a remote parent.
+    expect(telemetryState.tracer.setSpanContext).toHaveBeenCalledTimes(1);
+    const remoteCtx = mockCallArg(telemetryState.tracer.setSpanContext, 1) as Record<
+      string,
+      unknown
+    >;
+    expect(remoteCtx.traceId).toBe(TRACE_ID);
+    expect(remoteCtx.spanId).toBe(CHILD_SPAN_ID);
+    expect(remoteCtx.isRemote).toBe(true);
     await service.stop?.(ctx);
   });
 
@@ -3475,9 +3495,15 @@ describe("diagnostics-otel service", () => {
       (call) => call[0] === "openclaw.model.usage",
     );
 
-    const linkedSpanContext = firstSetSpanContext();
-    expect(linkedSpanContext.traceId).toBe(TRACE_ID);
-    expect(linkedSpanContext.spanId).toBe(runSpanId);
+    // First setSpanContext call: fallback remote parent for run.started (diagnostic SPAN_ID).
+    // Second call: retained run span context for model.usage after run.completed.
+    const linkedSpanContexts = telemetryState.tracer.setSpanContext.mock.calls.map(
+      (call) => call[1] as Record<string, unknown>,
+    );
+    expect(linkedSpanContexts[0]?.spanId).toBe(SPAN_ID);
+    expect(linkedSpanContexts[0]?.isRemote).toBe(true);
+    expect(linkedSpanContexts[1]?.traceId).toBe(TRACE_ID);
+    expect(linkedSpanContexts[1]?.spanId).toBe(runSpanId);
     expect(
       (modelUsageCall?.[2] as { spanContext?: { spanId?: string } } | undefined)?.spanContext
         ?.spanId,
@@ -3520,7 +3546,9 @@ describe("diagnostics-otel service", () => {
     await service.stop?.(ctx);
   });
 
-  test("does not parent sibling active runs through shared upstream aliases", async () => {
+  test("does not parent sibling active runs through each other's spans", async () => {
+    // Both runs share parentSpanId: SPAN_ID in the diagnostic trace. Each adopts SPAN_ID
+    // as a remote parent via the unconditional fallback; neither is parented to the other.
     const service = createDiagnosticsOtelService();
     const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });
     await service.start(ctx);
@@ -3553,12 +3581,18 @@ describe("diagnostics-otel service", () => {
     const runContexts = startedSpanParentContextsByName("openclaw.run");
 
     expect(runContexts).toHaveLength(2);
-    expect(runContexts[0]?.parentContext).toBeUndefined();
-    expect(runContexts[1]?.parentContext).toBeUndefined();
+    // Both runs adopt SPAN_ID as a remote diagnostic parent — not each other's OTel span.
+    expect(runContexts[0]?.parentContext?.spanId).toBe(SPAN_ID);
+    expect(runContexts[0]?.parentContext?.isRemote).toBe(true);
+    expect(runContexts[1]?.parentContext?.spanId).toBe(SPAN_ID);
+    expect(runContexts[1]?.parentContext?.isRemote).toBe(true);
     await service.stop?.(ctx);
   });
 
   test("does not parent sibling runs through retained upstream aliases", async () => {
+    // After run-1 completes and its span is retained, run-2 should NOT be parented to
+    // run-1's OTel span. Both share parentSpanId: SPAN_ID and each gets the same remote
+    // diagnostic parent via the unconditional fallback.
     const service = createDiagnosticsOtelService();
     const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });
     await service.start(ctx);
@@ -3605,8 +3639,11 @@ describe("diagnostics-otel service", () => {
     const runContexts = startedSpanParentContextsByName("openclaw.run");
 
     expect(runContexts).toHaveLength(2);
-    expect(runContexts[0]?.parentContext).toBeUndefined();
-    expect(runContexts[1]?.parentContext).toBeUndefined();
+    // Both runs adopt SPAN_ID as a remote diagnostic parent, not run-1's retained OTel span.
+    expect(runContexts[0]?.parentContext?.spanId).toBe(SPAN_ID);
+    expect(runContexts[0]?.parentContext?.isRemote).toBe(true);
+    expect(runContexts[1]?.parentContext?.spanId).toBe(SPAN_ID);
+    expect(runContexts[1]?.parentContext?.isRemote).toBe(true);
     await service.stop?.(ctx);
   });
 
@@ -3926,7 +3963,11 @@ describe("diagnostics-otel service", () => {
     await service.stop?.(ctx);
   });
 
-  test("does not force remote parents for completed-only trusted lifecycle spans", async () => {
+  test("uses remote parent for completed-only trusted lifecycle spans when parent is untracked", async () => {
+    // Regression test for DEV-317 (unconditional fallback): when completed-only events arrive
+    // with no prior started event, the parentSpanId is untracked. The unconditional fallback
+    // must supply the diagnostic traceId as a remote parent so these spans land on the correct
+    // trace rather than becoming new roots with a foreign traceId.
     const service = createDiagnosticsOtelService();
     const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });
     await service.start(ctx);
@@ -3961,12 +4002,22 @@ describe("diagnostics-otel service", () => {
     });
     await flushDiagnosticEvents();
 
-    expect(telemetryState.tracer.setSpanContext).not.toHaveBeenCalled();
-    const parentBySpanName = Object.fromEntries(
-      telemetryState.tracer.startSpan.mock.calls.map((call) => [call[0], call[2]]),
-    );
-    expect(parentBySpanName["openclaw.run"]).toBeUndefined();
-    expect(parentBySpanName["openclaw.model.call"]).toBeUndefined();
+    // Both events produce a remote parent from the diagnostic trace context.
+    expect(telemetryState.tracer.setSpanContext).toHaveBeenCalledTimes(2);
+    const runRemoteCtx = mockCallArg(telemetryState.tracer.setSpanContext, 1, 0) as Record<
+      string,
+      unknown
+    >;
+    expect(runRemoteCtx.traceId).toBe(TRACE_ID);
+    expect(runRemoteCtx.spanId).toBe(SPAN_ID);
+    expect(runRemoteCtx.isRemote).toBe(true);
+    const callRemoteCtx = mockCallArg(telemetryState.tracer.setSpanContext, 1, 1) as Record<
+      string,
+      unknown
+    >;
+    expect(callRemoteCtx.traceId).toBe(TRACE_ID);
+    expect(callRemoteCtx.spanId).toBe(CHILD_SPAN_ID);
+    expect(callRemoteCtx.isRemote).toBe(true);
     await service.stop?.(ctx);
   });
 
