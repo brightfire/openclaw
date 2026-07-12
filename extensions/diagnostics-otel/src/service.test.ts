@@ -3486,6 +3486,40 @@ describe("diagnostics-otel service", () => {
     await service.stop?.(ctx);
   });
 
+  test("inherits diagnostic traceId for model.usage when parent span was never tracked (untracked parent fallback)", async () => {
+    // Regression test for DEV-317: when model.usage references a parentSpanId that was never
+    // registered in activeTrustedSpans (e.g. the parent originated from an untrusted event),
+    // activeTrustedParentContext must fall back to a remote context using the diagnostic
+    // traceId so the OTel SDK does not generate a new root trace for the usage span.
+    const service = createDiagnosticsOtelService();
+    const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });
+    await service.start(ctx);
+
+    // Intentionally omit run.started / run.completed so CHILD_SPAN_ID is never tracked.
+    // Only emit model.usage whose parentSpanId points at the untracked CHILD_SPAN_ID.
+    emitTrustedDiagnosticEvent({
+      type: "model.usage",
+      provider: "openai",
+      model: "gpt-5.4",
+      usage: { input: 3, output: 2, total: 5 },
+      durationMs: 10,
+      trace: {
+        traceId: TRACE_ID,
+        spanId: GRANDCHILD_SPAN_ID,
+        parentSpanId: CHILD_SPAN_ID,
+        traceFlags: "01",
+      },
+    });
+    await flushDiagnosticEvents();
+
+    // The fallback must supply the diagnostic traceId as the remote parent context so the
+    // model.usage span is part of the same trace rather than becoming a new root.
+    const linkedSpanContext = firstSetSpanContext();
+    expect(linkedSpanContext.traceId).toBe(TRACE_ID);
+    expect(linkedSpanContext.spanId).toBe(CHILD_SPAN_ID);
+    await service.stop?.(ctx);
+  });
+
   test("does not parent sibling active runs through shared upstream aliases", async () => {
     const service = createDiagnosticsOtelService();
     const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });
@@ -3820,8 +3854,13 @@ describe("diagnostics-otel service", () => {
       },
     });
 
-    expect(telemetryState.tracer.setSpanContext).not.toHaveBeenCalled();
-    expect(startedSpanCall("openclaw.model.usage")?.[2]).toBeUndefined();
+    // Owner-scoped alias is NOT used (model.usage has no runId); the fallback remote context
+    // uses the diagnostic traceId directly so the span stays in the correct trace.
+    expect(telemetryState.tracer.setSpanContext).toHaveBeenCalledTimes(1);
+    const fallbackContextAfterRun = firstSetSpanContext();
+    expect(fallbackContextAfterRun.traceId).toBe(TRACE_ID);
+    expect(fallbackContextAfterRun.spanId).toBe(SPAN_ID);
+    expect(fallbackContextAfterRun.isRemote).toBe(true);
     await service.stop?.(ctx);
   });
 
@@ -3876,8 +3915,14 @@ describe("diagnostics-otel service", () => {
       },
     });
 
-    expect(telemetryState.tracer.setSpanContext).not.toHaveBeenCalled();
-    expect(startedSpanCall("openclaw.model.usage")?.[2]).toBeUndefined();
+    // After stop+restart, retained contexts are cleared. The remote fallback still uses the
+    // diagnostic traceId so late-arriving model.usage stays in the correct trace rather than
+    // becoming a new root with a foreign traceId.
+    expect(telemetryState.tracer.setSpanContext).toHaveBeenCalledTimes(1);
+    const fallbackContextAfterStop = firstSetSpanContext();
+    expect(fallbackContextAfterStop.traceId).toBe(TRACE_ID);
+    expect(fallbackContextAfterStop.spanId).toBe(CHILD_SPAN_ID);
+    expect(fallbackContextAfterStop.isRemote).toBe(true);
     await service.stop?.(ctx);
   });
 

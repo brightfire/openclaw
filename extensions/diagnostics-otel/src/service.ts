@@ -1828,6 +1828,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
       const activeTrustedParentContext = (
         evt: DiagnosticEventPayload,
         metadata: DiagnosticEventMetadata,
+        opts?: { remoteFallback?: boolean },
       ) => {
         const traceContext = trustedTraceContext(evt, metadata);
         const parentSpanId = traceContext?.parentSpanId;
@@ -1841,6 +1842,17 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
           activeParentSpan?.spanContext() ??
           retainedTrustedSpanContext(traceContext, parentSpanId, owner);
         if (!spanContext) {
+          if (opts?.remoteFallback) {
+            // When no tracked OTel span exists for the diagnostic parentSpanId (e.g. the
+            // parent originated from an untrusted event), use the diagnostic trace context
+            // as a remote parent so the OTel SDK inherits the diagnostic traceId rather
+            // than creating a new root trace.
+            return contextForTraceContext({
+              traceId: traceContext.traceId,
+              spanId: parentSpanId,
+              traceFlags: traceContext.traceFlags,
+            });
+          }
           return undefined;
         }
         return trace.setSpanContext(otelContextApi.active(), spanContext);
@@ -2134,7 +2146,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         );
 
         const span = spanWithDuration("openclaw.model.usage", spanAttrs, evt.durationMs, {
-          parentContext: activeTrustedParentContext(evt, metadata),
+          parentContext: activeTrustedParentContext(evt, metadata, { remoteFallback: true }),
           endTimeMs: evt.ts,
         });
         span.end(evt.ts);
