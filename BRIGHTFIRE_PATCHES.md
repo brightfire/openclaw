@@ -11,7 +11,7 @@ is maintained, the merge-not-rebase philosophy, and the new-entry template.
 
 | Name                                                                                | Canonical branch                           | Branch HEAD  | Source PR                                         | Last updated |
 | ----------------------------------------------------------------------------------- | ------------------------------------------ | ------------ | ------------------------------------------------- | ------------ |
-| Upstream Test Fixes                                                                 | `brightfire/upstream-test-fixes`           | `96e04370d7` | https://github.com/brightfire/openclaw/pull/138   | 2026-07-10   |
+| Upstream Test Fixes | `brightfire/upstream-test-fixes` | `7c3b9ffcd5` | https://github.com/brightfire/openclaw/pull/150 | 2026-07-13 |
 | Slack Markdown                                                                      | `brightfire/slack-mrkdwn`                  | `4db19e0ed5` | —                                                 | 2026-06-16   |
 | XGW Cross-Gateway                                                                   | `brightfire/xgw`                           | `711c73af36` | https://github.com/brightfire/openclaw/pull/87    | 2026-06-16   |
 | Context Window Min Cap                                                              | `brightfire/context-window-min-cap`        | `5c10c1d69f` | <https://github.com/brightfire/openclaw/pull/31>  | 2026-06-16   |
