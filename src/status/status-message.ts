@@ -975,6 +975,7 @@ export function buildStatusMessage(args: StatusArgs): string {
           cacheWrite: cacheWrite ?? undefined,
         },
         cost: costConfig,
+        cacheRetention: entry?.cacheRetention,
       })
     : undefined;
   const costLabel = hasUsage ? formatUsd(cost) : undefined;

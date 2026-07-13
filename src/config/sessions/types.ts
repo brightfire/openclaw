@@ -364,6 +364,8 @@ export type SessionEntry = {
   estimatedCostUsd?: number;
   cacheRead?: number;
   cacheWrite?: number;
+  /** Prompt cache retention tier for the last run; used by status/history cost recomputation. */
+  cacheRetention?: "short" | "long" | "none";
   modelProvider?: string;
   model?: string;
   /**

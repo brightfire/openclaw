@@ -215,6 +215,9 @@ export async function persistSessionUsageUpdate(params: {
             const cacheUsage = params.lastCallUsage ?? params.usage;
             patch.cacheRead = cacheUsage?.cacheRead ?? 0;
             patch.cacheWrite = cacheUsage?.cacheWrite ?? 0;
+            if (params.cacheRetention) {
+              patch.cacheRetention = params.cacheRetention;
+            }
           }
           if (useCompactionSnapshot && !preserveUserFacingRunState) {
             patch.inputTokens = undefined;

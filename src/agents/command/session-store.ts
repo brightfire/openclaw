@@ -259,6 +259,9 @@ export async function updateSessionStoreAfterAgentRun(params: {
     if (!useCompactionSnapshot) {
       next.cacheRead = usage.cacheRead ?? 0;
       next.cacheWrite = usage.cacheWrite ?? 0;
+      if (result.meta.agentMeta?.cacheRetention) {
+        next.cacheRetention = result.meta.agentMeta.cacheRetention;
+      }
     }
     // Snapshot cost like tokens (runEstimatedCostUsd is already computed from
     // cumulative run usage, so assign directly instead of accumulating).
