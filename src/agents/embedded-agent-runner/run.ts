@@ -1645,7 +1645,9 @@ async function runEmbeddedAgentInternal(
           agentMeta: EmbeddedAgentMeta,
           diagnosticTrace?: DiagnosticTraceContext,
         ) => {
-          if (!isDiagnosticsEnabled(params.config) || !hasNonzeroUsage(agentMeta.usage)) return;
+          if (!isDiagnosticsEnabled(params.config) || !hasNonzeroUsage(agentMeta.usage)) {
+            return;
+          }
           const usage = agentMeta.usage;
           const input = usage.input ?? 0;
           const output = usage.output ?? 0;
@@ -3220,7 +3222,9 @@ async function runEmbeddedAgentInternal(
           // emitModelUsageDiagnostic helper; the guard prevents
           // double-emission when an attempt succeeds then is retried.
           const emitTerminalModelUsage = () => {
-            if (usageEmitted) return;
+            if (usageEmitted) {
+              return;
+            }
             emitModelUsageDiagnostic(agentMeta, attempt.diagnosticTrace);
           };
 
