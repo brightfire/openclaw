@@ -1784,6 +1784,7 @@ export async function runReplyAgent(params: {
                 model: modelUsed,
                 config: cfg,
               }),
+              cacheRetention: runResult.meta?.agentMeta?.cacheRetention,
             })
           : undefined,
         durationMs: Date.now() - runStartedAt,
