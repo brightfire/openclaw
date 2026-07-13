@@ -143,6 +143,7 @@ function cloneManifestCatalogCost(cost: ModelCatalogCost): ModelDefinitionConfig
     output: cost.output ?? 0,
     cacheRead: cost.cacheRead ?? 0,
     cacheWrite: cost.cacheWrite ?? 0,
+    ...(typeof cost.cacheWriteShort === "number" ? { cacheWriteShort: cost.cacheWriteShort } : {}),
     ...(cost.tieredPricing
       ? { tieredPricing: cost.tieredPricing.map(cloneManifestCatalogTieredCost) }
       : {}),

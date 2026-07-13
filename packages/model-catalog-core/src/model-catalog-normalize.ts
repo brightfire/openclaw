@@ -193,12 +193,14 @@ function normalizeModelCatalogCost(value: unknown): ModelCatalogCost | undefined
   const output = normalizeNonNegativeNumber(value.output);
   const cacheRead = normalizeNonNegativeNumber(value.cacheRead);
   const cacheWrite = normalizeNonNegativeNumber(value.cacheWrite);
+  const cacheWriteShort = normalizeNonNegativeNumber(value.cacheWriteShort);
   const tieredPricing = normalizeModelCatalogTieredCost(value.tieredPricing);
   const cost = {
     ...(input !== undefined ? { input } : {}),
     ...(output !== undefined ? { output } : {}),
     ...(cacheRead !== undefined ? { cacheRead } : {}),
     ...(cacheWrite !== undefined ? { cacheWrite } : {}),
+    ...(cacheWriteShort !== undefined ? { cacheWriteShort } : {}),
     ...(tieredPricing ? { tieredPricing } : {}),
   } satisfies ModelCatalogCost;
   return Object.keys(cost).length > 0 ? cost : undefined;

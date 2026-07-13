@@ -156,6 +156,9 @@ function modelDefinitionCostFromManifestRow(
     output: row.cost.output,
     cacheRead: row.cost.cacheRead,
     cacheWrite: row.cost.cacheWrite,
+    ...(typeof row.cost.cacheWriteShort === "number"
+      ? { cacheWriteShort: row.cost.cacheWriteShort }
+      : {}),
     ...(row.cost.tieredPricing ? { tieredPricing: row.cost.tieredPricing } : {}),
   };
 }

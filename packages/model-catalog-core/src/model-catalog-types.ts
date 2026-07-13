@@ -198,6 +198,7 @@ export type ModelCatalogCost = {
   output?: number;
   cacheRead?: number;
   cacheWrite?: number;
+  cacheWriteShort?: number;
   tieredPricing?: ModelCatalogTieredCost[];
 };
 
