@@ -24,6 +24,10 @@ import {
 } from "../../infra/agent-events.js";
 import { isDiagnosticsEnabled } from "../../infra/diagnostic-events.js";
 import {
+  createDiagnosticTraceContextFromActiveScope,
+  runWithDiagnosticTraceContext,
+} from "../../infra/diagnostic-trace-context.js";
+import {
   createSourceDeliveryPlan,
   resolveSourceDeliveryOutcome,
   type SourceDeliveryOutcome,
@@ -31,6 +35,7 @@ import {
   type SourceDeliveryVisibleDelivery,
 } from "../../infra/outbound/source-delivery-plan.js";
 import { createDiagnosticMessageLifecycle } from "../../logging/message-lifecycle.js";
+import { logMessageDispatchCompleted, logMessageDispatchStarted } from "../../logging/diagnostic.js";
 import { isCommandLaneTaskTimeoutError } from "../../process/command-queue.js";
 import { CommandLane } from "../../process/lanes.js";
 import { createLazyImportLoader } from "../../shared/lazy-promise.js";
@@ -1322,6 +1327,13 @@ export async function runCronIsolatedAgentTurn(params: {
 
   const turnStartedAtMs = Date.now();
   const diagnosticsEnabled = isDiagnosticsEnabled(params.cfg);
+  // Establish a diagnostic trace context so that openclaw.harness.run, openclaw.run,
+  // openclaw.model.call, and openclaw.model.usage spans emitted from the embedded agent
+  // runner nest under the same trace as openclaw.message.processed. Without this,
+  // getActiveDiagnosticTraceContext() returns undefined in the cron path and all
+  // run/harness/model spans land as a separate root trace in Langfuse.
+  const trace = createDiagnosticTraceContextFromActiveScope();
+  return runWithDiagnosticTraceContext(trace, async () => {
   const messageLifecycle = createDiagnosticMessageLifecycle({
     enabled: diagnosticsEnabled,
     sessionId: prepared.context.runSessionId,
@@ -1332,6 +1344,21 @@ export async function runCronIsolatedAgentTurn(params: {
     trackSessionState: true,
   });
   messageLifecycle.markProcessing();
+
+  // Anchor the diagnostics trace: create and track the openclaw.message.processed
+  // span before the embedded agent runner emits openclaw.harness.run. Without an
+  // active tracked parent span, the OTel exporter parents harness/run/model spans
+  // to nothing and they detach into a separate root trace. The webchat path gets
+  // this anchor via message.dispatch.started (dispatch-from-config.ts); the cron
+  // isolated path must emit it explicitly.
+  if (diagnosticsEnabled) {
+    logMessageDispatchStarted({
+      sessionId: prepared.context.runSessionId,
+      sessionKey: prepared.context.runSessionKey,
+      channel: "cron",
+      source: "cron-isolated",
+    });
+  }
 
   let outcome: "completed" | "error" = "completed";
   let outcomeError: string | undefined;
@@ -1437,6 +1464,16 @@ export async function runCronIsolatedAgentTurn(params: {
       sessionId: prepared.context.currentRunSessionId(),
       sessionKey: prepared.context.runSessionKey,
     };
+    if (diagnosticsEnabled) {
+      logMessageDispatchCompleted({
+        channel: "cron",
+        source: "cron-isolated",
+        durationMs: Date.now() - turnStartedAtMs,
+        outcome: outcome === "error" ? "error" : "completed",
+        error: outcomeError,
+        ...finalSessionRef,
+      });
+    }
     messageLifecycle.markIdle(undefined, finalSessionRef);
     messageLifecycle.markProcessed(outcome, {
       ...finalSessionRef,
@@ -1454,4 +1491,5 @@ export async function runCronIsolatedAgentTurn(params: {
       runContextOwnerToken,
     });
   }
+  });
 }
