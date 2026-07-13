@@ -11,6 +11,7 @@ import {
   type DiagnosticPhaseSnapshot,
   type DiagnosticLivenessWarningReason,
 } from "../infra/diagnostic-events.js";
+import { resolveDiagnosticModelContentCapturePolicy } from "../infra/diagnostic-llm-content.js";
 import { emitDiagnosticMemorySample, resetDiagnosticMemoryForTest } from "./diagnostic-memory.js";
 import {
   getCurrentDiagnosticPhase,
@@ -842,11 +843,14 @@ export function logMessageProcessed(params: {
     reason: params.reason,
     error: params.error,
   };
-  // Route content through privateData so it never reaches untrusted onDiagnosticEvent listeners;
-  // the OTEL extension reads it via onTrustedInternalDiagnosticEvent / privateData.messageContent.
+  // Gate message content on the OTEL captureContent policy so raw prompts/responses
+  // are not cloned and dispatched when content capture is disabled.
+  const contentPolicy = resolveDiagnosticModelContentCapturePolicy(getRuntimeConfig());
   const messageContent =
-    params.userPrompt !== undefined || params.finalResponse !== undefined
-      ? { userPrompt: params.userPrompt, finalResponse: params.finalResponse }
+    contentPolicy.inputMessages || contentPolicy.outputMessages
+      ? params.userPrompt !== undefined || params.finalResponse !== undefined
+        ? { userPrompt: params.userPrompt, finalResponse: params.finalResponse }
+        : undefined
       : undefined;
   emitInternalDiagnosticEventWithPrivateData(
     messageProcessedEvent,
