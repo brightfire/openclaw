@@ -22,6 +22,7 @@ export type DiagnosticUsageEvent = DiagnosticBaseEvent & {
   sessionId?: string;
   channel?: string;
   agentId?: string;
+  agentLabel?: string;
   provider?: string;
   model?: string;
   usage: {
@@ -263,6 +264,7 @@ export type DiagnosticSessionTurnCreatedEvent = DiagnosticBaseEvent & {
   sessionKey?: string;
   sessionId?: string;
   agentId?: string;
+  agentLabel?: string;
   channel?: string;
   trigger: "user" | "heartbeat";
 };
@@ -418,9 +420,18 @@ export type DiagnosticSkillUsedEvent = DiagnosticBaseEvent & {
   sessionKey?: string;
   sessionId?: string;
   agentId?: string;
+  agentLabel?: string;
   skillName: string;
   skillSource: DiagnosticSkillTelemetrySource;
   activation: DiagnosticSkillActivation;
+  /** sha256 fingerprint from the <available_skills> <version> tag for the loaded skill. */
+  skillVersion?: string;
+  /**
+   * Command name for command-activated skills (always safe to emit).
+   * For read-activated skills, trigger is passed via DiagnosticEventPrivateData.skillContent
+   * instead to prevent user message content from riding the public event payload.
+   */
+  trigger?: string;
   toolName?: string;
   toolCallId?: string;
 };
@@ -720,9 +731,15 @@ export type DiagnosticToolCallContent = Readonly<{
   toolOutput?: unknown;
 }>;
 
+export type DiagnosticSkillCallContent = Readonly<{
+  /** Read-activation trigger text (first 4000 chars of preceding user message). */
+  trigger?: string;
+}>;
+
 export type DiagnosticEventPrivateData = Readonly<{
   modelContent?: DiagnosticModelCallContent;
   toolContent?: DiagnosticToolCallContent;
+  skillContent?: DiagnosticSkillCallContent;
 }>;
 
 type DiagnosticEventListener = (
