@@ -28,6 +28,7 @@ import {
 import { resolveBootstrapWarningSignaturesSeen } from "../../agents/bootstrap-budget.js";
 import { getCliSessionBinding } from "../../agents/cli-session.js";
 import { resolveContextTokensForModel } from "../../agents/context.js";
+import { DEFAULT_CONTEXT_TOKENS } from "../../agents/defaults.js";
 import {
   BILLING_ERROR_USER_MESSAGE,
   formatRateLimitOrOverloadedErrorCopy,
@@ -65,6 +66,7 @@ import {
   resolveAgentRunAbortLifecycleFields,
 } from "../../agents/run-termination.js";
 import { buildAgentRuntimeOutcomePlan } from "../../agents/runtime-plan/build.js";
+import { deriveContextPromptTokens, hasNonzeroUsage } from "../../agents/usage.js";
 import {
   resolveGroupSessionKey,
   type SessionEntry,
@@ -79,7 +81,11 @@ import {
   emitAgentEvent,
   registerAgentRunContext,
 } from "../../infra/agent-events.js";
-import { isDiagnosticsEnabled } from "../../infra/diagnostic-events.js";
+import { emitTrustedDiagnosticEvent, isDiagnosticsEnabled } from "../../infra/diagnostic-events.js";
+import {
+  freezeDiagnosticTraceContext,
+  createChildDiagnosticTraceContext,
+} from "../../infra/diagnostic-trace-context.js";
 import { formatErrorMessage } from "../../infra/errors.js";
 import { logSessionTurnCreated } from "../../logging/diagnostic.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
@@ -92,6 +98,7 @@ import {
   resolveMessageChannel,
 } from "../../utils/message-channel.js";
 import { isInternalMessageChannel } from "../../utils/message-channel.js";
+import { estimateUsageCost, resolveModelCostConfig } from "../../utils/usage-format.js";
 import { stripHeartbeatToken } from "../heartbeat.js";
 import { markReplyPayloadForSourceSuppressionDelivery } from "../reply-payload.js";
 import type { TemplateContext } from "../templating.js";
@@ -2313,6 +2320,89 @@ export async function runAgentTurnWithFallback(params: {
               bootstrapPromptWarningSignaturesSeen = resolveBootstrapWarningSignaturesSeen(
                 result.meta?.systemPromptReport,
               );
+              // CLI runs bypass the embedded-agent-runner where model.usage is
+              // now centrally emitted. Re-emit here so CLI-provider runs keep
+              // diagnostic/Langfuse cost attribution.
+              const cliAgentMeta = result.meta?.agentMeta;
+              if (
+                cliAgentMeta &&
+                isDiagnosticsEnabled(runtimeConfig) &&
+                hasNonzeroUsage(cliAgentMeta.usage)
+              ) {
+                const cliUsage = cliAgentMeta.usage;
+                const cliInput = cliUsage.input ?? 0;
+                const cliOutput = cliUsage.output ?? 0;
+                const cliCacheRead = cliUsage.cacheRead ?? 0;
+                const cliCacheWrite = cliUsage.cacheWrite ?? 0;
+                const cliPromptTokens = cliInput + cliCacheRead + cliCacheWrite;
+                const cliTotalTokens = cliUsage.total ?? cliPromptTokens + cliOutput;
+                const cliHasBillable =
+                  cliUsage.input !== undefined ||
+                  cliUsage.output !== undefined ||
+                  cliUsage.cacheRead !== undefined ||
+                  cliUsage.cacheWrite !== undefined;
+                const cliContextUsed = deriveContextPromptTokens({
+                  lastCallUsage: cliAgentMeta.lastCallUsage,
+                  promptTokens: cliAgentMeta.promptTokens,
+                  usage: cliUsage,
+                });
+                const cliCostConfig = resolveModelCostConfig({
+                  provider: cliAgentMeta.provider,
+                  model: cliAgentMeta.model,
+                  config: runtimeConfig,
+                });
+                const cliCostUsd = cliHasBillable
+                  ? estimateUsageCost({ usage: cliUsage, cost: cliCostConfig })
+                  : undefined;
+                const cliContextTokens =
+                  (typeof cliAgentMeta.contextTokens === "number" &&
+                  Number.isFinite(cliAgentMeta.contextTokens) &&
+                  cliAgentMeta.contextTokens > 0
+                    ? Math.floor(cliAgentMeta.contextTokens)
+                    : undefined) ??
+                  resolveContextTokensForModel({
+                    cfg: runtimeConfig,
+                    provider: cliAgentMeta.provider,
+                    model: cliAgentMeta.model,
+                    fallbackContextTokens:
+                      params.getActiveSessionEntry()?.contextTokens ?? DEFAULT_CONTEXT_TOKENS,
+                    allowAsyncLoad: false,
+                  }) ??
+                  DEFAULT_CONTEXT_TOKENS;
+                emitTrustedDiagnosticEvent({
+                  type: "model.usage",
+                  ...(result.diagnosticTrace
+                    ? {
+                        trace: freezeDiagnosticTraceContext(
+                          createChildDiagnosticTraceContext(result.diagnosticTrace),
+                        ),
+                      }
+                    : {}),
+                  sessionKey: params.sessionKey,
+                  sessionId: params.followupRun.run.sessionId,
+                  channel: hookMessageProvider,
+                  agentId: params.followupRun.run.agentId,
+                  agentLabel: resolveAgentConfig(runtimeConfig, params.followupRun.run.agentId)
+                    ?.name,
+                  provider: cliAgentMeta.provider,
+                  model: cliAgentMeta.model,
+                  usage: {
+                    input: cliInput,
+                    output: cliOutput,
+                    cacheRead: cliCacheRead,
+                    cacheWrite: cliCacheWrite,
+                    promptTokens: cliPromptTokens,
+                    total: cliTotalTokens,
+                  },
+                  lastCallUsage: cliAgentMeta.lastCallUsage,
+                  context: {
+                    limit: cliContextTokens,
+                    ...(cliContextUsed !== undefined ? { used: cliContextUsed } : {}),
+                  },
+                  costUsd: cliCostUsd,
+                  durationMs: result.meta.durationMs,
+                });
+              }
               return result;
             }
             const { embeddedContext, senderContext, runBaseParams } =
