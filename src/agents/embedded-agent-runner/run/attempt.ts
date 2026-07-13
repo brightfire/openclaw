@@ -2793,6 +2793,8 @@ export async function runEmbeddedAttempt(
         params.provider,
         params.model.api,
         params.modelId,
+        (params.model.compat as { supportsPromptCacheKey?: boolean } | undefined)
+          ?.supportsPromptCacheKey === true,
       );
       const agentTransportOverride = resolveAgentTransportOverride({
         settingsManager,
