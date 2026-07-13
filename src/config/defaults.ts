@@ -79,6 +79,7 @@ function resolveModelCost(
     cacheRead: typeof raw?.cacheRead === "number" ? raw.cacheRead : DEFAULT_MODEL_COST.cacheRead,
     cacheWrite:
       typeof raw?.cacheWrite === "number" ? raw.cacheWrite : DEFAULT_MODEL_COST.cacheWrite,
+    ...(typeof raw?.cacheWriteShort === "number" ? { cacheWriteShort: raw.cacheWriteShort } : {}),
     ...(raw?.tieredPricing ? { tieredPricing: raw.tieredPricing } : {}),
   };
 }
