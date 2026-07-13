@@ -596,7 +596,7 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", AnthropicOpti
             output.usage.output +
             output.usage.cacheRead +
             output.usage.cacheWrite;
-          calculateCost(model, output.usage);
+          calculateCost(model, output.usage, options?.cacheRetention);
           // Defer start until after message_start so that pre-stream SSE errors
           // (e.g. invalid thinking signatures) arrive before any non-error event
           // is yielded, keeping yieldedOutput=false in pumpStreamWithRecovery
@@ -766,7 +766,7 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", AnthropicOpti
             output.usage.output +
             output.usage.cacheRead +
             output.usage.cacheWrite;
-          calculateCost(model, output.usage);
+          calculateCost(model, output.usage, options?.cacheRetention);
         }
       }
 

@@ -427,7 +427,7 @@ export async function runGoogleGenerateContentLifecycle<T extends GoogleApiType>
   stream: AssistantMessageEventStream;
   model: Model<T>;
   output: AssistantMessage;
-  options?: Pick<StreamOptions, "signal" | "onPayload">;
+  options?: Pick<StreamOptions, "signal" | "onPayload" | "cacheRetention">;
   createClient: () => GoogleGenerateContentClient;
   buildParams: () => GenerateContentParameters;
   nextToolCallId: (name: string | undefined) => string;
@@ -448,6 +448,7 @@ export async function runGoogleGenerateContentLifecycle<T extends GoogleApiType>
       output,
       stream,
       signal: options?.signal,
+      cacheRetention: options?.cacheRetention,
       nextToolCallId: params.nextToolCallId,
     });
   } catch (error) {
@@ -729,6 +730,7 @@ export async function consumeGoogleGenerateContentStream<T extends GoogleApiType
   output: AssistantMessage;
   stream: AssistantMessageEventStream;
   signal?: AbortSignal;
+  cacheRetention?: "short" | "long" | "none";
   nextToolCallId: (name: string | undefined) => string;
 }): Promise<void> {
   params.stream.push({ type: "start", partial: params.output });
@@ -880,7 +882,7 @@ export async function consumeGoogleGenerateContentStream<T extends GoogleApiType
           total: 0,
         },
       };
-      calculateCost(params.model, params.output.usage);
+      calculateCost(params.model, params.output.usage, params.cacheRetention);
     }
   }
 

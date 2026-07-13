@@ -6,12 +6,17 @@ import {
 import type { Api, Model, ModelThinkingLevel, Usage } from "./types.js";
 
 /** Calculates and stores model cost fields from token usage and per-million pricing. */
-export function calculateCost<TApi extends Api>(model: Model<TApi>, usage: Usage): Usage["cost"] {
+export function calculateCost<TApi extends Api>(
+  model: Model<TApi>,
+  usage: Usage,
+  cacheRetention?: "short" | "long" | "none",
+): Usage["cost"] {
   usage.cost.input = (model.cost.input / 1000000) * usage.input;
   usage.cost.output = (model.cost.output / 1000000) * usage.output;
   usage.cost.cacheRead = (model.cost.cacheRead / 1000000) * usage.cacheRead;
+  const resolvedRetention = cacheRetention ?? model.params?.cacheRetention;
   const cacheWritePrice =
-    model.params?.cacheRetention === "short" && typeof model.cost.cacheWriteShort === "number"
+    resolvedRetention === "short" && typeof model.cost.cacheWriteShort === "number"
       ? model.cost.cacheWriteShort
       : model.cost.cacheWrite;
   usage.cost.cacheWrite = (cacheWritePrice / 1000000) * usage.cacheWrite;
