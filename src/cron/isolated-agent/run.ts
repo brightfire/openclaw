@@ -1041,6 +1041,8 @@ async function finalizeCronRun(params: {
     }
     prepared.cronSession.sessionEntry.cacheRead = usage.cacheRead ?? 0;
     prepared.cronSession.sessionEntry.cacheWrite = usage.cacheWrite ?? 0;
+    prepared.cronSession.sessionEntry.cacheRetention =
+      finalRunResult.meta?.agentMeta?.cacheRetention;
     // Snapshot cost like tokens (runEstimatedCostUsd is already computed from
     // cumulative run usage, so assign directly instead of accumulating).
     // Fixes #69347: cost was inflated 1x-72x by accumulating on every persist.
