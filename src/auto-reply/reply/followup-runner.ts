@@ -1240,6 +1240,7 @@ export function createFollowupRunner(params: {
           contextTokensUsed,
           systemPromptReport: runResult.meta?.systemPromptReport,
           cliSessionBinding: runResult.meta?.agentMeta?.cliSessionBinding,
+          cacheRetention: runResult.meta?.agentMeta?.cacheRetention,
           clearCliSessionBinding:
             usedCliProvider && runResult.meta?.agentMeta?.clearCliSessionBinding === true,
           logLabel: "followup",
