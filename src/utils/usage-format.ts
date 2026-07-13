@@ -219,11 +219,16 @@ function normalizeTieredPricing(raw: RawPricingTier[] | undefined): PricingTier[
 
 function normalizeModelCostConfig(cost: RawModelCostConfig): ModelCostConfig {
   const normalizedTiers = normalizeTieredPricing(cost.tieredPricing);
+  const cacheWriteShort =
+    typeof cost.cacheWriteShort === "number" && Number.isFinite(cost.cacheWriteShort)
+      ? cost.cacheWriteShort
+      : undefined;
   return {
     input: cost.input,
     output: cost.output,
     cacheRead: cost.cacheRead,
     cacheWrite: cost.cacheWrite,
+    ...(cacheWriteShort != null ? { cacheWriteShort } : {}),
     ...(normalizedTiers ? { tieredPricing: normalizedTiers } : {}),
   };
 }
@@ -422,7 +427,7 @@ function buildModelCostFingerprint(cost: RawModelCostConfig): string {
         return [tier.input, tier.output, tier.cacheRead, tier.cacheWrite, ...range];
       })
     : [];
-  return [cost.input, cost.output, cost.cacheRead, cost.cacheWrite, ...tierFingerprint].join("|");
+  return [cost.input, cost.output, cost.cacheRead, cost.cacheWrite, cost.cacheWriteShort, ...tierFingerprint].join("|");
 }
 
 function isProviderCostSourceCurrent(
