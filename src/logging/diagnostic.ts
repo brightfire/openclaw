@@ -843,18 +843,24 @@ export function logMessageProcessed(params: {
     reason: params.reason,
     error: params.error,
   };
-  // Gate message content on the OTEL captureContent policy so raw prompts/responses
-  // are not cloned and dispatched when content capture is disabled.
+  // Gate each message content field on its own captureContent policy field so that
+  // enabling input capture does not leak output text and vice versa.
   const contentPolicy = resolveDiagnosticModelContentCapturePolicy(getRuntimeConfig());
-  const messageContent =
+  const messageContent: { userPrompt?: string; finalResponse?: string } | undefined =
     contentPolicy.inputMessages || contentPolicy.outputMessages
-      ? params.userPrompt !== undefined || params.finalResponse !== undefined
-        ? { userPrompt: params.userPrompt, finalResponse: params.finalResponse }
-        : undefined
+      ? {
+          ...(contentPolicy.inputMessages && params.userPrompt !== undefined
+            ? { userPrompt: params.userPrompt }
+            : {}),
+          ...(contentPolicy.outputMessages && params.finalResponse !== undefined
+            ? { finalResponse: params.finalResponse }
+            : {}),
+        }
       : undefined;
+  const hasContent = messageContent !== undefined && Object.keys(messageContent).length > 0;
   emitInternalDiagnosticEventWithPrivateData(
     messageProcessedEvent,
-    messageContent ? { messageContent } : undefined,
+    hasContent ? { messageContent } : undefined,
   );
   markActivity();
 }
