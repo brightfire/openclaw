@@ -246,6 +246,9 @@ function toCachedPricingTier(value: unknown): CachedPricingTier | null {
     output,
     cacheRead: parseNumberString(tier.cacheRead) ?? 0,
     cacheWrite: parseNumberString(tier.cacheWrite) ?? 0,
+    ...(parseNumberString(tier.cacheWriteShort) != null
+      ? { cacheWriteShort: parseNumberString(tier.cacheWriteShort) ?? undefined }
+      : {}),
     range: [start, end],
   };
 }
@@ -312,6 +315,7 @@ type LiteLLMTierRaw = {
   output_cost_per_token?: unknown;
   cache_read_input_token_cost?: unknown;
   cache_creation_input_token_cost?: unknown;
+  cache_creation_input_token_cost_above_1hr?: unknown;
   range?: unknown;
 };
 
@@ -353,7 +357,17 @@ function parseLiteLLMTieredPricing(tiers: unknown): CachedPricingTier[] | undefi
       input: toPricePerMillion(inputPerToken),
       output: toPricePerMillion(outputPerToken),
       cacheRead: toPricePerMillion(parseNumberString(tier.cache_read_input_token_cost)),
-      cacheWrite: toPricePerMillion(parseNumberString(tier.cache_creation_input_token_cost)),
+      cacheWrite: toPricePerMillion(
+        parseNumberString(tier.cache_creation_input_token_cost_above_1hr) ??
+          parseNumberString(tier.cache_creation_input_token_cost),
+      ),
+      ...(parseNumberString(tier.cache_creation_input_token_cost_above_1hr) != null
+        ? {
+            cacheWriteShort: toPricePerMillion(
+              parseNumberString(tier.cache_creation_input_token_cost),
+            ),
+          }
+        : {}),
       range: [start, end],
     });
   }
@@ -370,7 +384,17 @@ function parseLiteLLMPricing(entry: LiteLLMModelEntry): CachedModelPricing | nul
     input: toPricePerMillion(inputPerToken),
     output: toPricePerMillion(outputPerToken),
     cacheRead: toPricePerMillion(parseNumberString(entry.cache_read_input_token_cost)),
-    cacheWrite: toPricePerMillion(parseNumberString(entry.cache_creation_input_token_cost)),
+    cacheWrite: toPricePerMillion(
+      parseNumberString(entry.cache_creation_input_token_cost_above_1hr) ??
+        parseNumberString(entry.cache_creation_input_token_cost),
+    ),
+    ...(parseNumberString(entry.cache_creation_input_token_cost_above_1hr) != null
+      ? {
+          cacheWriteShort: toPricePerMillion(
+            parseNumberString(entry.cache_creation_input_token_cost),
+          ),
+        }
+      : {}),
   };
   const tieredPricing = parseLiteLLMTieredPricing(entry.tiered_pricing);
   if (tieredPricing) {

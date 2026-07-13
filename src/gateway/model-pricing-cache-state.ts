@@ -9,6 +9,7 @@ export type CachedPricingTier = {
   output: number;
   cacheRead: number;
   cacheWrite: number;
+  cacheWriteShort?: number;
   /** [startTokens, endTokens) — half-open interval on the input token axis. */
   range: [number, number];
 };

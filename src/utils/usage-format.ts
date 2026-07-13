@@ -27,6 +27,7 @@ export type PricingTier = {
   output: number;
   cacheRead: number;
   cacheWrite: number;
+  cacheWriteShort?: number;
   /** [startTokens, endTokens) — half-open interval on the input token axis. */
   range: [number, number];
 };
@@ -36,6 +37,7 @@ type RawPricingTier = {
   output: number;
   cacheRead: number;
   cacheWrite: number;
+  cacheWriteShort?: number;
   range: [number, number] | [number];
 };
 
@@ -211,6 +213,9 @@ function normalizeTieredPricing(raw: RawPricingTier[] | undefined): PricingTier[
       output: tier.output,
       cacheRead: tier.cacheRead,
       cacheWrite: tier.cacheWrite,
+      ...(typeof tier.cacheWriteShort === "number" && Number.isFinite(tier.cacheWriteShort)
+        ? { cacheWriteShort: tier.cacheWriteShort }
+        : {}),
       range: [start, end],
     });
   }
@@ -427,7 +432,14 @@ function buildModelCostFingerprint(cost: RawModelCostConfig): string {
         return [tier.input, tier.output, tier.cacheRead, tier.cacheWrite, ...range];
       })
     : [];
-  return [cost.input, cost.output, cost.cacheRead, cost.cacheWrite, cost.cacheWriteShort, ...tierFingerprint].join("|");
+  return [
+    cost.input,
+    cost.output,
+    cost.cacheRead,
+    cost.cacheWrite,
+    cost.cacheWriteShort,
+    ...tierFingerprint,
+  ].join("|");
 }
 
 function isProviderCostSourceCurrent(
@@ -695,17 +707,23 @@ function computeTieredCost(
   output: number,
   cacheRead: number,
   cacheWrite: number,
+  cacheRetention?: "short" | "long" | "none",
 ): number {
   const tier = selectPricingTier(tiers, input);
   if (!tier) {
     return 0;
   }
 
+  const cacheWriteRate =
+    cacheRetention === "short" && tier.cacheWriteShort != null
+      ? tier.cacheWriteShort
+      : tier.cacheWrite;
+
   return (
     input * tier.input +
     output * tier.output +
     cacheRead * tier.cacheRead +
-    cacheWrite * tier.cacheWrite
+    cacheWrite * cacheWriteRate
   );
 }
 
@@ -730,9 +748,14 @@ export function estimateUsageCost(params: {
 
   let total: number;
   if (cost.tieredPricing && cost.tieredPricing.length > 0) {
-    // Tiered pricing takes precedence; cacheRetention short-rate
-    // substitution does not apply to tiered tables in this patch's scope.
-    total = computeTieredCost(cost.tieredPricing, input, output, cacheRead, cacheWrite);
+    total = computeTieredCost(
+      cost.tieredPricing,
+      input,
+      output,
+      cacheRead,
+      cacheWrite,
+      params.cacheRetention,
+    );
   } else {
     const cacheWriteRate =
       params.cacheRetention === "short" && cost.cacheWriteShort != null
