@@ -1362,9 +1362,18 @@ export async function refreshGatewayModelPricingCache(
         nextPricing.set(modelKey(ref.provider, ref.model), {
           ...openRouterPricing,
           tieredPricing: litellmPricing.tieredPricing,
+          ...(litellmPricing.cacheWriteShort != null
+            ? { cacheWriteShort: litellmPricing.cacheWriteShort }
+            : {}),
+        });
+      } else if (openRouterPricing && litellmPricing?.cacheWriteShort != null) {
+        // OpenRouter base + LiteLLM flat short-cache price.
+        nextPricing.set(modelKey(ref.provider, ref.model), {
+          ...openRouterPricing,
+          cacheWriteShort: litellmPricing.cacheWriteShort,
         });
       } else if (openRouterPricing) {
-        // Prefer OpenRouter flat pricing when LiteLLM has no tiers to contribute.
+        // Prefer OpenRouter flat pricing when LiteLLM has nothing to contribute.
         nextPricing.set(modelKey(ref.provider, ref.model), openRouterPricing);
       } else if (litellmPricing) {
         // Only LiteLLM has data — use it as-is.
