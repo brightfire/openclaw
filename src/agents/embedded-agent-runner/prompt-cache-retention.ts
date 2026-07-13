@@ -59,5 +59,5 @@ export function resolveCacheRetention(
     return "long";
   }
 
-  return family ? "short" : undefined;
+  return family || cacheKeyEligible ? "short" : undefined;
 }
