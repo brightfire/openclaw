@@ -1672,7 +1672,7 @@ async function runEmbeddedAgentInternal(
             config: params.config,
           });
           const costUsd = hasBillableUsageBuckets
-            ? estimateUsageCost({ usage, cost: costConfig })
+            ? estimateUsageCost({ usage, cost: costConfig, cacheRetention: agentMeta.cacheRetention })
             : undefined;
           emitTrustedDiagnosticEvent({
             type: "model.usage",
@@ -3221,6 +3221,7 @@ async function runEmbeddedAgentInternal(
             usage: usageMeta.usage,
             lastCallUsage: usageMeta.lastCallUsage,
             promptTokens: usageMeta.promptTokens,
+            cacheRetention: attempt.cacheRetention,
             ...(lastContextBudgetStatus ? { contextBudgetStatus: lastContextBudgetStatus } : {}),
             compactionCount: autoCompactionCount > 0 ? autoCompactionCount : undefined,
             compactionTokensAfter: lastCompactionTokensAfter,

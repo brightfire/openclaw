@@ -1903,6 +1903,7 @@ export async function runReplyAgent(params: {
       modelUsed,
       providerUsed,
       contextTokensUsed,
+      cacheRetention: runResult.meta?.agentMeta?.cacheRetention,
       systemPromptReport: runResult.meta?.systemPromptReport,
       cliSessionId,
       cliSessionBinding,
@@ -2133,6 +2134,7 @@ export async function runReplyAgent(params: {
         usage,
         showCost,
         costConfig,
+        cacheRetention: runResult.meta?.agentMeta?.cacheRetention,
       });
       const usageTemplate =
         responseUsageMode === "full" && replyUsageState
