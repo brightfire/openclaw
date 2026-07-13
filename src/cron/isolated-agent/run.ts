@@ -24,6 +24,10 @@ import {
 } from "../../infra/agent-events.js";
 import { isDiagnosticsEnabled } from "../../infra/diagnostic-events.js";
 import {
+  createDiagnosticTraceContextFromActiveScope,
+  runWithDiagnosticTraceContext,
+} from "../../infra/diagnostic-trace-context.js";
+import {
   createSourceDeliveryPlan,
   resolveSourceDeliveryOutcome,
   type SourceDeliveryOutcome,
@@ -1322,6 +1326,13 @@ export async function runCronIsolatedAgentTurn(params: {
 
   const turnStartedAtMs = Date.now();
   const diagnosticsEnabled = isDiagnosticsEnabled(params.cfg);
+  // Establish a diagnostic trace context so that openclaw.harness.run, openclaw.run,
+  // openclaw.model.call, and openclaw.model.usage spans emitted from the embedded agent
+  // runner nest under the same trace as openclaw.message.processed. Without this,
+  // getActiveDiagnosticTraceContext() returns undefined in the cron path and all
+  // run/harness/model spans land as a separate root trace in Langfuse.
+  const trace = createDiagnosticTraceContextFromActiveScope();
+  return runWithDiagnosticTraceContext(trace, async () => {
   const messageLifecycle = createDiagnosticMessageLifecycle({
     enabled: diagnosticsEnabled,
     sessionId: prepared.context.runSessionId,
@@ -1454,4 +1465,5 @@ export async function runCronIsolatedAgentTurn(params: {
       runContextOwnerToken,
     });
   }
+  });
 }
