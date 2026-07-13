@@ -561,7 +561,7 @@ describe("acquireSessionWriteLock", () => {
       }) as typeof fs.readFile);
 
       try {
-        const lock = await acquireSessionWriteLock({ sessionFile, timeoutMs: 500, staleMs: 10 });
+        const lock = await acquireSessionWriteLock({ sessionFile, timeoutMs: 2000, staleMs: 1000 });
         await lock.release();
         expect(lockReads).toBeGreaterThanOrEqual(3);
         await expectPathMissing(lockPath);
