@@ -34,6 +34,7 @@ import { notifyLlmRequestActivity } from "../shared/llm-request-activity.js";
 import {
   applyAnthropicPayloadPolicyToParams,
   resolveAnthropicPayloadPolicy,
+  resolveAnthropicEphemeralCacheControl,
 } from "./anthropic-payload-policy.js";
 import {
   projectAnthropicTools,
@@ -1098,6 +1099,13 @@ export function createAnthropicMessagesTransportStreamFn(): StreamFn {
           throw new Error(`No API key for provider: ${model.provider}`);
         }
         const transportOptions = resolveAnthropicTransportOptions(model, options, apiKey);
+        const resolvedCacheRetention =
+          transportOptions.cacheRetention === "none"
+            ? "none"
+            : resolveAnthropicEphemeralCacheControl(model.baseUrl, transportOptions.cacheRetention)
+                  ?.ttl === "1h"
+              ? "long"
+              : "short";
         const { client, isOAuthToken } = createAnthropicTransportClient({
           model,
           context,
@@ -1253,7 +1261,7 @@ export function createAnthropicMessagesTransportStreamFn(): StreamFn {
               output.usage.output +
               output.usage.cacheRead +
               output.usage.cacheWrite;
-            calculateCost(model, output.usage, options?.cacheRetention);
+            calculateCost(model, output.usage, resolvedCacheRetention);
             // Defer start until after message_start so that pre-stream SSE errors
             // (e.g. invalid thinking signatures) arrive before any non-error event
             // is yielded, keeping yieldedOutput=false in pumpStreamWithRecovery
@@ -1541,7 +1549,7 @@ export function createAnthropicMessagesTransportStreamFn(): StreamFn {
               output.usage.output +
               output.usage.cacheRead +
               output.usage.cacheWrite;
-            calculateCost(model, output.usage, options?.cacheRetention);
+            calculateCost(model, output.usage, resolvedCacheRetention);
           }
         }
         if (refusalBuffer && !sawMessageStop) {
