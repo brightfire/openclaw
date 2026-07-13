@@ -2625,6 +2625,18 @@ async function runEmbeddedAgentInternal(
               replayInvalid: resolveReplayInvalidForAttempt(),
               livenessState: "blocked",
             });
+            const overflowAgentMeta = buildErrorAgentMeta({
+              sessionId: sessionIdUsed,
+              sessionFile: activeSessionFile,
+              provider,
+              model: model.id,
+              contextTokens: ctxInfo.tokens,
+              usageAccumulator,
+              lastRunPromptUsage,
+              lastAssistant: sessionLastAssistant,
+              lastTurnTotal,
+            });
+            emitModelUsageDiagnostic(overflowAgentMeta, attempt.diagnosticTrace);
             return {
               payloads: [
                 {
@@ -2634,17 +2646,7 @@ async function runEmbeddedAgentInternal(
               ],
               meta: {
                 durationMs: Date.now() - started,
-                agentMeta: buildErrorAgentMeta({
-                  sessionId: sessionIdUsed,
-                  sessionFile: activeSessionFile,
-                  provider,
-                  model: model.id,
-                  contextTokens: ctxInfo.tokens,
-                  usageAccumulator,
-                  lastRunPromptUsage,
-                  lastAssistant: sessionLastAssistant,
-                  lastTurnTotal,
-                }),
+                agentMeta: overflowAgentMeta,
                 systemPromptReport: attempt.systemPromptReport,
                 finalAssistantVisibleText: overflowRecoveryText,
                 finalAssistantRawText: overflowRecoveryText,
@@ -2663,21 +2665,23 @@ async function runEmbeddedAgentInternal(
               replayInvalid,
               livenessState: "blocked",
             });
+            const hookErrorAgentMeta = buildErrorAgentMeta({
+              sessionId: sessionIdUsed,
+              sessionFile: activeSessionFile,
+              provider,
+              model: model.id,
+              contextTokens: ctxInfo.tokens,
+              usageAccumulator,
+              lastRunPromptUsage,
+              lastAssistant: sessionLastAssistant,
+              lastTurnTotal,
+            });
+            emitModelUsageDiagnostic(hookErrorAgentMeta, attempt.diagnosticTrace);
             return {
               payloads: [{ text: errorText, isError: true }],
               meta: {
                 durationMs: Date.now() - started,
-                agentMeta: buildErrorAgentMeta({
-                  sessionId: sessionIdUsed,
-                  sessionFile: activeSessionFile,
-                  provider,
-                  model: model.id,
-                  contextTokens: ctxInfo.tokens,
-                  usageAccumulator,
-                  lastRunPromptUsage,
-                  lastAssistant: sessionLastAssistant,
-                  lastTurnTotal,
-                }),
+                agentMeta: hookErrorAgentMeta,
                 systemPromptReport: attempt.systemPromptReport,
                 finalAssistantVisibleText: errorText,
                 finalAssistantRawText: errorText,
@@ -2768,6 +2772,18 @@ async function runEmbeddedAgentInternal(
                 replayInvalid: resolveReplayInvalidForAttempt(),
                 livenessState: "blocked",
               });
+              const roleOrderingAgentMeta = buildErrorAgentMeta({
+                sessionId: sessionIdUsed,
+                sessionFile: activeSessionFile,
+                provider,
+                model: model.id,
+                contextTokens: ctxInfo.tokens,
+                usageAccumulator,
+                lastRunPromptUsage,
+                lastAssistant: sessionLastAssistant,
+                lastTurnTotal,
+              });
+              emitModelUsageDiagnostic(roleOrderingAgentMeta, attempt.diagnosticTrace);
               return {
                 payloads: [
                   {
@@ -2779,17 +2795,7 @@ async function runEmbeddedAgentInternal(
                 ],
                 meta: {
                   durationMs: Date.now() - started,
-                  agentMeta: buildErrorAgentMeta({
-                    sessionId: sessionIdUsed,
-                    sessionFile: activeSessionFile,
-                    provider,
-                    model: model.id,
-                    contextTokens: ctxInfo.tokens,
-                    usageAccumulator,
-                    lastRunPromptUsage,
-                    lastAssistant: sessionLastAssistant,
-                    lastTurnTotal,
-                  }),
+                  agentMeta: roleOrderingAgentMeta,
                   systemPromptReport: attempt.systemPromptReport,
                   finalPromptText: attempt.finalPromptText,
                   replayInvalid: resolveReplayInvalidForAttempt(),
@@ -2809,6 +2815,18 @@ async function runEmbeddedAgentInternal(
                 replayInvalid: resolveReplayInvalidForAttempt(),
                 livenessState: "blocked",
               });
+              const imageSizeAgentMeta = buildErrorAgentMeta({
+                sessionId: sessionIdUsed,
+                sessionFile: activeSessionFile,
+                provider,
+                model: model.id,
+                contextTokens: ctxInfo.tokens,
+                usageAccumulator,
+                lastRunPromptUsage,
+                lastAssistant: sessionLastAssistant,
+                lastTurnTotal,
+              });
+              emitModelUsageDiagnostic(imageSizeAgentMeta, attempt.diagnosticTrace);
               return {
                 payloads: [
                   {
@@ -2820,17 +2838,7 @@ async function runEmbeddedAgentInternal(
                 ],
                 meta: {
                   durationMs: Date.now() - started,
-                  agentMeta: buildErrorAgentMeta({
-                    sessionId: sessionIdUsed,
-                    sessionFile: activeSessionFile,
-                    provider,
-                    model: model.id,
-                    contextTokens: ctxInfo.tokens,
-                    usageAccumulator,
-                    lastRunPromptUsage,
-                    lastAssistant: sessionLastAssistant,
-                    lastTurnTotal,
-                  }),
+                  agentMeta: imageSizeAgentMeta,
                   systemPromptReport: attempt.systemPromptReport,
                   finalPromptText: attempt.finalPromptText,
                   replayInvalid: resolveReplayInvalidForAttempt(),
