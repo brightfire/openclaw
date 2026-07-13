@@ -1638,6 +1638,7 @@ async function runEmbeddedAgentInternal(
         // Guard: model.usage must fire exactly once per run, on the terminal
         // attempt. Retried attempts (continue paths) must not emit.
         let usageEmitted = false;
+        let lastAttemptDiagnosticTrace: DiagnosticTraceContext | undefined;
         // Standalone emission helper so retry-limit return paths (which exit
         // before the normal agentMeta/closure is built) can still emit
         // model.usage with the error-path agentMeta from buildErrorAgentMeta.
@@ -1732,7 +1733,7 @@ async function runEmbeddedAgentInternal(
               lastRunPromptUsage,
               lastTurnTotal,
             });
-            emitModelUsageDiagnostic(retryLimitAgentMeta);
+            emitModelUsageDiagnostic(retryLimitAgentMeta, lastAttemptDiagnosticTrace);
             return handleRetryLimitExhaustion({
               message,
               decision: retryLimitDecision,
@@ -1983,6 +1984,7 @@ async function runEmbeddedAgentInternal(
             throw postCompactionAbortError;
           }
           const attempt = normalizeEmbeddedRunAttemptResult(rawAttempt);
+          lastAttemptDiagnosticTrace = attempt.diagnosticTrace;
 
           const {
             aborted,
