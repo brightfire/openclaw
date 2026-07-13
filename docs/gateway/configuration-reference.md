@@ -749,8 +749,9 @@ Validation and safety notes:
 **Endpoints:**
 
 - `POST /hooks/wake` → `{ text, mode?: "now"|"next-heartbeat" }`
-- `POST /hooks/agent` → `{ message, name?, agentId?, sessionKey?, wakeMode?, deliver?, channel?, to?, model?, thinking?, timeoutSeconds? }`
+- `POST /hooks/agent` → `{ message, name?, agentId?, sessionKey?, sessionTarget?, wakeMode?, deliver?, channel?, to?, model?, thinking?, timeoutSeconds? }`
   - `sessionKey` from request payload is accepted only when `hooks.allowRequestSessionKey=true` (default: `false`).
+  - `sessionTarget` is `"isolated"` (default) or `"persistent"`. Persistent reuses the same agent session across invocations sharing the same `sessionKey`; isolated gives every invocation a fresh session. Invalid values and `"persistent"` without a request-supplied `sessionKey` are rejected (HTTP 400). Constrain explicit `sessionKey` values via `hooks.allowedSessionKeyPrefixes`. `defaultSessionKey` does not satisfy the persistent pairing — use a mapping with a static or templated `sessionKey` when you want persistent without exposing the field to callers.
 - `POST /hooks/<name>` → resolved via `hooks.mappings`
   - Template-rendered mapping `sessionKey` values are treated as externally supplied and also require `hooks.allowRequestSessionKey=true`.
 
@@ -767,6 +768,7 @@ Validation and safety notes:
 - `defaultSessionKey`: optional fixed session key for hook agent runs without explicit `sessionKey`.
 - `allowRequestSessionKey`: allow `/hooks/agent` callers and template-driven mapping session keys to set `sessionKey` (default: `false`).
 - `allowedSessionKeyPrefixes`: optional prefix allowlist for explicit `sessionKey` values (request + mapping), e.g. `["hook:"]`. It becomes required when any mapping or preset uses a templated `sessionKey`.
+- `sessionTarget`: `"isolated"` (default) or `"persistent"`. Persistent maps the hook to a cron-native `session:<sessionKey>` target so successive invocations sharing the same `sessionKey` continue the same conversation. The Zod schema rejects `"persistent"` on a mapping that does not also set a `sessionKey` (static or templated); `defaultSessionKey` does not satisfy the pairing. Transform return values may override `sessionTarget`, but the merged action is still validated at dispatch — a transform promoting an isolated mapping to persistent without a `sessionKey` is rejected at runtime. Unknown `sessionTarget` values are rejected.
 - `deliver: true` sends final reply to a channel; `channel` defaults to `last`.
 - `model` overrides LLM for this hook run (must be allowed if model catalog is set).
 
