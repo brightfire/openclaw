@@ -1163,6 +1163,7 @@ function updateUsage(
   output: MutableAssistantOutput,
   model: GoogleTransportModel,
   chunk: GoogleSseChunk,
+  cacheRetention?: "short" | "long" | "none",
 ) {
   const usage = chunk.usageMetadata;
   if (!usage) {
@@ -1178,7 +1179,7 @@ function updateUsage(
     totalTokens: usage.totalTokenCount || 0,
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
   };
-  calculateCost(model, output.usage);
+  calculateCost(model, output.usage, cacheRetention);
 }
 
 function pushTextBlockEnd(
@@ -1261,7 +1262,7 @@ function createGoogleTransportStreamFn(kind: CanonicalGoogleTransportApi): Strea
               })(sse.firstChunk);
         for await (const chunk of chunks) {
           output.responseId ||= chunk.responseId;
-          updateUsage(output, model, chunk);
+          updateUsage(output, model, chunk, options?.cacheRetention);
           const candidate = chunk.candidates?.[0];
           if (candidate?.content?.parts) {
             for (const part of candidate.content.parts) {

@@ -268,7 +268,7 @@ export const streamBedrock: StreamFunction<"bedrock-converse-stream", BedrockOpt
             output.stopReason = mapStopReason(item.messageStop.stopReason);
           }
         } else if (item.metadata) {
-          handleMetadata(item.metadata, model, output);
+          handleMetadata(item.metadata, model, output, options?.cacheRetention);
         } else if (item.internalServerException) {
           throw item.internalServerException;
         } else if (item.modelStreamErrorException) {
@@ -507,6 +507,7 @@ function handleMetadata(
   event: ConverseStreamMetadataEvent,
   model: Model<"bedrock-converse-stream">,
   output: AssistantMessage,
+  cacheRetention?: CacheRetention,
 ): void {
   if (event.usage) {
     output.usage.input = event.usage.inputTokens || 0;
@@ -514,7 +515,7 @@ function handleMetadata(
     output.usage.cacheRead = event.usage.cacheReadInputTokens || 0;
     output.usage.cacheWrite = event.usage.cacheWriteInputTokens || 0;
     output.usage.totalTokens = event.usage.totalTokens || output.usage.input + output.usage.output;
-    calculateCost(model, output.usage);
+    calculateCost(model, output.usage, cacheRetention);
   }
 }
 

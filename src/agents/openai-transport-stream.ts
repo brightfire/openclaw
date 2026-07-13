@@ -2255,13 +2255,13 @@ export function buildOpenAIResponsesParams(
     ensureOpenAICodexResponsesInput(messages, context);
   }
   const cacheRetention = resolveCacheRetention(options?.cacheRetention);
-  const promptCacheKey = resolvePromptCacheKey(options, cacheRetention);
+  const promptCacheKey = resolvePromptCacheKey(options);
   const params: OpenAIResponsesRequestParams = {
     model: model.id,
     input: messages,
     stream: true,
     prompt_cache_key: promptCacheKey,
-    prompt_cache_retention: getPromptCacheRetention(model.baseUrl, cacheRetention),
+    prompt_cache_retention: getPromptCacheRetention(model.baseUrl),
     ...(isCodexResponses
       ? { instructions: resolveOpenAICodexResponsesInstructions(model, context) }
       : {}),
@@ -4150,7 +4150,7 @@ export function buildOpenAICompletionsParams(
     messages = stripCompletionMessagesToRoleContent(messages) as typeof messages;
   }
   const cacheRetention = resolveCacheRetention(options?.cacheRetention);
-  const promptCacheKey = resolvePromptCacheKey(options, cacheRetention);
+  const promptCacheKey = resolvePromptCacheKey(options);
   const params: Record<string, unknown> = {
     model: model.id,
     messages: compat.requiresStringContent
