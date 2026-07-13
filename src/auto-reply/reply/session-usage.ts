@@ -217,6 +217,8 @@ export async function persistSessionUsageUpdate(params: {
             patch.cacheWrite = cacheUsage?.cacheWrite ?? 0;
             if (params.cacheRetention) {
               patch.cacheRetention = params.cacheRetention;
+            } else {
+              patch.cacheRetention = undefined;
             }
           }
           if (useCompactionSnapshot && !preserveUserFacingRunState) {
