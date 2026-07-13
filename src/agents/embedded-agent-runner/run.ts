@@ -25,14 +25,11 @@ import {
   withAgentRunLifecycleGeneration,
 } from "../../infra/agent-events.js";
 import { sleepWithAbort } from "../../infra/backoff.js";
+import { emitTrustedDiagnosticEvent, isDiagnosticsEnabled } from "../../infra/diagnostic-events.js";
 import {
   freezeDiagnosticTraceContext,
   createChildDiagnosticTraceContext,
 } from "../../infra/diagnostic-trace-context.js";
-import {
-  emitTrustedDiagnosticEvent,
-  isDiagnosticsEnabled,
-} from "../../infra/diagnostic-events.js";
 import { formatErrorMessage } from "../../infra/errors.js";
 import { buildAgentHookContextChannelFields } from "../../plugins/hook-agent-context.js";
 import { getGlobalHookRunner } from "../../plugins/hook-runner-global.js";
@@ -41,11 +38,8 @@ import { enqueueCommandInLane, getCommandLaneSnapshot } from "../../process/comm
 import type { CommandQueueEnqueueOptions } from "../../process/command-queue.types.js";
 import { createAgentHarnessTaskRuntimeScope } from "../../tasks/agent-harness-task-runtime-scope.js";
 import { resolveUserPath } from "../../utils.js";
-import {
-  estimateUsageCost,
-  resolveModelCostConfig,
-} from "../../utils/usage-format.js";
 import { isMarkdownCapableMessageChannel } from "../../utils/message-channel.js";
+import { estimateUsageCost, resolveModelCostConfig } from "../../utils/usage-format.js";
 import {
   retireSessionMcpRuntime,
   retireSessionMcpRuntimeForSessionKey,
@@ -1640,6 +1634,9 @@ async function runEmbeddedAgentInternal(
         let accumulatedReplayState = createEmbeddedRunReplayState();
         // Hoisted so the retry-limit error path can use the most recent API total.
         let lastTurnTotal: number | undefined;
+        // Guard: model.usage must fire exactly once per run, on the terminal
+        // attempt. Retried attempts (continue paths) must not emit.
+        let usageEmitted = false;
         while (true) {
           if (runLoopIterations >= MAX_RUN_LOOP_ITERATIONS) {
             const message =
@@ -3145,14 +3142,15 @@ async function runEmbeddedAgentInternal(
             compactionTokensAfter: lastCompactionTokensAfter,
           };
 
-          // Emit model.usage while the openclaw.run OTel span is still active
-          // so Langfuse can associate it with the correct trace. Moving this
-          // out of agent-runner.ts (which runs after run.completed is queued)
-          // avoids orphaning the event due to span retention lookup failures.
-          if (
-            isDiagnosticsEnabled(params.config) &&
-            hasNonzeroUsage(agentMeta.usage)
-          ) {
+          // Emit model.usage exactly once, on the terminal attempt, while
+          // the openclaw.run OTel span is still active so Langfuse can
+          // associate it with the correct trace. Defined here (after
+          // agentMeta) but called only at terminal return paths below —
+          // retry `continue` paths must NOT call it, preventing
+          // double-emission when an attempt succeeds then is retried.
+          const emitTerminalModelUsage = () => {
+            if (usageEmitted) return;
+            if (!isDiagnosticsEnabled(params.config) || !hasNonzeroUsage(agentMeta.usage)) return;
             const usage = agentMeta.usage;
             const input = usage.input ?? 0;
             const output = usage.output ?? 0;
@@ -3210,7 +3208,8 @@ async function runEmbeddedAgentInternal(
               costUsd,
               durationMs: Date.now() - started,
             });
-          }
+            usageEmitted = true;
+          };
 
           const finalAssistantVisibleText = resolveFinalAssistantVisibleText(sessionLastAssistant);
           const finalAssistantRawText = resolveFinalAssistantRawText(sessionLastAssistant);
@@ -3336,6 +3335,7 @@ async function runEmbeddedAgentInternal(
               timeoutPhase,
               providerStarted,
             });
+            emitTerminalModelUsage();
             return {
               payloads: [
                 ...(hasPartialAssistantTextAfterPromptTimeout ? [] : payloadsWithToolMedia || []),
@@ -3586,6 +3586,7 @@ async function runEmbeddedAgentInternal(
               replayInvalid,
               livenessState,
             });
+            emitTerminalModelUsage();
             return {
               payloads: [
                 {
@@ -3642,6 +3643,7 @@ async function runEmbeddedAgentInternal(
                 modelId,
               });
             }
+            emitTerminalModelUsage();
             return {
               payloads: [
                 {
@@ -3765,6 +3767,7 @@ async function runEmbeddedAgentInternal(
               });
             }
 
+            emitTerminalModelUsage();
             return {
               payloads: [
                 {
@@ -3865,6 +3868,7 @@ async function runEmbeddedAgentInternal(
             stopReason,
             yielded: attempt.yieldDetected === true,
           });
+          emitTerminalModelUsage();
           return {
             payloads: terminalPayloads?.length ? terminalPayloads : undefined,
             ...(attempt.diagnosticTrace
