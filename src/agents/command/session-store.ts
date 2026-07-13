@@ -261,6 +261,8 @@ export async function updateSessionStoreAfterAgentRun(params: {
       next.cacheWrite = usage.cacheWrite ?? 0;
       if (result.meta.agentMeta?.cacheRetention) {
         next.cacheRetention = result.meta.agentMeta.cacheRetention;
+      } else {
+        next.cacheRetention = undefined;
       }
     }
     // Snapshot cost like tokens (runEstimatedCostUsd is already computed from
