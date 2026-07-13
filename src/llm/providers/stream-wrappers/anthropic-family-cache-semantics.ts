@@ -77,11 +77,7 @@ export function resolveAnthropicCacheRetentionFamily(params: {
   if (normalizedProvider === "anthropic" || normalizedProvider === "anthropic-vertex") {
     return "anthropic-direct";
   }
-  if (
-    normalizedProvider === "amazon-bedrock" &&
-    params.hasExplicitCacheConfig &&
-    typeof params.modelId === "string"
-  ) {
+  if (normalizedProvider === "amazon-bedrock" && typeof params.modelId === "string") {
     if (isAnthropicBedrockModel(params.modelId)) {
       return "anthropic-bedrock";
     }
@@ -90,6 +86,7 @@ export function resolveAnthropicCacheRetentionFamily(params: {
     // cacheRetention, honor it — the extension's GetInferenceProfile resolution
     // handles the actual model detection at runtime.
     if (
+      params.hasExplicitCacheConfig &&
       BEDROCK_APP_INFERENCE_PROFILE_ARN_RE.test(normalizeLowercaseStringOrEmpty(params.modelId)) &&
       normalizeLowercaseStringOrEmpty(params.modelId).includes(":application-inference-profile/")
     ) {

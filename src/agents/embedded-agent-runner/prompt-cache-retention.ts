@@ -59,5 +59,5 @@ export function resolveCacheRetention(
     return "long";
   }
 
-  return family === "anthropic-direct" ? "short" : undefined;
+  return family ? "short" : undefined;
 }
