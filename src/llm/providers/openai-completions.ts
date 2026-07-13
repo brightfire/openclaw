@@ -344,7 +344,7 @@ export const streamOpenAICompletions: StreamFunction<
           output.responseModel ||= chunk.model;
         }
         if (chunk.usage) {
-          output.usage = parseChunkUsage(chunk.usage, model);
+          output.usage = parseChunkUsage(chunk.usage, model, cacheRetention);
         }
 
         const choice = Array.isArray(chunk.choices) ? chunk.choices[0] : undefined;
@@ -358,7 +358,7 @@ export const streamOpenAICompletions: StreamFunction<
           choice as typeof choice & { usage?: Parameters<typeof parseChunkUsage>[0] }
         ).usage;
         if (!chunk.usage && choiceUsage) {
-          output.usage = parseChunkUsage(choiceUsage, model);
+          output.usage = parseChunkUsage(choiceUsage, model, cacheRetention);
         }
 
         if (choice.finish_reason) {
@@ -1202,6 +1202,7 @@ function parseChunkUsage(
     prompt_tokens_details?: { cached_tokens?: number; cache_write_tokens?: number };
   },
   model: Model<"openai-completions">,
+  cacheRetention?: "short" | "long" | "none",
 ): AssistantMessage["usage"] {
   const promptTokens = rawUsage.prompt_tokens || 0;
   const cacheReadTokens =
@@ -1227,7 +1228,7 @@ function parseChunkUsage(
     totalTokens: input + outputTokens + cacheReadTokens + cacheWriteTokens,
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
   };
-  calculateCost(model, usage);
+  calculateCost(model, usage, cacheRetention);
   return usage;
 }
 
