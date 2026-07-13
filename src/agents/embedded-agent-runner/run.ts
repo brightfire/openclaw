@@ -25,7 +25,14 @@ import {
   withAgentRunLifecycleGeneration,
 } from "../../infra/agent-events.js";
 import { sleepWithAbort } from "../../infra/backoff.js";
-import { freezeDiagnosticTraceContext } from "../../infra/diagnostic-trace-context.js";
+import {
+  freezeDiagnosticTraceContext,
+  createChildDiagnosticTraceContext,
+} from "../../infra/diagnostic-trace-context.js";
+import {
+  emitTrustedDiagnosticEvent,
+  isDiagnosticsEnabled,
+} from "../../infra/diagnostic-events.js";
 import { formatErrorMessage } from "../../infra/errors.js";
 import { buildAgentHookContextChannelFields } from "../../plugins/hook-agent-context.js";
 import { getGlobalHookRunner } from "../../plugins/hook-runner-global.js";
@@ -34,6 +41,10 @@ import { enqueueCommandInLane, getCommandLaneSnapshot } from "../../process/comm
 import type { CommandQueueEnqueueOptions } from "../../process/command-queue.types.js";
 import { createAgentHarnessTaskRuntimeScope } from "../../tasks/agent-harness-task-runtime-scope.js";
 import { resolveUserPath } from "../../utils.js";
+import {
+  estimateUsageCost,
+  resolveModelCostConfig,
+} from "../../utils/usage-format.js";
 import { isMarkdownCapableMessageChannel } from "../../utils/message-channel.js";
 import {
   retireSessionMcpRuntime,
@@ -41,6 +52,7 @@ import {
 } from "../agent-bundle-mcp-tools.js";
 import {
   resolveAgentExecutionContract,
+  resolveAgentConfig,
   resolveAgentDir,
   resolveSessionAgentIds,
   resolveAgentWorkspaceDir,
@@ -113,7 +125,13 @@ import { buildAgentRuntimePlan } from "../runtime-plan/build.js";
 import { ensureRuntimePluginsLoaded } from "../runtime-plugins.js";
 import { resolveSessionSuspensionReason, suspendSession } from "../session-suspension.js";
 import { resolveToolLoopDetectionConfig } from "../tool-loop-detection-config.js";
-import { derivePromptTokens, normalizeUsage, type UsageLike } from "../usage.js";
+import {
+  deriveContextPromptTokens,
+  derivePromptTokens,
+  hasNonzeroUsage,
+  normalizeUsage,
+  type UsageLike,
+} from "../usage.js";
 import { redactRunIdentifier, resolveRunWorkspaceDir } from "../workspace-run.js";
 import { runPostCompactionSideEffects } from "./compaction-hooks.js";
 import { buildEmbeddedCompactionRuntimeContext } from "./compaction-runtime-context.js";
@@ -3126,6 +3144,74 @@ async function runEmbeddedAgentInternal(
             compactionCount: autoCompactionCount > 0 ? autoCompactionCount : undefined,
             compactionTokensAfter: lastCompactionTokensAfter,
           };
+
+          // Emit model.usage while the openclaw.run OTel span is still active
+          // so Langfuse can associate it with the correct trace. Moving this
+          // out of agent-runner.ts (which runs after run.completed is queued)
+          // avoids orphaning the event due to span retention lookup failures.
+          if (
+            isDiagnosticsEnabled(params.config) &&
+            hasNonzeroUsage(agentMeta.usage)
+          ) {
+            const usage = agentMeta.usage;
+            const input = usage.input ?? 0;
+            const output = usage.output ?? 0;
+            const cacheRead = usage.cacheRead ?? 0;
+            const cacheWrite = usage.cacheWrite ?? 0;
+            const usagePromptTokens = input + cacheRead + cacheWrite;
+            const totalTokens = usage.total ?? usagePromptTokens + output;
+            const hasBillableUsageBuckets =
+              usage.input !== undefined ||
+              usage.output !== undefined ||
+              usage.cacheRead !== undefined ||
+              usage.cacheWrite !== undefined;
+            const contextUsedTokens = deriveContextPromptTokens({
+              lastCallUsage: agentMeta.lastCallUsage,
+              promptTokens: agentMeta.promptTokens,
+              usage,
+            });
+            const costConfig = resolveModelCostConfig({
+              provider: agentMeta.provider,
+              model: agentMeta.model,
+              config: params.config,
+            });
+            const costUsd = hasBillableUsageBuckets
+              ? estimateUsageCost({ usage, cost: costConfig })
+              : undefined;
+            emitTrustedDiagnosticEvent({
+              type: "model.usage",
+              ...(attempt.diagnosticTrace
+                ? {
+                    trace: freezeDiagnosticTraceContext(
+                      createChildDiagnosticTraceContext(attempt.diagnosticTrace),
+                    ),
+                  }
+                : {}),
+              sessionKey: resolvedSessionKey,
+              sessionId: sessionIdUsed,
+              channel: channelHint,
+              agentId: sessionAgentId,
+              agentLabel: resolveAgentConfig(params.config ?? {}, sessionAgentId)?.name,
+              provider: agentMeta.provider,
+              model: agentMeta.model,
+              usage: {
+                input,
+                output,
+                cacheRead,
+                cacheWrite,
+                promptTokens: usagePromptTokens,
+                total: totalTokens,
+              },
+              lastCallUsage: agentMeta.lastCallUsage,
+              context: {
+                limit: ctxInfo.tokens,
+                ...(contextUsedTokens !== undefined ? { used: contextUsedTokens } : {}),
+              },
+              costUsd,
+              durationMs: Date.now() - started,
+            });
+          }
+
           const finalAssistantVisibleText = resolveFinalAssistantVisibleText(sessionLastAssistant);
           const finalAssistantRawText = resolveFinalAssistantRawText(sessionLastAssistant);
 
