@@ -1639,6 +1639,10 @@ async function runEmbeddedAgentInternal(
         // attempt. Retried attempts (continue paths) must not emit.
         let usageEmitted = false;
         let lastAttemptDiagnosticTrace: DiagnosticTraceContext | undefined;
+        // Cache retention resolved by the most recent successful attempt.
+        // Hoisted so error return paths (retry-limit, breaker, overflow, etc.)
+        // can pass it to buildErrorAgentMeta for correct cost estimation.
+        let lastResolvedCacheRetention: "short" | "long" | "none" | undefined;
         // Standalone emission helper so retry-limit return paths (which exit
         // before the normal agentMeta/closure is built) can still emit
         // model.usage with the error-path agentMeta from buildErrorAgentMeta.
@@ -1672,7 +1676,11 @@ async function runEmbeddedAgentInternal(
             config: params.config,
           });
           const costUsd = hasBillableUsageBuckets
-            ? estimateUsageCost({ usage, cost: costConfig, cacheRetention: agentMeta.cacheRetention })
+            ? estimateUsageCost({
+                usage,
+                cost: costConfig,
+                cacheRetention: agentMeta.cacheRetention,
+              })
             : undefined;
           emitTrustedDiagnosticEvent({
             type: "model.usage",
@@ -1732,6 +1740,7 @@ async function runEmbeddedAgentInternal(
               usageAccumulator,
               lastRunPromptUsage,
               lastTurnTotal,
+              cacheRetention: lastResolvedCacheRetention,
             });
             emitModelUsageDiagnostic(retryLimitAgentMeta, lastAttemptDiagnosticTrace);
             return handleRetryLimitExhaustion({
@@ -1985,6 +1994,7 @@ async function runEmbeddedAgentInternal(
           }
           const attempt = normalizeEmbeddedRunAttemptResult(rawAttempt);
           lastAttemptDiagnosticTrace = attempt.diagnosticTrace;
+          lastResolvedCacheRetention = attempt.cacheRetention ?? lastResolvedCacheRetention;
 
           const {
             aborted,
@@ -2065,6 +2075,7 @@ async function runEmbeddedAgentInternal(
               usageAccumulator,
               lastRunPromptUsage,
               lastTurnTotal,
+              cacheRetention: lastResolvedCacheRetention,
             });
             emitModelUsageDiagnostic(breakerAgentMeta, attempt.diagnosticTrace);
             return handleRetryLimitExhaustion({
@@ -2635,6 +2646,7 @@ async function runEmbeddedAgentInternal(
               lastRunPromptUsage,
               lastAssistant: sessionLastAssistant,
               lastTurnTotal,
+              cacheRetention: lastResolvedCacheRetention,
             });
             emitModelUsageDiagnostic(overflowAgentMeta, attempt.diagnosticTrace);
             return {
@@ -2675,6 +2687,7 @@ async function runEmbeddedAgentInternal(
               lastRunPromptUsage,
               lastAssistant: sessionLastAssistant,
               lastTurnTotal,
+              cacheRetention: lastResolvedCacheRetention,
             });
             emitModelUsageDiagnostic(hookErrorAgentMeta, attempt.diagnosticTrace);
             return {
@@ -2782,6 +2795,7 @@ async function runEmbeddedAgentInternal(
                 lastRunPromptUsage,
                 lastAssistant: sessionLastAssistant,
                 lastTurnTotal,
+                cacheRetention: lastResolvedCacheRetention,
               });
               emitModelUsageDiagnostic(roleOrderingAgentMeta, attempt.diagnosticTrace);
               return {
@@ -2825,6 +2839,7 @@ async function runEmbeddedAgentInternal(
                 lastRunPromptUsage,
                 lastAssistant: sessionLastAssistant,
                 lastTurnTotal,
+                cacheRetention: lastResolvedCacheRetention,
               });
               emitModelUsageDiagnostic(imageSizeAgentMeta, attempt.diagnosticTrace);
               return {
