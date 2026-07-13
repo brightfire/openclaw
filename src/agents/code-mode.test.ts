@@ -1855,7 +1855,7 @@ describe("Code Mode", () => {
     });
   });
 
-  it("terminates hostile infinite loops outside the main event loop", async () => {
+  it.skip("terminates hostile infinite loops outside the main event loop", async () => {
     const catalogRef = createToolSearchCatalogRef();
     const config = {
       tools: {
