@@ -260,6 +260,7 @@ function toCachedModelPricing(
   const output = parseNumberString(value.output) ?? 0;
   const cacheRead = parseNumberString(value.cacheRead) ?? 0;
   const cacheWrite = parseNumberString(value.cacheWrite) ?? 0;
+  const cacheWriteShort = parseNumberString(value.cacheWriteShort);
   const tieredPricing = Array.isArray(value.tieredPricing)
     ? value.tieredPricing
         .map((tier) => toCachedPricingTier(tier))
@@ -271,6 +272,7 @@ function toCachedModelPricing(
     output,
     cacheRead,
     cacheWrite,
+    ...(cacheWriteShort != null ? { cacheWriteShort } : {}),
     ...(tieredPricing.length > 0 ? { tieredPricing } : {}),
   };
 }

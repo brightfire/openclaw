@@ -18,6 +18,7 @@ export type CachedModelPricing = {
   output: number;
   cacheRead: number;
   cacheWrite: number;
+  cacheWriteShort?: number;
   /** Optional tiered pricing tiers sourced from LiteLLM or local config. */
   tieredPricing?: CachedPricingTier[];
 };
