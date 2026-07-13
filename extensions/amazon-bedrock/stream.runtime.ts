@@ -268,7 +268,7 @@ export const streamBedrock: StreamFunction<"bedrock-converse-stream", BedrockOpt
             output.stopReason = mapStopReason(item.messageStop.stopReason);
           }
         } else if (item.metadata) {
-          handleMetadata(item.metadata, model, output, options?.cacheRetention);
+          handleMetadata(item.metadata, model, output, cacheRetention);
         } else if (item.internalServerException) {
           throw item.internalServerException;
         } else if (item.modelStreamErrorException) {
