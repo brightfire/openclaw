@@ -35,7 +35,7 @@ import {
   type SourceDeliveryVisibleDelivery,
 } from "../../infra/outbound/source-delivery-plan.js";
 import { createDiagnosticMessageLifecycle } from "../../logging/message-lifecycle.js";
-import { logMessageDispatchStarted } from "../../logging/diagnostic.js";
+import { logMessageDispatchCompleted, logMessageDispatchStarted } from "../../logging/diagnostic.js";
 import { isCommandLaneTaskTimeoutError } from "../../process/command-queue.js";
 import { CommandLane } from "../../process/lanes.js";
 import { createLazyImportLoader } from "../../shared/lazy-promise.js";
@@ -1462,6 +1462,14 @@ export async function runCronIsolatedAgentTurn(params: {
       sessionId: prepared.context.currentRunSessionId(),
       sessionKey: prepared.context.runSessionKey,
     };
+    logMessageDispatchCompleted({
+      channel: "cron",
+      source: "cron-isolated",
+      durationMs: Date.now() - turnStartedAtMs,
+      outcome: outcome === "error" ? "error" : "completed",
+      error: outcomeError,
+      ...finalSessionRef,
+    });
     messageLifecycle.markIdle(undefined, finalSessionRef);
     messageLifecycle.markProcessed(outcome, {
       ...finalSessionRef,
