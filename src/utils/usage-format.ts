@@ -708,6 +708,7 @@ function computeTieredCost(
   cacheRead: number,
   cacheWrite: number,
   cacheRetention?: "short" | "long" | "none",
+  flatCacheWriteShort?: number,
 ): number {
   const tier = selectPricingTier(tiers, input);
   if (!tier) {
@@ -715,8 +716,8 @@ function computeTieredCost(
   }
 
   const cacheWriteRate =
-    cacheRetention === "short" && tier.cacheWriteShort != null
-      ? tier.cacheWriteShort
+    cacheRetention === "short" && (tier.cacheWriteShort ?? flatCacheWriteShort) != null
+      ? (tier.cacheWriteShort ?? flatCacheWriteShort ?? tier.cacheWrite)
       : tier.cacheWrite;
 
   return (
@@ -755,6 +756,7 @@ export function estimateUsageCost(params: {
       cacheRead,
       cacheWrite,
       params.cacheRetention,
+      cost.cacheWriteShort,
     );
   } else {
     const cacheWriteRate =
