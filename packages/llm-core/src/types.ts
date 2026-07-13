@@ -597,6 +597,7 @@ export interface Model<TApi extends Api = Api> {
     output: number; // $/million tokens
     cacheRead: number; // $/million tokens
     cacheWrite: number; // $/million tokens
+    cacheWriteShort?: number; // $/million tokens
   };
   contextWindow: number;
   /**
