@@ -523,6 +523,7 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", AnthropicOpti
     try {
       let client: Anthropic;
       let isOAuth: boolean;
+      const resolvedCacheRetention = options?.cacheRetention ?? resolveCacheRetention();
 
       if (options?.client) {
         client = options.client;
@@ -539,8 +540,7 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", AnthropicOpti
           });
         }
 
-        const cacheRetention = options?.cacheRetention ?? resolveCacheRetention();
-        const cacheSessionId = cacheRetention === "none" ? undefined : options?.sessionId;
+        const cacheSessionId = resolvedCacheRetention === "none" ? undefined : options?.sessionId;
 
         const created = createClient(
           model,
@@ -596,7 +596,7 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", AnthropicOpti
             output.usage.output +
             output.usage.cacheRead +
             output.usage.cacheWrite;
-          calculateCost(model, output.usage, options?.cacheRetention);
+          calculateCost(model, output.usage, resolvedCacheRetention);
           // Defer start until after message_start so that pre-stream SSE errors
           // (e.g. invalid thinking signatures) arrive before any non-error event
           // is yielded, keeping yieldedOutput=false in pumpStreamWithRecovery
@@ -766,7 +766,7 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", AnthropicOpti
             output.usage.output +
             output.usage.cacheRead +
             output.usage.cacheWrite;
-          calculateCost(model, output.usage, options?.cacheRetention);
+          calculateCost(model, output.usage, resolvedCacheRetention);
         }
       }
 
