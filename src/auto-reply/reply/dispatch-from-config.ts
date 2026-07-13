@@ -1130,7 +1130,7 @@ export async function dispatchReplyFromConfig(
     );
   let agentDispatchStartedAt = 0;
 
-  const inboundUserPrompt = normalizeOptionalString(ctx.Body) || undefined;
+  const inboundUserPrompt = normalizeOptionalString(ctx.BodyForAgent ?? ctx.Body) || undefined;
 
   const recordProcessed = (
     outcome: "completed" | "skipped" | "error",
