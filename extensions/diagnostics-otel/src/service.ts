@@ -2270,6 +2270,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
       const recordMessageProcessed = (
         evt: Extract<DiagnosticEventPayload, { type: "message.processed" }>,
         metadata: DiagnosticEventMetadata,
+        messageContent?: { userPrompt?: string; finalResponse?: string },
       ) => {
         const attrs = {
           "openclaw.channel": lowCardinalityAttr(evt.channel),
@@ -2285,6 +2286,18 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         const spanAttrs: Record<string, string | number> = { ...attrs };
         if (evt.reason) {
           spanAttrs["openclaw.reason"] = lowCardinalityAttr(evt.reason, "unknown");
+        }
+        if (contentCapturePolicy.inputMessages && messageContent?.userPrompt) {
+          spanAttrs["input.value"] = normalizeOtelLogString(
+            messageContent.userPrompt,
+            MAX_OTEL_CONTENT_ATTRIBUTE_CHARS,
+          );
+        }
+        if (contentCapturePolicy.outputMessages && messageContent?.finalResponse) {
+          spanAttrs["output.value"] = normalizeOtelLogString(
+            messageContent.finalResponse,
+            MAX_OTEL_CONTENT_ATTRIBUTE_CHARS,
+          );
         }
         const trackedSpan = getTrackedInternalOrTrustedSpan(evt, metadata);
         const span =
@@ -3402,7 +3415,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
               recordMessageDispatchCompleted(evt);
               return;
             case "message.processed":
-              recordMessageProcessed(evt, metadata);
+              recordMessageProcessed(evt, metadata, privateData.messageContent);
               return;
             case "message.delivery.started":
               recordMessageDeliveryStarted(evt);

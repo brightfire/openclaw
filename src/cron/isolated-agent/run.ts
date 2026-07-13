@@ -1335,6 +1335,7 @@ export async function runCronIsolatedAgentTurn(params: {
 
   let outcome: "completed" | "error" = "completed";
   let outcomeError: string | undefined;
+  let finalizedOutputText: string | undefined;
   try {
     assertAgentRunLifecycleGenerationCurrent(runLifecycleGeneration);
     const existingRunContext = getAgentRunContext(initialSessionId);
@@ -1415,6 +1416,7 @@ export async function runCronIsolatedAgentTurn(params: {
       outcome = "error";
       outcomeError = finalized.error;
     }
+    finalizedOutputText = normalizeOptionalString(finalized.outputText) || undefined;
     return finalized;
   } catch (err) {
     const isCronLaneTimeout = isAborted() || isCronNestedLaneTaskTimeoutError(err);
@@ -1439,6 +1441,8 @@ export async function runCronIsolatedAgentTurn(params: {
     messageLifecycle.markProcessed(outcome, {
       ...finalSessionRef,
       error: outcomeError,
+      userPrompt: normalizeOptionalString(prepared.context.commandBody) || undefined,
+      finalResponse: finalizedOutputText,
     });
     // Release runtime references after the run completes (success or failure).
     // The session entry has already been persisted to disk by this point,
