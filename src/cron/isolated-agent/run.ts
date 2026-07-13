@@ -35,6 +35,7 @@ import {
   type SourceDeliveryVisibleDelivery,
 } from "../../infra/outbound/source-delivery-plan.js";
 import { createDiagnosticMessageLifecycle } from "../../logging/message-lifecycle.js";
+import { logMessageDispatchStarted } from "../../logging/diagnostic.js";
 import { isCommandLaneTaskTimeoutError } from "../../process/command-queue.js";
 import { CommandLane } from "../../process/lanes.js";
 import { createLazyImportLoader } from "../../shared/lazy-promise.js";
@@ -1343,6 +1344,19 @@ export async function runCronIsolatedAgentTurn(params: {
     trackSessionState: true,
   });
   messageLifecycle.markProcessing();
+
+  // Anchor the diagnostics trace: create and track the openclaw.message.processed
+  // span before the embedded agent runner emits openclaw.harness.run. Without an
+  // active tracked parent span, the OTel exporter parents harness/run/model spans
+  // to nothing and they detach into a separate root trace. The webchat path gets
+  // this anchor via message.dispatch.started (dispatch-from-config.ts); the cron
+  // isolated path must emit it explicitly.
+  logMessageDispatchStarted({
+    sessionId: prepared.context.runSessionId,
+    sessionKey: prepared.context.runSessionKey,
+    channel: "cron",
+    source: "cron-isolated",
+  });
 
   let outcome: "completed" | "error" = "completed";
   let outcomeError: string | undefined;
