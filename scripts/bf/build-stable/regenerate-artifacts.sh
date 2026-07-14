@@ -24,6 +24,7 @@ echo "verifyDepsBeforeRun: $(pnpm config get verify-deps-before-run 2>/dev/null 
 #   protocol:gen:swift        -> apps/*/ Swift protocol files
 #   config:docs:gen           -> config doc baseline hash
 #   plugin-sdk:api:gen        -> plugin-sdk API baseline hash
+#   plugins:sync              -> propagates root package.json version to extensions/*/package.json
 #
 echo "=== Running generators in parallel ==="
 declare -a GEN_PIDS=()
@@ -35,6 +36,7 @@ pnpm protocol:gen              & GEN_PIDS+=($!) GEN_NAMES+=("protocol:gen")
 pnpm protocol:gen:swift        & GEN_PIDS+=($!) GEN_NAMES+=("protocol:gen:swift")
 pnpm config:docs:gen           & GEN_PIDS+=($!) GEN_NAMES+=("config:docs:gen")
 pnpm plugin-sdk:api:gen        & GEN_PIDS+=($!) GEN_NAMES+=("plugin-sdk:api:gen")
+pnpm plugins:sync              & GEN_PIDS+=($!) GEN_NAMES+=("plugins:sync")
 
 # Wait for all — collect failures without short-circuiting so every PID is
 # reaped and the error list is complete.
@@ -49,6 +51,7 @@ if [ "$GEN_FAIL" -ne 0 ]; then
   echo "One or more generators failed." >&2
   exit 1
 fi
+
 echo "=== All generators complete ==="
 
 git add -A
