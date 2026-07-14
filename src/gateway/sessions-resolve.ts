@@ -123,6 +123,9 @@ export async function resolveSessionKeyFromResolveParams(params: {
   }
 
   if (hasKey) {
+    if (key.startsWith("@")) {
+      return { ok: true, key };
+    }
     // Key lookups may hit legacy store aliases. Migrate/prune before returning
     // the canonical key so later calls operate on one store identity.
     const target = resolveGatewaySessionStoreTarget({ cfg, key });
