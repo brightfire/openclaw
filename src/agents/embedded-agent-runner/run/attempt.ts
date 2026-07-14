@@ -5422,7 +5422,7 @@ export async function runEmbeddedAttempt(
         contextBudgetStatus,
         compactionCount: getCompactionCount(),
         compactionTokensAfter: getLastCompactionTokensAfter(),
-        cacheRetention: effectivePromptCacheRetention,
+        cacheRetention: lastAssistant?.cacheRetention ?? effectivePromptCacheRetention,
         // Client tool calls detected (OpenResponses hosted tools).
         // Stay `undefined` (not `[]`) when none were detected so downstream
         // truthiness predicates keep working without a `.length` check.
