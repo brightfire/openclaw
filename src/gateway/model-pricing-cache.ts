@@ -392,13 +392,11 @@ function parseLiteLLMPricing(entry: LiteLLMModelEntry): CachedModelPricing | nul
       parseNumberString(entry.cache_creation_input_token_cost_above_1hr) ??
         parseNumberString(entry.cache_creation_input_token_cost),
     ),
-    ...(parseNumberString(entry.cache_creation_input_token_cost_above_1hr) != null
+    ...(parseNumberString(entry.cache_creation_input_token_cost_above_1hr) != null &&
+    parseNumberString(entry.cache_creation_input_token_cost) != null
       ? {
           cacheWriteShort: toPricePerMillion(
-            // Fall back to the long cache-write rate when the short rate is
-            // missing so short-retention writes are priced, not reported as free.
-            parseNumberString(entry.cache_creation_input_token_cost) ??
-              parseNumberString(entry.cache_creation_input_token_cost_above_1hr),
+            parseNumberString(entry.cache_creation_input_token_cost),
           ),
         }
       : {}),
