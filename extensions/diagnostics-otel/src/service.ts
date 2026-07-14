@@ -1254,11 +1254,12 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         // only) and NodeSDK would skip the traceExporter auto-wrap path.
         const spanProcessors = traceExporter
           ? [
-              new BatchSpanProcessor(traceExporter, {
-                ...(typeof otel.flushIntervalMs === "number"
+              new BatchSpanProcessor(
+                traceExporter,
+                typeof otel.flushIntervalMs === "number"
                   ? { scheduledDelayMillis: Math.max(1000, otel.flushIntervalMs) }
-                  : {}),
-              }),
+                  : undefined,
+              ),
               new LangfuseMetadataSpanProcessor(),
             ]
           : undefined;
