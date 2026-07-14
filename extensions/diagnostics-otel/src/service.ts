@@ -114,6 +114,10 @@ type OtelToolCallContent = {
   toolOutput?: unknown;
 };
 
+type OtelSkillCallContent = {
+  trigger?: string;
+};
+
 type MessageDeliveryDiagnosticEvent = Extract<
   DiagnosticEventPayload,
   {
@@ -318,6 +322,24 @@ function lowCardinalityAttr(value: string | undefined, fallback = "unknown"): st
   return LOW_CARDINALITY_VALUE_RE.test(redacted) ? redacted : fallback;
 }
 
+/**
+ * Sanitizes model IDs for OTel attributes. Unlike lowCardinalityAttr, allows `/`
+ * because provider-prefixed model IDs (e.g. `z-ai/glm-5.2`, `openai/gpt-5.6-sol`)
+ * are legitimate, low-cardinality identifiers used by OpenRouter and similar providers.
+ */
+const MODEL_ID_VALUE_RE = /^[A-Za-z0-9_./:@+-]{1,120}$/u;
+function modelIdAttr(value: string | undefined, fallback = "unknown"): string {
+  if (!value) {
+    return fallback;
+  }
+  const redacted = redactSensitiveText(value.trim());
+  const redactedLower = redacted.toLowerCase();
+  if (redactedLower.startsWith("agent:") || redactedLower.includes(":agent:")) {
+    return fallback;
+  }
+  return MODEL_ID_VALUE_RE.test(redacted) ? redacted : fallback;
+}
+
 function lowCardinalityQueueLaneAttr(value: string | undefined, fallback = "unknown"): string {
   if (!value) {
     return fallback;
@@ -330,6 +352,26 @@ function lowCardinalityQueueLaneAttr(value: string | undefined, fallback = "unkn
   const scopedLaneIndex = redacted.indexOf(":");
   const lane = scopedLaneIndex >= 0 ? redacted.slice(0, scopedLaneIndex) : redacted;
   return LOW_CARDINALITY_VALUE_RE.test(lane) ? lane : fallback;
+}
+
+// Resolves the openclaw.agent span attribute from agentLabel (preferred) or by
+// stripping the "agent:" session-key prefix from agentId as fallback.
+function resolveAgentLabelAttr(evt: { agentId?: string; agentLabel?: string }): string {
+  if (evt.agentLabel) {
+    const candidate = lowCardinalityAttr(evt.agentLabel);
+    if (candidate !== "unknown") {
+      return candidate;
+    }
+  }
+  const id = evt.agentId;
+  if (!id) {
+    return "unknown";
+  }
+  const lower = id.toLowerCase();
+  const stripped = lower.startsWith("agent:") ? id.slice("agent:".length) : id;
+  const colonIdx = stripped.indexOf(":");
+  const label = colonIdx >= 0 ? stripped.slice(0, colonIdx) : stripped;
+  return lowCardinalityAttr(label || undefined);
 }
 
 function shouldCaptureOtelLogBody(policy: OtelContentCapturePolicy): boolean {
@@ -410,7 +452,7 @@ function assignGenAiSpanIdentityAttrs(
     attrs["gen_ai.system"] = lowCardinalityAttr(input.provider);
   }
   if (input.model) {
-    attrs["gen_ai.request.model"] = lowCardinalityAttr(input.model);
+    attrs["gen_ai.request.model"] = modelIdAttr(input.model);
   }
   attrs["gen_ai.operation.name"] = genAiOperationName(input.api);
 }
@@ -426,7 +468,7 @@ function modelCallSpanName(evt: { api?: string; model?: string }): string {
   if (!emitLatestGenAiSemconv()) {
     return "openclaw.model.call";
   }
-  return `${genAiOperationName(evt.api)} ${lowCardinalityAttr(evt.model)}`;
+  return `${genAiOperationName(evt.api)} ${modelIdAttr(evt.model)}`;
 }
 
 function modelCallSpanKind(): SpanKind | undefined {
@@ -2021,14 +2063,14 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
       ) => {
         const attrs = {
           "openclaw.channel": evt.channel ?? "unknown",
-          "openclaw.agent": lowCardinalityAttr(evt.agentId),
+          "openclaw.agent": resolveAgentLabelAttr(evt),
           "openclaw.provider": evt.provider ?? "unknown",
           "openclaw.model": evt.model ?? "unknown",
         };
         const genAiAttrs: Record<string, string> = {
           "gen_ai.operation.name": "chat",
           "gen_ai.provider.name": lowCardinalityAttr(evt.provider),
-          "gen_ai.request.model": lowCardinalityAttr(evt.model),
+          "gen_ai.request.model": modelIdAttr(evt.model),
         };
 
         const usage = evt.usage;
@@ -2228,6 +2270,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
       const recordMessageProcessed = (
         evt: Extract<DiagnosticEventPayload, { type: "message.processed" }>,
         metadata: DiagnosticEventMetadata,
+        messageContent?: { userPrompt?: string; finalResponse?: string },
       ) => {
         const attrs = {
           "openclaw.channel": lowCardinalityAttr(evt.channel),
@@ -2243,6 +2286,18 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         const spanAttrs: Record<string, string | number> = { ...attrs };
         if (evt.reason) {
           spanAttrs["openclaw.reason"] = lowCardinalityAttr(evt.reason, "unknown");
+        }
+        if (contentCapturePolicy.inputMessages && messageContent?.userPrompt) {
+          spanAttrs["input.value"] = normalizeOtelLogString(
+            messageContent.userPrompt,
+            MAX_OTEL_CONTENT_ATTRIBUTE_CHARS,
+          );
+        }
+        if (contentCapturePolicy.outputMessages && messageContent?.finalResponse) {
+          spanAttrs["output.value"] = normalizeOtelLogString(
+            messageContent.finalResponse,
+            MAX_OTEL_CONTENT_ATTRIBUTE_CHARS,
+          );
         }
         const trackedSpan = getTrackedInternalOrTrustedSpan(evt, metadata);
         const span =
@@ -2385,7 +2440,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         evt: Extract<DiagnosticEventPayload, { type: "session.turn.created" }>,
       ) => {
         sessionTurnCreatedCounter.add(1, {
-          "openclaw.agent": lowCardinalityAttr(evt.agentId, "unknown"),
+          "openclaw.agent": resolveAgentLabelAttr(evt),
           "openclaw.channel": lowCardinalityAttr(evt.channel, "unknown"),
           "openclaw.trigger": evt.trigger,
         });
@@ -2835,7 +2890,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
       ) => ({
         "gen_ai.operation.name": genAiOperationName(evt.api),
         "gen_ai.provider.name": lowCardinalityAttr(evt.provider),
-        "gen_ai.request.model": lowCardinalityAttr(evt.model),
+        "gen_ai.request.model": modelIdAttr(evt.model),
         ...(errorType ? { "error.type": errorType } : {}),
       });
       const recordModelCallSizeTimingMetrics = (
@@ -3006,13 +3061,14 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         "openclaw.skill.name": lowCardinalityAttr(evt.skillName, "skill"),
         "openclaw.skill.source": lowCardinalityAttr(evt.skillSource),
         "openclaw.skill.activation": lowCardinalityAttr(evt.activation),
-        ...(evt.agentId ? { "openclaw.agent": lowCardinalityAttr(evt.agentId) } : {}),
+        ...(evt.agentId || evt.agentLabel ? { "openclaw.agent": resolveAgentLabelAttr(evt) } : {}),
         ...(evt.toolName ? { "openclaw.toolName": lowCardinalityAttr(evt.toolName, "tool") } : {}),
       });
 
       const recordSkillUsed = (
         evt: Extract<DiagnosticEventPayload, { type: "skill.used" }>,
         metadata: DiagnosticEventMetadata,
+        skillContent?: OtelSkillCallContent,
       ) => {
         if (!metadata.trusted) {
           return;
@@ -3024,6 +3080,22 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         }
         const spanAttrs: Record<string, string | number | boolean> = { ...attrs };
         addRunAttrs(spanAttrs, evt);
+        // skillVersion (sha256 fingerprint) and trigger are high-cardinality and must not
+        // appear in metric labels, so they are span-only.
+        if (evt.skillVersion) {
+          spanAttrs["openclaw.skill.version"] = evt.skillVersion;
+        }
+        // Command-activated trigger (command name) is always safe in the public event payload.
+        if (evt.trigger) {
+          spanAttrs["openclaw.skill.trigger"] = evt.trigger;
+        }
+        // Read-activated trigger is user message text — only export it when the
+        // exporter-side captureContent.inputMessages is enabled, not just when the
+        // emission site opted in. A config mismatch or reload must not leak the excerpt.
+        // Redact before export regardless: the excerpt may contain keys/tokens.
+        if (skillContent?.trigger && contentCapturePolicy.inputMessages) {
+          spanAttrs["openclaw.skill.trigger"] = redactSensitiveText(skillContent.trigger);
+        }
         const span = spanWithDuration("openclaw.skill.used", spanAttrs, 0, {
           parentContext: activeTrustedParentContext(evt, metadata),
           endTimeMs: evt.ts,
@@ -3343,7 +3415,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
               recordMessageDispatchCompleted(evt);
               return;
             case "message.processed":
-              recordMessageProcessed(evt, metadata);
+              recordMessageProcessed(evt, metadata, privateData.messageContent);
               return;
             case "message.delivery.started":
               recordMessageDeliveryStarted(evt);
@@ -3435,7 +3507,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
               recordToolExecutionBlocked(evt, metadata);
               return;
             case "skill.used":
-              recordSkillUsed(evt, metadata);
+              recordSkillUsed(evt, metadata, privateData.skillContent);
               return;
             case "exec.process.completed":
               recordExecProcessCompleted(evt);
