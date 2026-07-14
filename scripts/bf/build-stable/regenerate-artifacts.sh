@@ -31,6 +31,8 @@ echo "=== Running config:docs:gen ==="
 pnpm --verbose config:docs:gen
 echo "=== Running plugin-sdk:api:gen ==="
 pnpm --verbose plugin-sdk:api:gen
+echo "=== Syncing plugin versions to match root package.json ==="
+pnpm --verbose plugins:sync
 echo "=== All generators complete ==="
 
 git add -A

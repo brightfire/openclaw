@@ -2,7 +2,7 @@
 # Rewrite package.json#version to the computed bf version and commit.
 #
 # Inputs (env):
-#   VERSION — X.Y.Z-bf{N} from compute-bf-version.sh
+#   VERSION — X.Y.Z-{N} from compute-bf-version.sh
 
 set -euo pipefail
 
