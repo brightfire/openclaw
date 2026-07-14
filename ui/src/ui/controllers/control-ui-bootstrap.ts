@@ -136,6 +136,9 @@ export async function loadControlUiBootstrapConfig(
       typeof parsed.chatMessageMaxWidth === "string" && parsed.chatMessageMaxWidth.trim()
         ? parsed.chatMessageMaxWidth
         : null;
+    if (typeof parsed.title === "string" && parsed.title.trim()) {
+      document.title = parsed.title.trim();
+    }
   } catch {
     // Ignore bootstrap failures; UI will update identity after connecting.
   }
