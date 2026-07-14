@@ -155,6 +155,12 @@ export const streamOpenAICompletions: StreamFunction<
       const apiKey = options?.apiKey || getEnvApiKey(model.provider) || "";
       const compat = getCompat(model);
       const cacheRetention = resolveCacheRetention(options?.cacheRetention);
+      const effectiveRetention =
+        cacheRetention === "none"
+          ? "none"
+          : cacheRetention === "long" && compat.supportsLongCacheRetention
+            ? "long"
+            : "short";
       const cacheSessionId = cacheRetention === "none" ? undefined : options?.sessionId;
       const client = createClient(model, context, apiKey, options?.headers, cacheSessionId, compat);
       let params = buildParams(model, context, options, compat, cacheRetention);
@@ -344,7 +350,7 @@ export const streamOpenAICompletions: StreamFunction<
           output.responseModel ||= chunk.model;
         }
         if (chunk.usage) {
-          output.usage = parseChunkUsage(chunk.usage, model, cacheRetention);
+          output.usage = parseChunkUsage(chunk.usage, model, effectiveRetention);
         }
 
         const choice = Array.isArray(chunk.choices) ? chunk.choices[0] : undefined;
@@ -358,7 +364,7 @@ export const streamOpenAICompletions: StreamFunction<
           choice as typeof choice & { usage?: Parameters<typeof parseChunkUsage>[0] }
         ).usage;
         if (!chunk.usage && choiceUsage) {
-          output.usage = parseChunkUsage(choiceUsage, model, cacheRetention);
+          output.usage = parseChunkUsage(choiceUsage, model, effectiveRetention);
         }
 
         if (choice.finish_reason) {
