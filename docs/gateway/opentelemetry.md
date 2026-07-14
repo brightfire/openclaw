@@ -156,10 +156,10 @@ text. Each subkey is opt-in independently:
 - `systemPrompt` - assembled system/developer prompt.
 - `toolDefinitions` - model tool names, descriptions, and schemas.
 
-When any subkey is enabled, model and tool spans get bounded, redacted
-`openclaw.content.*` attributes for that class only. Use boolean
-`captureContent: true` only for broad diagnostics captures where OTLP log
-message bodies are also approved for export.
+When any subkey is enabled, model, tool, and harness run spans get bounded,
+redacted `openclaw.content.*` or `input.value`/`output.value` attributes for
+that class only. Use boolean `captureContent: true` only for broad diagnostics
+captures where OTLP log message bodies are also approved for export.
 
 `toolInputs`/`toolOutputs` content is captured for the built-in agent runtime's
 tool executions (`openclaw.content.tool_input` on completed/error spans,
@@ -322,6 +322,8 @@ Liveness warnings also emit:
 - `openclaw.harness.run`
   - `openclaw.harness.id`, `openclaw.harness.plugin`, `openclaw.outcome`, `openclaw.provider`, `openclaw.model`, `openclaw.channel`
   - On completion: `openclaw.harness.result_classification`, `openclaw.harness.yield_detected`, `openclaw.harness.items.started`, `openclaw.harness.items.completed`, `openclaw.harness.items.active`
+  - With `captureContent.inputMessages`: `input.value` (redacted user prompt)
+  - With `captureContent.outputMessages`: `output.value` (redacted final response)
   - On error: `openclaw.harness.phase`, `openclaw.errorCategory`, optional `openclaw.harness.cleanup_failed`
 - `openclaw.tool.execution`
   - `gen_ai.tool.name`, `openclaw.toolName`, `openclaw.errorCategory`, `openclaw.tool.params.*`
@@ -344,9 +346,10 @@ Liveness warnings also emit:
 - `openclaw.memory.pressure`
   - `openclaw.memory.level`, `openclaw.memory.heap_used_bytes`, `openclaw.memory.rss_bytes`
 
-When content capture is explicitly enabled, model and tool spans can also
-include bounded, redacted `openclaw.content.*` attributes for the specific
-content classes you opted into.
+When content capture is explicitly enabled, model, tool, and harness run
+spans can also include bounded, redacted `openclaw.content.*` or
+`input.value`/`output.value` attributes for the specific content classes you
+opted into.
 
 ## Diagnostic event catalog
 
