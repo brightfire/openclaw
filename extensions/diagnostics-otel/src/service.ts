@@ -1249,9 +1249,8 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
               ...(headers ? { headers } : {}),
             })
           : undefined;
-        // Always include BatchSpanProcessor so traces actually export.
-        // Without it, spanProcessors would be truthy (LangfuseMetadataSpanProcessor
-        // only) and NodeSDK would skip the traceExporter auto-wrap path.
+        // BatchSpanProcessor batches spans for export; without it NodeSDK
+        // does not flush spans to the traceExporter automatically.
         const spanProcessors = traceExporter
           ? [
               new BatchSpanProcessor(
@@ -1260,7 +1259,6 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
                   ? { scheduledDelayMillis: Math.max(1000, otel.flushIntervalMs) }
                   : undefined,
               ),
-              new LangfuseMetadataSpanProcessor(),
             ]
           : undefined;
 
@@ -1739,6 +1737,25 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         };
       }
 
+      // Applies langfuse.trace.metadata.{agent,bot} attributes directly on
+      // each span so metadata works in both preloaded and non-preloaded SDK
+      // modes. The LangfuseMetadataSpanProcessor class is kept for external
+      // consumers but is no longer registered as a span processor here.
+      const resolveLangfuseMetadata = (
+        attributes: Record<string, string | number | boolean>,
+        span: ReturnType<typeof tracer.startSpan>,
+      ): Record<string, string> => {
+        const result: Record<string, string> = {};
+        const agent = attributes["openclaw.agent"];
+        if (typeof agent === "string" && agent) {
+          result["langfuse.trace.metadata.agent"] = agent;
+        }
+        const bot = (span as unknown as ReadableSpan).resource?.attributes?.["service.instance.id"];
+        if (typeof bot === "string" && bot) {
+          result["langfuse.trace.metadata.bot"] = bot;
+        }
+        return result;
+      };
       const spanWithDuration = (
         name: string,
         attributes: Record<string, string | number | boolean>,
@@ -1768,6 +1785,10 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
           },
           parentContext,
         );
+        const langfuseMeta = resolveLangfuseMetadata(attributes, span);
+        if (Object.keys(langfuseMeta).length > 0) {
+          span.setAttributes?.(langfuseMeta);
+        }
         return span;
       };
       const trustedTraceContext = (
@@ -1959,6 +1980,10 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         attributes: Record<string, string | number | boolean>,
       ) => {
         span.setAttributes?.(redactOtelAttributes(attributes));
+        const langfuseMeta = resolveLangfuseMetadata(attributes, span);
+        if (Object.keys(langfuseMeta).length > 0) {
+          span.setAttributes?.(langfuseMeta);
+        }
       };
       const retainTrustedSpanContext = (
         traceId: string,
@@ -2239,6 +2264,10 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         const span = tracer.startSpan("openclaw.webhook.error", {
           attributes: spanAttrs,
         });
+        const langfuseMeta = resolveLangfuseMetadata(spanAttrs, span);
+        if (Object.keys(langfuseMeta).length > 0) {
+          span.setAttributes?.(langfuseMeta);
+        }
         span.setStatus({ code: SpanStatusCode.ERROR, message: redactedError });
         span.end();
       };
@@ -2505,6 +2534,10 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         spanAttrs["openclaw.queueDepth"] = evt.queueDepth ?? 0;
         spanAttrs["openclaw.ageMs"] = evt.ageMs;
         const span = tracer.startSpan("openclaw.session.stuck", { attributes: spanAttrs });
+        const langfuseMeta = resolveLangfuseMetadata(spanAttrs, span);
+        if (Object.keys(langfuseMeta).length > 0) {
+          span.setAttributes?.(langfuseMeta);
+        }
         span.setStatus({ code: SpanStatusCode.ERROR, message: "session stuck" });
         span.end();
       };

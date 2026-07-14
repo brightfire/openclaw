@@ -918,6 +918,40 @@ describe("diagnostics-otel service", () => {
     expect(logShutdown).toHaveBeenCalledTimes(1);
   });
 
+  test("applies langfuse metadata in preloaded SDK mode", async () => {
+    process.env.OPENCLAW_OTEL_PRELOADED = "1";
+    const service = createDiagnosticsOtelService();
+    const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });
+    await service.start(ctx);
+
+    emitDiagnosticEvent({
+      type: "model.usage",
+      sessionKey: "agent:main:webchat",
+      agentId: "agent:main:webchat",
+      agentLabel: "main",
+      channel: "webchat",
+      provider: "openai",
+      model: "gpt-5.4",
+      usage: { input: 10, output: 5, total: 15 },
+      durationMs: 50,
+    });
+    await flushDiagnosticEvents();
+
+    const usageSpan = telemetryState.spans.find((s) => s.name === "openclaw.model.usage");
+    expect(usageSpan).toBeDefined();
+    const langfuseCall = usageSpan?.setAttributes.mock.calls.find(
+      (call: unknown[]) =>
+        call[0] &&
+        typeof call[0] === "object" &&
+        "langfuse.trace.metadata.agent" in (call[0] as Record<string, unknown>),
+    );
+    expect(langfuseCall?.[0]).toEqual(
+      expect.objectContaining({ "langfuse.trace.metadata.agent": "main" }),
+    );
+
+    await service.stop?.(ctx);
+  });
+
   test("emits and records bounded telemetry exporter health events", async () => {
     const events: Array<Parameters<Parameters<typeof onInternalDiagnosticEvent>[0]>[0]> = [];
     const unsubscribe = onInternalDiagnosticEvent((event) => {
