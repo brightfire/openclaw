@@ -4848,6 +4848,8 @@ export async function runEmbeddedAttempt(
             .slice()
             .toReversed()
             .find((message): message is AssistantMessage => message.role === "assistant");
+          // cacheRetention is stamped on the AssistantMessage by the stream
+          // function before message_end fires, so it's already persisted.
           currentAttemptAssistant = findCurrentAttemptAssistantMessage({
             messagesSnapshot,
             prePromptMessageCount,

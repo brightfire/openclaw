@@ -2010,11 +2010,9 @@ async function runEmbeddedAgentInternal(
             lastAssistant: sessionLastAssistant,
             currentAttemptAssistant,
           } = attempt;
-          // Stamp cacheRetention on the final assistant message so transcript
-          // readers (session-cost-usage) can recover it without needing agent meta.
-          if (sessionLastAssistant && lastResolvedCacheRetention) {
-            sessionLastAssistant.cacheRetention = lastResolvedCacheRetention;
-          }
+          // cacheRetention is now stamped on the AssistantMessage by the
+          // stream function before message_end fires, so no post-attempt
+          // mutation is needed here.
           const setTerminalLifecycleMeta: NonNullable<typeof attempt.setTerminalLifecycleMeta> = (
             meta,
           ) => {

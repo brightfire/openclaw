@@ -294,6 +294,9 @@ export const streamBedrock: StreamFunction<"bedrock-converse-stream", BedrockOpt
       }
 
       refusalBuffer?.flush();
+      if (cacheRetention) {
+        output.cacheRetention = cacheRetention;
+      }
       stream.push({ type: "done", reason: output.stopReason, message: output });
       stream.end();
     } catch (error) {
@@ -308,6 +311,9 @@ export const streamBedrock: StreamFunction<"bedrock-converse-stream", BedrockOpt
       }
       output.stopReason = options.signal?.aborted ? "aborted" : "error";
       output.errorMessage = formatBedrockError(error);
+      if (cacheRetention) {
+        output.cacheRetention = cacheRetention;
+      }
       stream.push({ type: "error", reason: output.stopReason, error: output });
       stream.end();
     }

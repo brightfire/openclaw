@@ -243,6 +243,7 @@ type MutableAssistantOutput = {
   errorCode?: string;
   errorType?: string;
   errorBody?: string;
+  cacheRetention?: "short" | "long" | "none";
 };
 
 export { sanitizeTransportPayloadText } from "./transport-stream-shared.js";
@@ -2009,6 +2010,9 @@ export function createOpenAIResponsesTransportStreamFn(): StreamFn {
         if (output.stopReason === "aborted" || output.stopReason === "error") {
           throw new Error("An unknown error occurred");
         }
+        if (options?.cacheRetention) {
+          output.cacheRetention = options.cacheRetention;
+        }
         stream.push({ type: "done", reason: output.stopReason as never, message: output as never });
         stream.end();
       } catch (error) {
@@ -2017,6 +2021,9 @@ export function createOpenAIResponsesTransportStreamFn(): StreamFn {
             summarizeOpenAITransportError(error),
         );
         assignTransportErrorDetails(output, error, options?.signal);
+        if (options?.cacheRetention) {
+          output.cacheRetention = options.cacheRetention;
+        }
         stream.push({ type: "error", reason: output.stopReason as never, error: output as never });
         stream.end();
       }
@@ -2464,6 +2471,9 @@ export function createAzureOpenAIResponsesTransportStreamFn(): StreamFn {
         if (output.stopReason === "aborted" || output.stopReason === "error") {
           throw new Error("An unknown error occurred");
         }
+        if (options?.cacheRetention) {
+          output.cacheRetention = options.cacheRetention;
+        }
         stream.push({ type: "done", reason: output.stopReason as never, message: output as never });
         stream.end();
       } catch (error) {
@@ -2472,6 +2482,9 @@ export function createAzureOpenAIResponsesTransportStreamFn(): StreamFn {
             summarizeOpenAITransportError(error),
         );
         assignTransportErrorDetails(output, error, options?.signal);
+        if (options?.cacheRetention) {
+          output.cacheRetention = options.cacheRetention;
+        }
         stream.push({ type: "error", reason: output.stopReason as never, error: output as never });
         stream.end();
       }
@@ -2711,10 +2724,16 @@ export function createOpenAICompletionsTransportStreamFn(): StreamFn {
         if (options?.signal?.aborted) {
           throw new Error("Request was aborted");
         }
+        if (options?.cacheRetention) {
+          output.cacheRetention = options.cacheRetention;
+        }
         stream.push({ type: "done", reason: output.stopReason as never, message: output as never });
         stream.end();
       } catch (error) {
         assignTransportErrorDetails(output, error, options?.signal);
+        if (options?.cacheRetention) {
+          output.cacheRetention = options.cacheRetention;
+        }
         stream.push({ type: "error", reason: output.stopReason as never, error: output as never });
         stream.end();
       }

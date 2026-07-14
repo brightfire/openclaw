@@ -145,6 +145,7 @@ type MutableAssistantOutput = {
   responseId?: string;
   errorMessage?: string;
   diagnostics?: AssistantMessageDiagnostic[];
+  cacheRetention?: "short" | "long" | "none";
 };
 
 const EMPTY_ANTHROPIC_MESSAGES_FALLBACK_TEXT = ".";
@@ -1093,6 +1094,16 @@ export function createAnthropicMessagesTransportStreamFn(): StreamFn {
           )
         : undefined;
       const eventSink = refusalBuffer ?? stream;
+      const _transportRetention = resolveAnthropicEphemeralCacheControl(
+        model.baseUrl,
+        options?.cacheRetention,
+      );
+      const resolvedCacheRetention: "short" | "long" | "none" =
+        options?.cacheRetention === "none"
+          ? "none"
+          : _transportRetention?.ttl === "1h"
+            ? "long"
+            : "short";
       try {
         const apiKey = options?.apiKey ?? getEnvApiKey(model.provider) ?? "";
         if (!apiKey) {
@@ -1562,11 +1573,17 @@ export function createAnthropicMessagesTransportStreamFn(): StreamFn {
           throw new Error(output.errorMessage ?? "An unknown error occurred");
         }
         refusalBuffer?.flush();
+        if (resolvedCacheRetention) {
+          output.cacheRetention = resolvedCacheRetention;
+        }
         finalizeTransportStream({ stream, output });
       } catch (error) {
         if (refusalBuffer) {
           refusalBuffer.discard();
           output.content = [];
+        }
+        if (resolvedCacheRetention) {
+          output.cacheRetention = resolvedCacheRetention;
         }
         failTransportStream({
           stream,

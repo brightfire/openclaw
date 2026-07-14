@@ -151,16 +151,19 @@ export const streamOpenAICompletions: StreamFunction<
       timestamp: Date.now(),
     };
 
+    const _preCompat = getCompat(model);
+    const _preRetention = resolveCacheRetention(options?.cacheRetention);
+    const effectiveRetention: "short" | "long" | "none" =
+      _preRetention === "none"
+        ? "none"
+        : _preRetention === "long" && _preCompat.supportsLongCacheRetention
+          ? "long"
+          : "short";
+
     try {
       const apiKey = options?.apiKey || getEnvApiKey(model.provider) || "";
       const compat = getCompat(model);
       const cacheRetention = resolveCacheRetention(options?.cacheRetention);
-      const effectiveRetention =
-        cacheRetention === "none"
-          ? "none"
-          : cacheRetention === "long" && compat.supportsLongCacheRetention
-            ? "long"
-            : "short";
       const cacheSessionId = cacheRetention === "none" ? undefined : options?.sessionId;
       const client = createClient(model, context, apiKey, options?.headers, cacheSessionId, compat);
       let params = buildParams(model, context, options, compat, cacheRetention);
@@ -491,6 +494,9 @@ export const streamOpenAICompletions: StreamFunction<
         output.content = output.content.filter((block) => block.type !== "toolCall");
       }
 
+      if (effectiveRetention) {
+        output.cacheRetention = effectiveRetention;
+      }
       stream.push({ type: "done", reason: output.stopReason, message: output });
       stream.end();
     } catch (error) {
@@ -507,6 +513,9 @@ export const streamOpenAICompletions: StreamFunction<
         ?.raw;
       if (rawMetadata) {
         output.errorMessage += `\n${rawMetadata}`;
+      }
+      if (effectiveRetention) {
+        output.cacheRetention = effectiveRetention;
       }
       stream.push({ type: "error", reason: output.stopReason, error: output });
       stream.end();

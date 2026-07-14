@@ -390,6 +390,7 @@ const ModelDefinitionSchema = z
                 output: z.number(),
                 cacheRead: z.number(),
                 cacheWrite: z.number(),
+                cacheWriteShort: z.number().optional(),
                 range: z.union([z.tuple([z.number(), z.number()]), z.tuple([z.number()])]),
               })
               .strict(),

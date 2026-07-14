@@ -519,17 +519,14 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", AnthropicOpti
         )
       : undefined;
     const eventSink = refusalBuffer ?? stream;
+    const resolvedCacheRetention = options?.cacheRetention ?? resolveCacheRetention();
+    const { cacheControl: effectiveCacheControl } = getCacheControl(model, resolvedCacheRetention);
+    const effectiveRetention: "short" | "long" | "none" =
+      effectiveCacheControl?.ttl === "1h" ? "long" : effectiveCacheControl ? "short" : "none";
 
     try {
       let client: Anthropic;
       let isOAuth: boolean;
-      const resolvedCacheRetention = options?.cacheRetention ?? resolveCacheRetention();
-      const { cacheControl: effectiveCacheControl } = getCacheControl(
-        model,
-        resolvedCacheRetention,
-      );
-      const effectiveRetention =
-        effectiveCacheControl?.ttl === "1h" ? "long" : effectiveCacheControl ? "short" : "none";
 
       if (options?.client) {
         client = options.client;
@@ -785,6 +782,9 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", AnthropicOpti
       }
 
       refusalBuffer?.flush();
+      if (effectiveRetention) {
+        output.cacheRetention = effectiveRetention;
+      }
       stream.push({ type: "done", reason: output.stopReason, message: output });
       stream.end();
     } catch (error) {
@@ -799,6 +799,9 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", AnthropicOpti
       }
       output.stopReason = options?.signal?.aborted ? "aborted" : "error";
       output.errorMessage = error instanceof Error ? error.message : JSON.stringify(error);
+      if (effectiveRetention) {
+        output.cacheRetention = effectiveRetention;
+      }
       stream.push({ type: "error", reason: output.stopReason, error: output });
       stream.end();
     }

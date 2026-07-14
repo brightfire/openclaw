@@ -459,6 +459,9 @@ export async function runGoogleGenerateContentLifecycle<T extends GoogleApiType>
     }
     output.stopReason = options?.signal?.aborted ? "aborted" : "error";
     output.errorMessage = error instanceof Error ? error.message : JSON.stringify(error);
+    if (options?.cacheRetention) {
+      output.cacheRetention = options.cacheRetention;
+    }
     stream.push({ type: "error", reason: output.stopReason, error: output });
     stream.end();
   }
@@ -896,6 +899,9 @@ export async function consumeGoogleGenerateContentStream<T extends GoogleApiType
     throw new Error("An unknown error occurred");
   }
 
+  if (params.cacheRetention) {
+    params.output.cacheRetention = params.cacheRetention;
+  }
   params.stream.push({
     type: "done",
     reason: params.output.stopReason,
