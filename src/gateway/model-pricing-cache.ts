@@ -319,7 +319,10 @@ type LiteLLMTierRaw = {
   range?: unknown;
 };
 
-function parseLiteLLMTieredPricing(tiers: unknown): CachedPricingTier[] | undefined {
+function parseLiteLLMTieredPricing(
+  tiers: unknown,
+  modelLevelLongCacheWrite: number | null,
+): CachedPricingTier[] | undefined {
   if (!Array.isArray(tiers) || tiers.length === 0) {
     return undefined;
   }
@@ -353,19 +356,20 @@ function parseLiteLLMTieredPricing(tiers: unknown): CachedPricingTier[] | undefi
     ) {
       continue;
     }
+    // Prefer the tier's own long-cache rate; fall back to the model-level
+    // long-cache rate so that tiers with only a 5-minute cost still price
+    // long-retention writes at the long rate, not the short rate.
+    const tierLongCacheWrite = parseNumberString(tier.cache_creation_input_token_cost_above_1hr);
+    const tierShortCacheWrite = parseNumberString(tier.cache_creation_input_token_cost);
+    const longCacheWrite = tierLongCacheWrite ?? modelLevelLongCacheWrite;
     result.push({
       input: toPricePerMillion(inputPerToken),
       output: toPricePerMillion(outputPerToken),
       cacheRead: toPricePerMillion(parseNumberString(tier.cache_read_input_token_cost)),
-      cacheWrite: toPricePerMillion(
-        parseNumberString(tier.cache_creation_input_token_cost_above_1hr) ??
-          parseNumberString(tier.cache_creation_input_token_cost),
-      ),
-      ...(parseNumberString(tier.cache_creation_input_token_cost_above_1hr) != null
+      cacheWrite: toPricePerMillion(longCacheWrite ?? tierShortCacheWrite),
+      ...(longCacheWrite != null && tierShortCacheWrite != null
         ? {
-            cacheWriteShort: toPricePerMillion(
-              parseNumberString(tier.cache_creation_input_token_cost),
-            ),
+            cacheWriteShort: toPricePerMillion(tierShortCacheWrite),
           }
         : {}),
       range: [start, end],
@@ -396,7 +400,10 @@ function parseLiteLLMPricing(entry: LiteLLMModelEntry): CachedModelPricing | nul
         }
       : {}),
   };
-  const tieredPricing = parseLiteLLMTieredPricing(entry.tiered_pricing);
+  const modelLevelLongCacheWrite = parseNumberString(
+    entry.cache_creation_input_token_cost_above_1hr,
+  );
+  const tieredPricing = parseLiteLLMTieredPricing(entry.tiered_pricing, modelLevelLongCacheWrite);
   if (tieredPricing) {
     pricing.tieredPricing = tieredPricing;
   }
