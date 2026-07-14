@@ -310,8 +310,9 @@ function redactOtelAttributes(attributes: Record<string, string | number | boole
 }
 
 /**
- * SpanProcessor that copies openclaw.agent → langfuse.trace.metadata.agent
- * and service.instance.id → langfuse.trace.metadata.bot on every span.
+ * SpanProcessor that copies openclaw.agent → langfuse.trace.metadata.agent,
+ * service.instance.id → langfuse.trace.metadata.bot, and
+ * openclaw.sessionId → langfuse.session.id on every span.
  * Reads from the span's own attributes and resource, same way for both.
  */
 class LangfuseMetadataSpanProcessor implements SpanProcessor {
@@ -323,6 +324,10 @@ class LangfuseMetadataSpanProcessor implements SpanProcessor {
     const bot = span.resource?.attributes?.["service.instance.id"];
     if (typeof bot === "string" && bot) {
       span.setAttribute("langfuse.trace.metadata.bot", bot);
+    }
+    const sessionId = span.attributes["openclaw.sessionId"];
+    if (typeof sessionId === "string" && sessionId) {
+      span.setAttribute("langfuse.session.id", sessionId);
     }
   }
 
@@ -1737,10 +1742,11 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         };
       }
 
-      // Applies langfuse.trace.metadata.{agent,bot} attributes directly on
-      // each span so metadata works in both preloaded and non-preloaded SDK
-      // modes. The LangfuseMetadataSpanProcessor class is kept for external
-      // consumers but is no longer registered as a span processor here.
+      // Applies langfuse.trace.metadata.{agent,bot} and langfuse.session.id
+      // attributes directly on each span so metadata works in both preloaded
+      // and non-preloaded SDK modes. The LangfuseMetadataSpanProcessor class
+      // is kept for external consumers but is no longer registered as a span
+      // processor here.
       const resolveLangfuseMetadata = (
         attributes: Record<string, string | number | boolean>,
         span: ReturnType<typeof tracer.startSpan>,
@@ -1753,6 +1759,10 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         const bot = (span as unknown as ReadableSpan).resource?.attributes?.["service.instance.id"];
         if (typeof bot === "string" && bot) {
           result["langfuse.trace.metadata.bot"] = bot;
+        }
+        const sessionId = attributes["openclaw.sessionId"];
+        if (typeof sessionId === "string" && sessionId) {
+          result["langfuse.session.id"] = sessionId;
         }
         return result;
       };

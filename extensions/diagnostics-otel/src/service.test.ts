@@ -934,6 +934,7 @@ describe("diagnostics-otel service", () => {
     emitDiagnosticEvent({
       type: "model.usage",
       sessionKey: "agent:main:webchat",
+      sessionId: "session-id",
       agentId: "agent:main:webchat",
       agentLabel: "main",
       channel: "webchat",
@@ -954,6 +955,10 @@ describe("diagnostics-otel service", () => {
     );
     expect(langfuseCall?.[0]).toEqual(
       expect.objectContaining({ "langfuse.trace.metadata.agent": "main" }),
+    );
+    // sessionId is mapped to langfuse.session.id for Langfuse session grouping
+    expect(langfuseCall?.[0]).toEqual(
+      expect.objectContaining({ "langfuse.session.id": "session-id" }),
     );
 
     await service.stop?.(ctx);
@@ -4886,13 +4891,14 @@ describe("diagnostics-otel service", () => {
     const processor = new LangfuseMetadataSpanProcessor();
     const setAttributeMock = vi.fn();
     const span = {
-      attributes: { "openclaw.agent": "main" },
+      attributes: { "openclaw.agent": "main", "openclaw.sessionId": "sess-123" },
       resource: { attributes: { "service.instance.id": "vash" } },
       setAttribute: setAttributeMock,
     } as unknown as Parameters<typeof processor.onStart>[0];
     processor.onStart(span, undefined as unknown as Parameters<typeof processor.onStart>[1]);
     expect(setAttributeMock).toHaveBeenCalledWith("langfuse.trace.metadata.agent", "main");
     expect(setAttributeMock).toHaveBeenCalledWith("langfuse.trace.metadata.bot", "vash");
+    expect(setAttributeMock).toHaveBeenCalledWith("langfuse.session.id", "sess-123");
   });
 
   test("sessionId is present on spans after un-dropping", async () => {
