@@ -553,7 +553,7 @@ describe("anthropic provider replay hooks", () => {
       api: "anthropic-messages",
       reasoning: true,
       input: ["text", "image"],
-      cost: { input: 10, output: 50, cacheRead: 1, cacheWrite: 12.5 },
+      cost: { input: 10, output: 50, cacheRead: 1, cacheWrite: 20, cacheWriteShort: 12.5 },
       contextWindow: 1_000_000,
       contextTokens: 1_000_000,
       maxTokens: 128_000,

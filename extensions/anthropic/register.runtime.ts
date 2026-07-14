@@ -287,7 +287,7 @@ function buildAnthropicForwardCompatModel(
     reasoning: true,
     input: ["text", "image"],
     cost: isAnthropicFable5Model(trimmedModelId)
-      ? { input: 10, output: 50, cacheRead: 1, cacheWrite: 12.5 }
+      ? { input: 10, output: 50, cacheRead: 1, cacheWrite: 20, cacheWriteShort: 12.5 }
       : { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextWindow: resolveAnthropicFixedContextWindow(trimmedModelId) ?? 200_000,
     maxTokens: isAnthropic128kOutputModel(trimmedModelId)
