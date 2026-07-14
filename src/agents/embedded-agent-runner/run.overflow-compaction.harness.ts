@@ -581,6 +581,43 @@ export async function loadRunOverflowCompactionHarness(): Promise<{
             })()
           : undefined,
     ),
+    deriveContextPromptTokens: vi.fn(
+      (params: {
+        lastCallUsage?: { input?: number; cacheRead?: number; cacheWrite?: number };
+        promptTokens?: number;
+        usage?: { input?: number; cacheRead?: number; cacheWrite?: number };
+      }) => {
+        if (
+          typeof params.promptTokens === "number" &&
+          Number.isFinite(params.promptTokens) &&
+          params.promptTokens > 0
+        ) {
+          return params.promptTokens;
+        }
+        const lc = params.lastCallUsage;
+        const lcSum = lc ? (lc.input ?? 0) + (lc.cacheRead ?? 0) + (lc.cacheWrite ?? 0) : 0;
+        if (lcSum > 0) {
+          return lcSum;
+        }
+        const u = params.usage;
+        const uSum = u ? (u.input ?? 0) + (u.cacheRead ?? 0) + (u.cacheWrite ?? 0) : 0;
+        return uSum > 0 ? uSum : undefined;
+      },
+    ),
+    hasNonzeroUsage: vi.fn((usage?: unknown) => {
+      if (!usage || typeof usage !== "object") {
+        return false;
+      }
+      const u = usage as Record<string, number>;
+      return (
+        (u.input ?? 0) > 0 ||
+        (u.output ?? 0) > 0 ||
+        (u.cacheRead ?? 0) > 0 ||
+        (u.cacheWrite ?? 0) > 0 ||
+        (u.reasoningTokens ?? 0) > 0 ||
+        (u.total ?? 0) > 0
+      );
+    }),
   }));
 
   vi.doMock("../cli-backends.js", async () => {

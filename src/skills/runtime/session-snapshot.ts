@@ -4,6 +4,7 @@ import { stableStringify } from "../../agents/stable-stringify.js";
 import { redactConfigObject } from "../../config/redact-snapshot.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { matchesSkillFilter } from "../discovery/filter.js";
+import { SKILL_HASH_SCHEMA_VERSION } from "../loading/watch-ignored.js";
 import { buildWorkspaceSkillSnapshot } from "../loading/workspace.js";
 import type { SkillEligibilityContext, SkillSnapshot } from "../types.js";
 import { getSkillsSnapshotVersion, shouldRefreshSnapshotForVersion } from "./refresh-state.js";
@@ -63,7 +64,11 @@ export function resolveReusableWorkspaceSkillSnapshot(
   const snapshotVersion = params.snapshotVersion ?? getSkillsSnapshotVersion(params.workspaceDir);
   const shouldRefresh =
     shouldRefreshSnapshotForVersion(params.existingSnapshot?.version, snapshotVersion) ||
-    !matchesSkillFilter(params.existingSnapshot?.skillFilter, params.skillFilter);
+    !matchesSkillFilter(params.existingSnapshot?.skillFilter, params.skillFilter) ||
+    // Force rebuild when the hash algorithm changed (e.g. SKILL.md-only → directory-wide).
+    // A persisted snapshot from an older build carries a different hashSchemaVersion and
+    // must never be reused even if its runtime version number happens to be current.
+    (params.existingSnapshot?.hashSchemaVersion ?? 0) !== SKILL_HASH_SCHEMA_VERSION;
   const buildSnapshot = () => {
     return buildWorkspaceSkillSnapshot(params.workspaceDir, {
       config: params.config,

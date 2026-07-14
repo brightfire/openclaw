@@ -12,6 +12,7 @@ import {
   resolveAllowedSkillSymlinkTargetRealPaths,
   tryRealpath,
 } from "../loading/symlink-targets.js";
+import { SKILLS_IGNORED_PATH_PATTERNS } from "../loading/watch-ignored.js";
 import {
   bumpSkillsSnapshotVersion,
   clearSkillsSnapshotVersionForWorkspace,
@@ -80,20 +81,8 @@ setSkillsChangeListenerErrorHandler((err) => {
   log.warn(`skills change listener failed: ${String(err)}`);
 });
 
-export const DEFAULT_SKILLS_WATCH_IGNORED: RegExp[] = [
-  /(^|[\\/])\.git([\\/]|$)/,
-  /(^|[\\/])node_modules([\\/]|$)/,
-  /(^|[\\/])dist([\\/]|$)/,
-  // Python virtual environments and caches
-  /(^|[\\/])\.venv([\\/]|$)/,
-  /(^|[\\/])venv([\\/]|$)/,
-  /(^|[\\/])__pycache__([\\/]|$)/,
-  /(^|[\\/])\.mypy_cache([\\/]|$)/,
-  /(^|[\\/])\.pytest_cache([\\/]|$)/,
-  // Build artifacts and caches
-  /(^|[\\/])build([\\/]|$)/,
-  /(^|[\\/])\.cache([\\/]|$)/,
-];
+/** @deprecated Import SKILLS_IGNORED_PATH_PATTERNS from "../loading/watch-ignored.js" instead. */
+export const DEFAULT_SKILLS_WATCH_IGNORED: RegExp[] = SKILLS_IGNORED_PATH_PATTERNS;
 
 function resolveWatchTargets(workspaceDir: string, config?: OpenClawConfig): WatchTarget[] {
   const baseRoots: Array<{ path: string; source: string }> = [];
@@ -394,11 +383,14 @@ export function shouldIgnoreSkillsWatchPath(
   if (!stats) {
     return false;
   }
-  if (options.usePolling && isSkillFileWatchPath(watchPath)) {
+  if (options.usePolling) {
+    // In polling mode there are no raw OS events, so support-file changes would go
+    // undetected if regular files were ignored. Polling uses stat() not FDs, so
+    // including all files does not cause an FD leak (unlike inotify/kqueue modes).
     return false;
   }
-  // Regular files are surfaced through raw directory events below. Letting
-  // chokidar include SKILL.md here registers per-file watchers and leaks FDs.
+  // In non-polling (inotify/kqueue) mode, regular files are surfaced through raw
+  // directory events. Including them here would register per-file watchers and leak FDs.
   return true;
 }
 
@@ -580,6 +572,13 @@ function createSkillsPathWatcher(target: WatchTarget, debounceMs: number): Skill
         return;
       }
       scheduleRawSkillFile(changedPath);
+    } else if (changedPath && !DEFAULT_SKILLS_WATCH_IGNORED.some((re) => re.test(changedPath))) {
+      // Support file under a skill root (assets/, examples/, templates/, scripts/, etc.).
+      // SKILL.md changes already went through scheduleRawSkillFile above; all other file
+      // changes in the watched tree should still invalidate the snapshot so that the new
+      // directory-wide promptVersion hash computed by computeSkillPromptVersion() takes
+      // effect without requiring a gateway restart.
+      schedule(changedPath);
     }
   });
   watcher.on("error", (err) => {
