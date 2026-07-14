@@ -151,12 +151,12 @@ export const streamOpenAICompletions: StreamFunction<
       timestamp: Date.now(),
     };
 
-    const _preCompat = getCompat(model);
-    const _preRetention = resolveCacheRetention(options?.cacheRetention);
+    const preCompat = getCompat(model);
+    const preRetention = resolveCacheRetention(options?.cacheRetention);
     const effectiveRetention: "short" | "long" | "none" =
-      _preRetention === "none"
+      preRetention === "none"
         ? "none"
-        : _preRetention === "long" && _preCompat.supportsLongCacheRetention
+        : preRetention === "long" && preCompat.supportsLongCacheRetention
           ? "long"
           : "short";
 

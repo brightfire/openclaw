@@ -1094,14 +1094,14 @@ export function createAnthropicMessagesTransportStreamFn(): StreamFn {
           )
         : undefined;
       const eventSink = refusalBuffer ?? stream;
-      const _transportRetention = resolveAnthropicEphemeralCacheControl(
+      const transportRetention = resolveAnthropicEphemeralCacheControl(
         model.baseUrl,
         options?.cacheRetention,
       );
       const resolvedCacheRetention: "short" | "long" | "none" =
         options?.cacheRetention === "none"
           ? "none"
-          : _transportRetention?.ttl === "1h"
+          : transportRetention?.ttl === "1h"
             ? "long"
             : "short";
       try {
@@ -1110,13 +1110,6 @@ export function createAnthropicMessagesTransportStreamFn(): StreamFn {
           throw new Error(`No API key for provider: ${model.provider}`);
         }
         const transportOptions = resolveAnthropicTransportOptions(model, options, apiKey);
-        const resolvedCacheRetention =
-          transportOptions.cacheRetention === "none"
-            ? "none"
-            : resolveAnthropicEphemeralCacheControl(model.baseUrl, transportOptions.cacheRetention)
-                  ?.ttl === "1h"
-              ? "long"
-              : "short";
         const { client, isOAuthToken } = createAnthropicTransportClient({
           model,
           context,

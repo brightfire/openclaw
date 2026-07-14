@@ -196,9 +196,10 @@ export const streamBedrock: StreamFunction<"bedrock-converse-stream", BedrockOpt
       config.authSchemePreference = ["httpBearerAuth"];
     }
 
+    const cacheRetention = resolveCacheRetention(options.cacheRetention);
+
     try {
       const client = new BedrockRuntimeClient(config);
-      const cacheRetention = resolveCacheRetention(options.cacheRetention);
       const additionalModelRequestFields = buildAdditionalModelRequestFields(model, options);
       const thinking = (additionalModelRequestFields as Record<string, unknown> | undefined)
         ?.thinking;
