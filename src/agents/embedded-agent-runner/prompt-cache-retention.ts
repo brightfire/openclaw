@@ -59,5 +59,9 @@ export function resolveCacheRetention(
     return "long";
   }
 
+  if (typeof process !== "undefined" && process.env.OPENCLAW_CACHE_RETENTION === "long") {
+    return "long";
+  }
+
   return family || cacheKeyEligible ? "short" : undefined;
 }
