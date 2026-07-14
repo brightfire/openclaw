@@ -2352,7 +2352,11 @@ export async function runAgentTurnWithFallback(params: {
                   config: runtimeConfig,
                 });
                 const cliCostUsd = cliHasBillable
-                  ? estimateUsageCost({ usage: cliUsage, cost: cliCostConfig })
+                  ? estimateUsageCost({
+                      usage: cliUsage,
+                      cost: cliCostConfig,
+                      cacheRetention: cliAgentMeta?.cacheRetention,
+                    })
                   : undefined;
                 const cliContextTokens =
                   (typeof cliAgentMeta.contextTokens === "number" &&

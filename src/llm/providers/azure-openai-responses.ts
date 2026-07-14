@@ -94,6 +94,9 @@ export const streamAzureOpenAIResponses: StreamFunction<
       return createClient(model, apiKey, options);
     },
     buildParams: () => buildParams(model, context, options, resolveDeploymentName(model, options)),
+    processStreamOptions: {
+      cacheRetention: options?.cacheRetention,
+    },
     formatError: formatAzureOpenAIError,
   });
 

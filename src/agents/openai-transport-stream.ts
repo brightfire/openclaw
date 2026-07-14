@@ -1470,6 +1470,7 @@ async function processResponsesStream(
     signal?: AbortSignal;
     sessionId?: string;
     authProfileId?: string;
+    cacheRetention?: "short" | "long" | "none";
   },
 ) {
   let currentItem: Record<string, unknown> | null = null;
@@ -1722,7 +1723,7 @@ async function processResponsesStream(
           cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
         };
       }
-      calculateCost(model as never, output.usage as never);
+      calculateCost(model as never, output.usage as never, options?.cacheRetention);
       if (options?.applyServiceTierPricing) {
         options.applyServiceTierPricing(
           output.usage,
@@ -1906,6 +1907,14 @@ function createOpenAIResponsesClient(
 export function createOpenAIResponsesTransportStreamFn(): StreamFn {
   return (model, context, options) => {
     const responsesOptions = options as OpenAIResponsesOptions | undefined;
+    const cacheRetention = resolveCacheRetention(options?.cacheRetention);
+    const compat = getCompat(model as OpenAIModeModel);
+    const effectiveRetention =
+      cacheRetention === "none"
+        ? "none"
+        : cacheRetention === "long" && compat.supportsLongCacheRetention
+          ? "long"
+          : "short";
     const eventStream = createAssistantMessageEventStream();
     const stream = eventStream as unknown as { push(event: unknown): void; end(): void };
     void (async () => {
@@ -1992,6 +2001,7 @@ export function createOpenAIResponsesTransportStreamFn(): StreamFn {
           signal: options?.signal,
           authProfileId: responsesOptions?.authProfileId,
           sessionId: options?.sessionId,
+          cacheRetention: effectiveRetention,
         });
         if (options?.signal?.aborted) {
           throw new Error("Request was aborted");
@@ -2353,6 +2363,14 @@ export function buildOpenAIResponsesParams(
 export function createAzureOpenAIResponsesTransportStreamFn(): StreamFn {
   return (model, context, options) => {
     const responsesOptions = options as OpenAIResponsesOptions | undefined;
+    const cacheRetention = resolveCacheRetention(options?.cacheRetention);
+    const compat = getCompat(model as OpenAIModeModel);
+    const effectiveRetention =
+      cacheRetention === "none"
+        ? "none"
+        : cacheRetention === "long" && compat.supportsLongCacheRetention
+          ? "long"
+          : "short";
     const eventStream = createAssistantMessageEventStream();
     const stream = eventStream as unknown as { push(event: unknown): void; end(): void };
     void (async () => {
@@ -2438,6 +2456,7 @@ export function createAzureOpenAIResponsesTransportStreamFn(): StreamFn {
           signal: options?.signal,
           authProfileId: responsesOptions?.authProfileId,
           sessionId: options?.sessionId,
+          cacheRetention: effectiveRetention,
         });
         if (options?.signal?.aborted) {
           throw new Error("Request was aborted");
@@ -2624,6 +2643,14 @@ function buildOpenAICompletionsClientConfig(
 
 export function createOpenAICompletionsTransportStreamFn(): StreamFn {
   return (model, context, options) => {
+    const cacheRetention = resolveCacheRetention(options?.cacheRetention);
+    const compat = getCompat(model as OpenAIModeModel);
+    const effectiveRetention =
+      cacheRetention === "none"
+        ? "none"
+        : cacheRetention === "long" && compat.supportsLongCacheRetention
+          ? "long"
+          : "short";
     const eventStream = createAssistantMessageEventStream();
     const stream = eventStream as unknown as { push(event: unknown): void; end(): void };
     void (async () => {
@@ -2663,8 +2690,8 @@ export function createOpenAICompletionsTransportStreamFn(): StreamFn {
           enforceCodeModeResponsesToolSurface(params);
           assertCodeModeResponsesToolSurface(params);
         }
-        const compat = getCompat(model as OpenAIModeModel);
-        if (compat.requiresNonEmptyUserOrAssistantMessage) {
+        const innerCompat = getCompat(model as OpenAIModeModel);
+        if (innerCompat.requiresNonEmptyUserOrAssistantMessage) {
           assertOpenAICompletionsPayloadHasConversationTurn(params, model);
         }
         const emitReasoning = shouldEmitOpenAICompletionsReasoning(
@@ -2679,6 +2706,7 @@ export function createOpenAICompletionsTransportStreamFn(): StreamFn {
         await processOpenAICompletionsStream(responseStream, output, model, stream, {
           signal: options?.signal,
           emitReasoning,
+          cacheRetention: effectiveRetention,
         });
         if (options?.signal?.aborted) {
           throw new Error("Request was aborted");
@@ -2700,7 +2728,11 @@ async function processOpenAICompletionsStream(
   output: MutableAssistantOutput,
   model: Model,
   stream: { push(event: unknown): void },
-  options?: { signal?: AbortSignal; emitReasoning?: boolean },
+  options?: {
+    signal?: AbortSignal;
+    emitReasoning?: boolean;
+    cacheRetention?: "short" | "long" | "none";
+  },
 ) {
   const MAX_POST_TOOL_CALL_BUFFER_BYTES = 256_000;
   const MAX_TOOL_CALL_ARGUMENT_BUFFER_BYTES = 256_000;
@@ -2966,7 +2998,7 @@ async function processOpenAICompletionsStream(
     output.responseId ||= chunk.id;
     let hasReasoningUsageActivity = false;
     if (chunk.usage) {
-      output.usage = parseTransportChunkUsage(chunk.usage, model);
+      output.usage = parseTransportChunkUsage(chunk.usage, model, options?.cacheRetention);
       hasReasoningUsageActivity = hasOpenAICompletionsReasoningUsageActivity(chunk.usage);
     }
     const choice = Array.isArray(chunk.choices) ? chunk.choices[0] : undefined;
@@ -2977,7 +3009,7 @@ async function processOpenAICompletionsStream(
     }
     const choiceUsage = (choice as unknown as { usage?: ChatCompletionChunk["usage"] }).usage;
     if (!chunk.usage && choiceUsage) {
-      output.usage = parseTransportChunkUsage(choiceUsage, model);
+      output.usage = parseTransportChunkUsage(choiceUsage, model, options?.cacheRetention);
       hasReasoningUsageActivity = hasOpenAICompletionsReasoningUsageActivity(choiceUsage);
     }
     if (choice.finish_reason) {
@@ -4328,6 +4360,7 @@ export function buildOpenAICompletionsParams(
 export function parseTransportChunkUsage(
   rawUsage: NonNullable<ChatCompletionChunk["usage"]>,
   model: Model,
+  cacheRetention?: "short" | "long" | "none",
 ) {
   const cachedTokens = rawUsage.prompt_tokens_details?.cached_tokens || 0;
   const promptTokens = rawUsage.prompt_tokens || 0;
@@ -4345,7 +4378,7 @@ export function parseTransportChunkUsage(
     totalTokens: input + outputTokens + cachedTokens,
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
   };
-  calculateCost(model as never, usage as never);
+  calculateCost(model as never, usage as never, cacheRetention);
   return usage;
 }
 

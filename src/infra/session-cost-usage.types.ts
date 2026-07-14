@@ -20,6 +20,7 @@ export type ParsedUsageEntry = {
   provider?: string;
   model?: string;
   timestamp?: Date;
+  cacheRetention?: "short" | "long" | "none";
 };
 
 export type ParsedTranscriptEntry = {
@@ -35,6 +36,7 @@ export type ParsedTranscriptEntry = {
   stopReason?: string;
   toolNames: string[];
   toolResultCounts: { total: number; errors: number };
+  cacheRetention?: "short" | "long" | "none";
 };
 
 export type CostUsageTotals = {

@@ -366,7 +366,12 @@ function resolveEstimatedSessionCostUsd(params: {
   model?: string;
   entry?: Pick<
     SessionEntry,
-    "estimatedCostUsd" | "inputTokens" | "outputTokens" | "cacheRead" | "cacheWrite"
+    | "estimatedCostUsd"
+    | "inputTokens"
+    | "outputTokens"
+    | "cacheRead"
+    | "cacheWrite"
+    | "cacheRetention"
   >;
   explicitCostUsd?: number;
   rowContext?: SessionListRowContext;
@@ -406,6 +411,7 @@ function resolveEstimatedSessionCostUsd(params: {
       ...(cacheWrite !== undefined ? { cacheWrite } : {}),
     },
     cost,
+    cacheRetention: params.entry?.cacheRetention,
   });
   return resolveNonNegativeNumber(estimated);
 }

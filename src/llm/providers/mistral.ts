@@ -86,7 +86,7 @@ export const streamMistral: StreamFunction<"mistral-conversations", MistralOptio
       }
       const mistralStream = await mistral.chat.stream(payload, buildRequestOptions(model, options));
       stream.push({ type: "start", partial: output });
-      await consumeChatStream(model, output, stream, mistralStream);
+      await consumeChatStream(model, output, stream, mistralStream, options?.cacheRetention);
 
       if (options?.signal?.aborted) {
         throw new Error("Request was aborted");
@@ -321,6 +321,7 @@ async function consumeChatStream(
   output: AssistantMessage,
   stream: AssistantMessageEventStream,
   mistralStream: AsyncIterable<CompletionEvent>,
+  cacheRetention?: "short" | "long" | "none",
 ): Promise<void> {
   let currentBlock: TextContent | ThinkingContent | null = null;
   const blocks = output.content;
@@ -363,7 +364,7 @@ async function consumeChatStream(
       output.usage.cacheWrite = 0;
       output.usage.totalTokens =
         chunk.usage.totalTokens || output.usage.input + output.usage.output;
-      calculateCost(model, output.usage);
+      calculateCost(model, output.usage, cacheRetention);
     }
 
     const choice = chunk.choices[0];

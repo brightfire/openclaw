@@ -111,6 +111,7 @@ export const streamOpenAIResponses: StreamFunction<"openai-responses", OpenAIRes
       serviceTier: options?.serviceTier,
       applyServiceTierPricing: (usage, serviceTier) =>
         applyServiceTierPricing(usage, serviceTier, model),
+      cacheRetention: options?.cacheRetention,
     },
     formatError: formatOpenAIResponsesError,
   });

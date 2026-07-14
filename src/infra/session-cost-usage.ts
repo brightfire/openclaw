@@ -891,6 +891,15 @@ const parseTimestamp = (entry: Record<string, unknown>): Date | undefined => {
   return undefined;
 };
 
+function resolveCacheRetentionValue(
+  value: string | undefined,
+): "short" | "long" | "none" | undefined {
+  if (value === "short" || value === "long" || value === "none") {
+    return value;
+  }
+  return undefined;
+}
+
 const parseTranscriptEntry = (entry: Record<string, unknown>): ParsedTranscriptEntry | null => {
   const message = entry.message as Record<string, unknown> | undefined;
   if (!message || typeof message !== "object") {
@@ -917,6 +926,10 @@ const parseTranscriptEntry = (entry: Record<string, unknown>): ParsedTranscriptE
   const costBreakdown = extractCostBreakdown(usageRaw);
   const stopReason = typeof message.stopReason === "string" ? message.stopReason : undefined;
   const durationMs = asFiniteNumber(message.durationMs ?? entry.durationMs);
+  const cacheRetentionRaw =
+    (typeof message.cacheRetention === "string" ? message.cacheRetention : undefined) ??
+    (typeof entry.cacheRetention === "string" ? entry.cacheRetention : undefined);
+  const cacheRetention = resolveCacheRetentionValue(cacheRetentionRaw);
 
   return {
     message,
@@ -931,6 +944,7 @@ const parseTranscriptEntry = (entry: Record<string, unknown>): ParsedTranscriptE
     stopReason,
     toolNames: extractToolCallNames(message),
     toolResultCounts: countToolResults(message),
+    cacheRetention,
   };
 };
 
@@ -1159,7 +1173,11 @@ async function scanTranscriptFile(params: {
         // the flat-rate cost that the transport layer wrote into the transcript.
         // Clear costBreakdown so downstream aggregation uses the recomputed total
         // instead of the stale flat-rate breakdown from the transport layer.
-        entry.costTotal = estimateUsageCost({ usage: entry.usage, cost });
+        entry.costTotal = estimateUsageCost({
+          usage: entry.usage,
+          cost,
+          cacheRetention: entry.cacheRetention,
+        });
         entry.costBreakdown = undefined;
       } else if (
         !isModelPricingKnown(cost) &&
@@ -1177,7 +1195,11 @@ async function scanTranscriptFile(params: {
         entry.costBreakdown = undefined;
       } else if (entry.costTotal === undefined) {
         // Fill in missing cost estimates.
-        entry.costTotal = estimateUsageCost({ usage: entry.usage, cost });
+        entry.costTotal = estimateUsageCost({
+          usage: entry.usage,
+          cost,
+          cacheRetention: entry.cacheRetention,
+        });
       }
     }
 
@@ -1210,6 +1232,7 @@ async function scanUsageFile(params: {
         provider: entry.provider,
         model: entry.model,
         timestamp: entry.timestamp,
+        cacheRetention: entry.cacheRetention,
       });
     },
   });
@@ -2563,7 +2586,14 @@ export async function loadSessionLogs(params: {
               provider: message.provider as string | undefined,
               model: message.model as string | undefined,
             });
-            cost = estimateUsageCost({ usage, cost: costConfig });
+            cost = estimateUsageCost({
+              usage,
+              cost: costConfig,
+              cacheRetention: resolveCacheRetentionValue(
+                (typeof message.cacheRetention === "string" ? message.cacheRetention : undefined) ??
+                  (typeof parsed.cacheRetention === "string" ? parsed.cacheRetention : undefined),
+              ),
+            });
           }
         }
       }
