@@ -299,6 +299,7 @@ export interface AssistantMessage {
   errorCode?: string;
   errorType?: string;
   errorBody?: string;
+  cacheRetention?: "short" | "long" | "none";
   timestamp: number; // Unix timestamp in milliseconds
 }
 

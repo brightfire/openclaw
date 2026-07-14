@@ -59,6 +59,7 @@ export interface SessionEntryBase {
 export interface SessionMessageEntry extends SessionEntryBase {
   type: "message";
   message: AgentMessage;
+  cacheRetention?: "short" | "long" | "none";
 }
 
 export interface ThinkingLevelChangeEntry extends SessionEntryBase {
@@ -929,13 +930,17 @@ export class SessionManager {
    * so it is easier to find them.
    * These need to be appended via appendCompaction() and appendBranchSummary() methods.
    */
-  appendMessage(message: Message | CustomMessage | BashExecutionMessage): string {
+  appendMessage(
+    message: Message | CustomMessage | BashExecutionMessage,
+    opts?: { cacheRetention?: "short" | "long" | "none" },
+  ): string {
     const entry: SessionMessageEntry = {
       type: "message",
       id: generateId(this.byId),
       parentId: this.leafId,
       timestamp: new Date().toISOString(),
       message,
+      ...(opts?.cacheRetention ? { cacheRetention: opts.cacheRetention } : {}),
     };
     this.appendEntry(entry);
     return entry.id;

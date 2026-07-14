@@ -2010,6 +2010,11 @@ async function runEmbeddedAgentInternal(
             lastAssistant: sessionLastAssistant,
             currentAttemptAssistant,
           } = attempt;
+          // Stamp cacheRetention on the final assistant message so transcript
+          // readers (session-cost-usage) can recover it without needing agent meta.
+          if (sessionLastAssistant && lastResolvedCacheRetention) {
+            sessionLastAssistant.cacheRetention = lastResolvedCacheRetention;
+          }
           const setTerminalLifecycleMeta: NonNullable<typeof attempt.setTerminalLifecycleMeta> = (
             meta,
           ) => {
