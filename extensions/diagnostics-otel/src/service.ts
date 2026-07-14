@@ -1249,15 +1249,16 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
               ...(headers ? { headers } : {}),
             })
           : undefined;
+        // Always include BatchSpanProcessor so traces actually export.
+        // Without it, spanProcessors would be truthy (LangfuseMetadataSpanProcessor
+        // only) and NodeSDK would skip the traceExporter auto-wrap path.
         const spanProcessors = traceExporter
           ? [
-              ...(typeof otel.flushIntervalMs === "number"
-                ? [
-                    new BatchSpanProcessor(traceExporter, {
-                      scheduledDelayMillis: Math.max(1000, otel.flushIntervalMs),
-                    }),
-                  ]
-                : []),
+              new BatchSpanProcessor(traceExporter, {
+                ...(typeof otel.flushIntervalMs === "number"
+                  ? { scheduledDelayMillis: Math.max(1000, otel.flushIntervalMs) }
+                  : {}),
+              }),
               new LangfuseMetadataSpanProcessor(),
             ]
           : undefined;
@@ -2100,7 +2101,6 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
           "openclaw.agent": resolveAgentLabelAttr(evt),
           "openclaw.provider": evt.provider ?? "unknown",
           "openclaw.model": evt.model ?? "unknown",
-          ...(evt.sessionId ? { "openclaw.sessionId": evt.sessionId } : {}),
         };
         const genAiAttrs: Record<string, string> = {
           "gen_ai.operation.name": "chat",
@@ -2163,6 +2163,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
           (usage.input ?? 0) + (usage.cacheRead ?? 0) + (usage.cacheWrite ?? 0);
         const spanAttrs: Record<string, string | number> = {
           ...attrs,
+          ...(evt.sessionId ? { "openclaw.sessionId": evt.sessionId } : {}),
           "openclaw.tokens.input": usage.input ?? 0,
           "openclaw.tokens.output": usage.output ?? 0,
           "openclaw.tokens.cache_read": usage.cacheRead ?? 0,
@@ -2270,7 +2271,6 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         const attrs = {
           "openclaw.channel": lowCardinalityAttr(evt.channel),
           "openclaw.source": lowCardinalityAttr(evt.source),
-          ...(evt.sessionId ? { "openclaw.sessionId": evt.sessionId } : {}),
         };
         messageDispatchStartedCounter.add(1, attrs);
         if (!tracesEnabled) {
@@ -2280,10 +2280,14 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         if (!traceContext?.spanId || activeTrustedSpans.has(traceContext.spanId)) {
           return;
         }
+        const spanAttrs: Record<string, string | number> = {
+          ...attrs,
+          ...(evt.sessionId ? { "openclaw.sessionId": evt.sessionId } : {}),
+        };
         trackInternalOrTrustedSpan(
           evt,
           metadata,
-          spanWithDuration("openclaw.message.processed", attrs, undefined, {
+          spanWithDuration("openclaw.message.processed", spanAttrs, undefined, {
             parentContext: internalOrTrustedExplicitParentContext(evt, metadata),
             startTimeMs: evt.ts,
           }),
@@ -2298,7 +2302,6 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
           "openclaw.outcome": evt.outcome,
           "openclaw.reason": lowCardinalityAttr(evt.reason, "none"),
           "openclaw.source": lowCardinalityAttr(evt.source),
-          ...(evt.sessionId ? { "openclaw.sessionId": evt.sessionId } : {}),
         };
         messageDispatchCompletedCounter.add(1, attrs);
         messageDispatchDurationHistogram.record(evt.durationMs, attrs);
@@ -2312,7 +2315,6 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         const attrs = {
           "openclaw.channel": lowCardinalityAttr(evt.channel),
           "openclaw.outcome": evt.outcome ?? "unknown",
-          ...(evt.sessionId ? { "openclaw.sessionId": evt.sessionId } : {}),
         };
         messageProcessedCounter.add(1, attrs);
         if (typeof evt.durationMs === "number") {
@@ -2321,7 +2323,10 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         if (!tracesEnabled) {
           return;
         }
-        const spanAttrs: Record<string, string | number> = { ...attrs };
+        const spanAttrs: Record<string, string | number> = {
+          ...attrs,
+          ...(evt.sessionId ? { "openclaw.sessionId": evt.sessionId } : {}),
+        };
         if (evt.reason) {
           spanAttrs["openclaw.reason"] = lowCardinalityAttr(evt.reason, "unknown");
         }
