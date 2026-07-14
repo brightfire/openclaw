@@ -1130,11 +1130,15 @@ export async function dispatchReplyFromConfig(
     );
   let agentDispatchStartedAt = 0;
 
+  const inboundUserPrompt = normalizeOptionalString(ctx.BodyForAgent ?? ctx.Body) || undefined;
+
   const recordProcessed = (
     outcome: "completed" | "skipped" | "error",
     opts?: {
       reason?: string;
       error?: string;
+      userPrompt?: string;
+      finalResponse?: string;
     },
   ) => {
     if (diagnosticsEnabled) {
@@ -3358,10 +3362,19 @@ export async function dispatchReplyFromConfig(
     counts.final += routedFinalCount;
     commitInboundDedupeIfClaimed();
     recordAgentDispatchCompleted("completed");
-    recordProcessed(
-      "completed",
-      pluginFallbackReason ? { reason: pluginFallbackReason } : undefined,
-    );
+    const finalResponseText =
+      replies
+        .filter((r) => r.isReasoning !== true)
+        .map((r) => normalizeOptionalString(r.text))
+        .filter(Boolean)
+        .join("\n") ||
+      accumulatedBlockText.trim() ||
+      undefined;
+    recordProcessed("completed", {
+      ...(pluginFallbackReason ? { reason: pluginFallbackReason } : {}),
+      userPrompt: inboundUserPrompt,
+      finalResponse: finalResponseText,
+    });
     markIdle("message_completed");
     completeDispatchReplyOperation();
     return attachSourceReplyDeliveryMode({
