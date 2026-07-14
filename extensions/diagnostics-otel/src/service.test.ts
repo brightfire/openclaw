@@ -270,6 +270,13 @@ function startedSpanOptions(name: string) {
   return startedSpanCall(name)?.[1];
 }
 
+function startedSpanOptionsWithAttribute(name: string, attrKey: string) {
+  return telemetryState.tracer.startSpan.mock.calls
+    .filter((call) => call[0] === name)
+    .map((call) => call[1] as { attributes?: Record<string, unknown> } | undefined)
+    .find((opts) => opts?.attributes?.[attrKey]);
+}
+
 function startedSpanParentContexts(name: string) {
   return telemetryState.tracer.startSpan.mock.calls
     .filter((call) => call[0] === name)
@@ -545,8 +552,6 @@ describe("diagnostics-otel service", () => {
       "openclaw.parent_span_id",
       "openclaw.runId",
       "openclaw.run_id",
-      "openclaw.sessionId",
-      "openclaw.session_id",
       "openclaw.sessionKey",
       "openclaw.session_key",
       "openclaw.spanId",
@@ -918,6 +923,45 @@ describe("diagnostics-otel service", () => {
     await service.stop?.(ctx);
     expect(sdkShutdown).not.toHaveBeenCalled();
     expect(logShutdown).toHaveBeenCalledTimes(1);
+  });
+
+  test("applies langfuse metadata in preloaded SDK mode", async () => {
+    process.env.OPENCLAW_OTEL_PRELOADED = "1";
+    const service = createDiagnosticsOtelService();
+    const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });
+    await service.start(ctx);
+
+    emitDiagnosticEvent({
+      type: "model.usage",
+      sessionKey: "agent:main:webchat",
+      sessionId: "session-id",
+      agentId: "agent:main:webchat",
+      agentLabel: "main",
+      channel: "webchat",
+      provider: "openai",
+      model: "gpt-5.4",
+      usage: { input: 10, output: 5, total: 15 },
+      durationMs: 50,
+    });
+    await flushDiagnosticEvents();
+
+    const usageSpan = telemetryState.spans.find((s) => s.name === "openclaw.model.usage");
+    expect(usageSpan).toBeDefined();
+    const langfuseCall = usageSpan?.setAttributes.mock.calls.find(
+      (call: unknown[]) =>
+        call[0] &&
+        typeof call[0] === "object" &&
+        "langfuse.trace.metadata.agent" in (call[0] as Record<string, unknown>),
+    );
+    expect(langfuseCall?.[0]).toEqual(
+      expect.objectContaining({ "langfuse.trace.metadata.agent": "main" }),
+    );
+    // sessionId is mapped to langfuse.session.id for Langfuse session grouping
+    expect(langfuseCall?.[0]).toEqual(
+      expect.objectContaining({ "langfuse.session.id": "session-id" }),
+    );
+
+    await service.stop?.(ctx);
   });
 
   test("emits and records bounded telemetry exporter health events", async () => {
@@ -1777,7 +1821,7 @@ describe("diagnostics-otel service", () => {
     expect(modelUsageOptions?.attributes?.["gen_ai.usage.cache_read.input_tokens"]).toBe(30);
     expect(modelUsageOptions?.attributes?.["gen_ai.usage.cache_creation.input_tokens"]).toBe(20);
     expect(Object.hasOwn(modelUsageOptions?.attributes ?? {}, "openclaw.sessionKey")).toBe(false);
-    expect(Object.hasOwn(modelUsageOptions?.attributes ?? {}, "openclaw.sessionId")).toBe(false);
+    expect(modelUsageOptions?.attributes?.["openclaw.sessionId"]).toBe("session-id");
     expect(Object.hasOwn(modelUsageOptions?.attributes ?? {}, "gen_ai.provider.name")).toBe(false);
     expect(Object.hasOwn(modelUsageOptions?.attributes ?? {}, "gen_ai.input.messages")).toBe(false);
     expect(Object.hasOwn(modelUsageOptions?.attributes ?? {}, "gen_ai.output.messages")).toBe(
@@ -2332,7 +2376,7 @@ describe("diagnostics-otel service", () => {
     expect(harnessOptions?.attributes?.["openclaw.harness.items.completed"]).toBe(2);
     expect(harnessOptions?.attributes?.["openclaw.harness.items.active"]).toBe(1);
     expect(Object.hasOwn(harnessOptions?.attributes ?? {}, "openclaw.runId")).toBe(false);
-    expect(Object.hasOwn(harnessOptions?.attributes ?? {}, "openclaw.sessionId")).toBe(false);
+    expect(harnessOptions?.attributes?.["openclaw.sessionId"]).toBe("session-1");
     expect(Object.hasOwn(harnessOptions?.attributes ?? {}, "openclaw.sessionKey")).toBe(false);
     expect(Object.hasOwn(harnessOptions?.attributes ?? {}, "openclaw.traceId")).toBe(false);
     expect(harnessOptions?.startTime).toBeTypeOf("number");
@@ -2426,7 +2470,7 @@ describe("diagnostics-otel service", () => {
     expect(failoverOptions?.attributes?.["openclaw.failover.suspended"]).toBe(true);
     expect(failoverOptions?.attributes?.["openclaw.failover.cascade_depth"]).toBe(1);
     expect(failoverOptions?.attributes?.["openclaw.lane"]).toBe("main");
-    expect(Object.hasOwn(failoverOptions?.attributes ?? {}, "openclaw.sessionId")).toBe(false);
+    expect(failoverOptions?.attributes?.["openclaw.sessionId"]).toBe("session-1");
     expect(Object.hasOwn(failoverOptions?.attributes ?? {}, "openclaw.sessionKey")).toBe(false);
     expect(failoverOptions?.startTime).toBeTypeOf("number");
     expect(firstSpanEndTime("openclaw.model.failover")).toBeTypeOf("number");
@@ -4877,6 +4921,150 @@ describe("diagnostics-otel service", () => {
     expect(String(attrs?.["openclaw.reason"])).not.toContain(
       "ghp_abcdefghijklmnopqrstuvwxyz123456", // pragma: allowlist secret
     );
+    await service.stop?.(ctx);
+  });
+
+  test("LangfuseMetadataSpanProcessor copies agent and bot to metadata fields", async () => {
+    const { LangfuseMetadataSpanProcessor } = await import("./service.js");
+    const processor = new LangfuseMetadataSpanProcessor();
+    const setAttributeMock = vi.fn();
+    const span = {
+      attributes: { "openclaw.agent": "main", "openclaw.sessionId": "sess-123" },
+      resource: { attributes: { "service.instance.id": "vash" } },
+      setAttribute: setAttributeMock,
+    } as unknown as Parameters<typeof processor.onStart>[0];
+    processor.onStart(span, undefined as unknown as Parameters<typeof processor.onStart>[1]);
+    expect(setAttributeMock).toHaveBeenCalledWith("langfuse.trace.metadata.agent", "main");
+    expect(setAttributeMock).toHaveBeenCalledWith("langfuse.trace.metadata.bot", "vash");
+    expect(setAttributeMock).toHaveBeenCalledWith("langfuse.session.id", "sess-123");
+  });
+
+  test("sessionId is present on spans after un-dropping", async () => {
+    const service = createDiagnosticsOtelService();
+    const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });
+    await service.start(ctx);
+
+    emitDiagnosticEvent({
+      type: "model.usage",
+      sessionKey: "agent:main:webchat",
+      sessionId: "session-abc-456",
+      channel: "webchat",
+      provider: "openai",
+      model: "gpt-5.4",
+      usage: { input: 1, total: 1 },
+      durationMs: 50,
+    });
+    await flushDiagnosticEvents();
+
+    const usageOptions = startedSpanOptions("openclaw.model.usage");
+    expect(usageOptions?.attributes?.["openclaw.sessionId"]).toBe("session-abc-456");
+    await service.stop?.(ctx);
+  });
+
+  test("sessionId propagates to model-call and harness-run spans", async () => {
+    const service = createDiagnosticsOtelService();
+    const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });
+    await service.start(ctx);
+
+    // model.call.completed — with sessionId
+    emitDiagnosticEvent({
+      type: "model.call.completed",
+      runId: "run-1",
+      callId: "call-1",
+      sessionId: "session-mc-1",
+      provider: "openai",
+      model: "gpt-5.4",
+      api: "completions",
+      transport: "http",
+      durationMs: 80,
+      trace: {
+        traceId: TRACE_ID,
+        spanId: CHILD_SPAN_ID,
+        parentSpanId: SPAN_ID,
+        traceFlags: "01",
+      },
+    });
+    // model.call.error — with sessionId
+    emitDiagnosticEvent({
+      type: "model.call.error",
+      runId: "run-2",
+      callId: "call-2",
+      sessionId: "session-mc-2",
+      provider: "openai",
+      model: "gpt-5.4",
+      api: "completions",
+      transport: "http",
+      durationMs: 30,
+      errorCategory: "timeout",
+      trace: {
+        traceId: TRACE_ID,
+        spanId: CHILD_SPAN_ID,
+        parentSpanId: SPAN_ID,
+        traceFlags: "01",
+      },
+    });
+    // harness.run.completed — with sessionId
+    emitDiagnosticEvent({
+      type: "harness.run.completed",
+      runId: "run-1",
+      sessionKey: "session-key",
+      sessionId: "session-hr-1",
+      provider: "codex",
+      model: "gpt-5.4",
+      channel: "qa",
+      harnessId: "codex",
+      pluginId: "codex-plugin",
+      outcome: "completed",
+      durationMs: 90,
+      trace: {
+        traceId: TRACE_ID,
+        spanId: GRANDCHILD_SPAN_ID,
+        parentSpanId: CHILD_SPAN_ID,
+        traceFlags: "01",
+      },
+    });
+    // harness.run.error — with sessionId
+    emitDiagnosticEvent({
+      type: "harness.run.error",
+      runId: "run-3",
+      sessionKey: "session-key",
+      sessionId: "session-hr-2",
+      provider: "codex",
+      model: "gpt-5.4",
+      channel: "qa",
+      harnessId: "codex",
+      pluginId: "codex-plugin",
+      durationMs: 40,
+      phase: "send",
+      errorCategory: "connection_closed",
+      trace: {
+        traceId: TRACE_ID,
+        spanId: GRANDCHILD_SPAN_ID,
+        parentSpanId: CHILD_SPAN_ID,
+        traceFlags: "01",
+      },
+    });
+    await flushDiagnosticEvents();
+
+    // model.call.completed span — sessionId in startSpan attributes
+    const modelOptions = startedSpanOptions("openclaw.model.call");
+    expect(modelOptions?.attributes?.["openclaw.sessionId"]).toBe("session-mc-1");
+
+    // model.call.error span — sessionId in startSpan attributes
+    const modelErrorOptions = startedSpanOptionsWithAttribute("openclaw.model.call", "error.type");
+    expect(modelErrorOptions?.attributes?.["openclaw.sessionId"]).toBe("session-mc-2");
+
+    // harness.run.completed span — sessionId in startSpan attributes
+    const harnessOptions = startedSpanOptions("openclaw.harness.run");
+    expect(harnessOptions?.attributes?.["openclaw.sessionId"]).toBe("session-hr-1");
+
+    // harness.run.error span — sessionId in startSpan attributes
+    const harnessErrorOptions = startedSpanOptionsWithAttribute(
+      "openclaw.harness.run",
+      "error.type",
+    );
+    expect(harnessErrorOptions?.attributes?.["openclaw.sessionId"]).toBe("session-hr-2");
+
     await service.stop?.(ctx);
   });
 });
