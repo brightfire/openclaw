@@ -2011,7 +2011,7 @@ export function createOpenAIResponsesTransportStreamFn(): StreamFn {
           throw new Error("An unknown error occurred");
         }
         if (options?.cacheRetention) {
-          output.cacheRetention = options.cacheRetention;
+          output.cacheRetention = effectiveRetention;
         }
         stream.push({ type: "done", reason: output.stopReason as never, message: output as never });
         stream.end();
@@ -2022,7 +2022,7 @@ export function createOpenAIResponsesTransportStreamFn(): StreamFn {
         );
         assignTransportErrorDetails(output, error, options?.signal);
         if (options?.cacheRetention) {
-          output.cacheRetention = options.cacheRetention;
+          output.cacheRetention = effectiveRetention;
         }
         stream.push({ type: "error", reason: output.stopReason as never, error: output as never });
         stream.end();
@@ -2472,7 +2472,7 @@ export function createAzureOpenAIResponsesTransportStreamFn(): StreamFn {
           throw new Error("An unknown error occurred");
         }
         if (options?.cacheRetention) {
-          output.cacheRetention = options.cacheRetention;
+          output.cacheRetention = effectiveRetention;
         }
         stream.push({ type: "done", reason: output.stopReason as never, message: output as never });
         stream.end();
@@ -2483,7 +2483,7 @@ export function createAzureOpenAIResponsesTransportStreamFn(): StreamFn {
         );
         assignTransportErrorDetails(output, error, options?.signal);
         if (options?.cacheRetention) {
-          output.cacheRetention = options.cacheRetention;
+          output.cacheRetention = effectiveRetention;
         }
         stream.push({ type: "error", reason: output.stopReason as never, error: output as never });
         stream.end();
@@ -2725,14 +2725,14 @@ export function createOpenAICompletionsTransportStreamFn(): StreamFn {
           throw new Error("Request was aborted");
         }
         if (options?.cacheRetention) {
-          output.cacheRetention = options.cacheRetention;
+          output.cacheRetention = effectiveRetention;
         }
         stream.push({ type: "done", reason: output.stopReason as never, message: output as never });
         stream.end();
       } catch (error) {
         assignTransportErrorDetails(output, error, options?.signal);
         if (options?.cacheRetention) {
-          output.cacheRetention = options.cacheRetention;
+          output.cacheRetention = effectiveRetention;
         }
         stream.push({ type: "error", reason: output.stopReason as never, error: output as never });
         stream.end();
