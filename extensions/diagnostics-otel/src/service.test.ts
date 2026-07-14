@@ -4901,6 +4901,48 @@ describe("diagnostics-otel service", () => {
     expect(setAttributeMock).toHaveBeenCalledWith("langfuse.session.id", "sess-123");
   });
 
+  test("langfuse.session.id is redacted when sessionId contains sensitive content", async () => {
+    const service = createDiagnosticsOtelService();
+    const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });
+    await service.start(ctx);
+
+    emitDiagnosticEvent({
+      type: "model.usage",
+      sessionKey: "agent:main:webchat",
+      sessionId: "sk-test1234567890",
+      agentId: "agent:main:webchat",
+      agentLabel: "main",
+      channel: "webchat",
+      provider: "openai",
+      model: "gpt-5.4",
+      usage: { input: 10, output: 5, total: 15 },
+      durationMs: 50,
+    });
+    await flushDiagnosticEvents();
+
+    const usageSpan = telemetryState.spans.find((s) => s.name === "openclaw.model.usage");
+    expect(usageSpan).toBeDefined();
+    const langfuseCall = usageSpan?.setAttributes.mock.calls.find(
+      (call: unknown[]) =>
+        call[0] &&
+        typeof call[0] === "object" &&
+        "langfuse.session.id" in (call[0] as Record<string, unknown>),
+    );
+    expect(langfuseCall?.[0]).toEqual(
+      expect.objectContaining({
+        "langfuse.session.id": expect.not.stringMatching(/^sk-test/),
+      }),
+    );
+    // The redacted value should still be a non-empty string
+    const sessionId = (langfuseCall?.[0] as Record<string, unknown>)?.["langfuse.session.id"];
+    expect(typeof sessionId).toBe("string");
+    expect(sessionId.length).toBeGreaterThan(0);
+    // And the original span attribute should also be redacted
+    expect(usageSpan?.attributes?.["openclaw.sessionId"]).not.toBe("sk-test1234567890");
+
+    await service.stop?.(ctx);
+  });
+
   test("sessionId is present on spans after un-dropping", async () => {
     const service = createDiagnosticsOtelService();
     const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });
