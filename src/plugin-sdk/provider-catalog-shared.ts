@@ -133,6 +133,7 @@ function cloneManifestCatalogTieredCost(
     output: tier.output,
     cacheRead: tier.cacheRead,
     cacheWrite: tier.cacheWrite,
+    ...(typeof tier.cacheWriteShort === "number" ? { cacheWriteShort: tier.cacheWriteShort } : {}),
     range: tier.range.length === 1 ? [tier.range[0]] : [tier.range[0], tier.range[1]],
   };
 }

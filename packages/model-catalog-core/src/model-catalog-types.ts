@@ -189,6 +189,7 @@ export type ModelCatalogTieredCost = {
   output: number;
   cacheRead: number;
   cacheWrite: number;
+  cacheWriteShort?: number;
   range: [number, number] | [number];
 };
 

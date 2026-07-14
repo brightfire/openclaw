@@ -157,6 +157,7 @@ function normalizeModelCatalogTieredCost(value: unknown): ModelCatalogTieredCost
     const output = normalizeNonNegativeNumber(entry.output);
     const cacheRead = normalizeNonNegativeNumber(entry.cacheRead);
     const cacheWrite = normalizeNonNegativeNumber(entry.cacheWrite);
+    const cacheWriteShort = normalizeNonNegativeNumber(entry.cacheWriteShort);
     if (
       input === undefined ||
       output === undefined ||
@@ -176,6 +177,7 @@ function normalizeModelCatalogTieredCost(value: unknown): ModelCatalogTieredCost
       output,
       cacheRead,
       cacheWrite,
+      ...(cacheWriteShort !== undefined ? { cacheWriteShort } : {}),
       range:
         rangeValues.length === 1
           ? ([rangeValues[0]] as [number])
