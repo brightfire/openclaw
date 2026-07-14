@@ -1373,20 +1373,27 @@ export async function refreshGatewayModelPricingCache(
         // OpenRouter's input_cache_write is a generic flat price.
         // Prefer LiteLLM's cacheWrite when available so long-retention
         // cache writes are priced correctly.
+        // Use > 0 (not != null) because parseLiteLLMPricing normalizes missing
+        // cache costs to 0 via toPricePerMillion(null). A synthetic zero would
+        // pass != null and overwrite OpenRouter's real cache prices as free.
         nextPricing.set(modelKey(ref.provider, ref.model), {
           ...openRouterPricing,
           tieredPricing: litellmPricing.tieredPricing,
-          ...(litellmPricing.cacheWrite != null ? { cacheWrite: litellmPricing.cacheWrite } : {}),
-          ...(litellmPricing.cacheWriteShort != null
+          ...(litellmPricing.cacheWrite > 0 ? { cacheWrite: litellmPricing.cacheWrite } : {}),
+          ...(litellmPricing.cacheWriteShort != null && litellmPricing.cacheWriteShort > 0
             ? { cacheWriteShort: litellmPricing.cacheWriteShort }
             : {}),
         });
-      } else if (openRouterPricing && litellmPricing?.cacheWriteShort != null) {
+      } else if (
+        openRouterPricing &&
+        litellmPricing?.cacheWriteShort != null &&
+        litellmPricing.cacheWriteShort > 0
+      ) {
         // OpenRouter base + LiteLLM flat short-cache price.
         // Also prefer LiteLLM's cacheWrite (long rate) when present.
         nextPricing.set(modelKey(ref.provider, ref.model), {
           ...openRouterPricing,
-          ...(litellmPricing.cacheWrite != null ? { cacheWrite: litellmPricing.cacheWrite } : {}),
+          ...(litellmPricing.cacheWrite > 0 ? { cacheWrite: litellmPricing.cacheWrite } : {}),
           cacheWriteShort: litellmPricing.cacheWriteShort,
         });
       } else if (openRouterPricing) {
