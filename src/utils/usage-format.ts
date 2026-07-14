@@ -429,7 +429,14 @@ function buildModelCostFingerprint(cost: RawModelCostConfig): string {
   const tierFingerprint = Array.isArray(cost.tieredPricing)
     ? cost.tieredPricing.flatMap((tier) => {
         const range = Array.isArray(tier.range) ? tier.range : [];
-        return [tier.input, tier.output, tier.cacheRead, tier.cacheWrite, ...range];
+        return [
+          tier.input,
+          tier.output,
+          tier.cacheRead,
+          tier.cacheWrite,
+          tier.cacheWriteShort,
+          ...range,
+        ];
       })
     : [];
   return [
