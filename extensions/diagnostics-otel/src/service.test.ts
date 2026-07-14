@@ -270,6 +270,13 @@ function startedSpanOptions(name: string) {
   return startedSpanCall(name)?.[1];
 }
 
+function startedSpanOptionsWithAttribute(name: string, attrKey: string) {
+  return telemetryState.tracer.startSpan.mock.calls
+    .filter((call) => call[0] === name)
+    .map((call) => call[1] as { attributes?: Record<string, unknown> } | undefined)
+    .find((opts) => opts?.attributes?.[attrKey]);
+}
+
 function startedSpanParentContexts(name: string) {
   return telemetryState.tracer.startSpan.mock.calls
     .filter((call) => call[0] === name)
@@ -5000,10 +5007,7 @@ describe("diagnostics-otel service", () => {
     expect(modelOptions?.attributes?.["openclaw.sessionId"]).toBe("session-mc-1");
 
     // model.call.error span — sessionId in startSpan attributes
-    const modelErrorOptions = telemetryState.tracer.startSpan.mock.calls
-      .filter((call) => call[0] === "openclaw.model.call")
-      .map((call) => call[1])
-      .find((opts) => opts?.attributes?.["error.type"]);
+    const modelErrorOptions = startedSpanOptionsWithAttribute("openclaw.model.call", "error.type");
     expect(modelErrorOptions?.attributes?.["openclaw.sessionId"]).toBe("session-mc-2");
 
     // harness.run.completed span — sessionId in startSpan attributes
@@ -5011,10 +5015,10 @@ describe("diagnostics-otel service", () => {
     expect(harnessOptions?.attributes?.["openclaw.sessionId"]).toBe("session-hr-1");
 
     // harness.run.error span — sessionId in startSpan attributes
-    const harnessErrorOptions = telemetryState.tracer.startSpan.mock.calls
-      .filter((call) => call[0] === "openclaw.harness.run")
-      .map((call) => call[1])
-      .find((opts) => opts?.attributes?.["error.type"]);
+    const harnessErrorOptions = startedSpanOptionsWithAttribute(
+      "openclaw.harness.run",
+      "error.type",
+    );
     expect(harnessErrorOptions?.attributes?.["openclaw.sessionId"]).toBe("session-hr-2");
 
     await service.stop?.(ctx);
