@@ -1761,9 +1761,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         }
         const sessionId = attributes["openclaw.sessionId"];
         if (typeof sessionId === "string" && sessionId) {
-          // Redact before exporting via langfuse.session.id, since this
-          // attribute is set outside redactOtelAttributes on the span.
-          result["langfuse.session.id"] = redactSensitiveText(sessionId);
+          result["langfuse.session.id"] = sessionId;
         }
         return result;
       };
