@@ -1824,6 +1824,44 @@ describe("diagnostics-otel service", () => {
     await service.stop?.(ctx);
   });
 
+  test("preserves OpenRouter preset model IDs (@ prefix) in gen_ai.request.model", async () => {
+    const service = createDiagnosticsOtelService();
+    const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });
+    await service.start(ctx);
+
+    emitDiagnosticEvent({
+      type: "model.usage",
+      sessionKey: "session-key",
+      sessionId: "session-id",
+      provider: "openrouter",
+      model: "@preset/conversation-default",
+      usage: {
+        input: 100,
+        output: 40,
+        total: 140,
+      },
+      durationMs: 25,
+    });
+    await flushDiagnosticEvents();
+
+    const modelUsageOptions = startedSpanOptions("openclaw.model.usage");
+    expect(modelUsageOptions?.attributes?.["gen_ai.request.model"]).toBe(
+      "@preset/conversation-default",
+    );
+    expect(modelUsageOptions?.attributes?.["openclaw.model"]).toBe("@preset/conversation-default");
+
+    // Verify token usage metric also carries the correct model
+    const tokenUsage = telemetryState.histograms.get("gen_ai.client.token.usage");
+    expect(tokenUsage?.record).toHaveBeenCalledWith(
+      100,
+      expect.objectContaining({
+        "gen_ai.request.model": "@preset/conversation-default",
+        "gen_ai.token.type": "input",
+      }),
+    );
+    await service.stop?.(ctx);
+  });
+
   test("exports GenAI client operation duration histogram without diagnostic identifiers", async () => {
     const service = createDiagnosticsOtelService();
     const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { metrics: true });

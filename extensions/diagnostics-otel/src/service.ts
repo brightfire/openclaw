@@ -327,7 +327,7 @@ function lowCardinalityAttr(value: string | undefined, fallback = "unknown"): st
  * because provider-prefixed model IDs (e.g. `z-ai/glm-5.2`, `openai/gpt-5.6-sol`)
  * are legitimate, low-cardinality identifiers used by OpenRouter and similar providers.
  */
-const MODEL_ID_VALUE_RE = /^[A-Za-z0-9_./:+-]{1,120}$/u;
+const MODEL_ID_VALUE_RE = /^[A-Za-z0-9_./:@+-]{1,120}$/u;
 function modelIdAttr(value: string | undefined, fallback = "unknown"): string {
   if (!value) {
     return fallback;
