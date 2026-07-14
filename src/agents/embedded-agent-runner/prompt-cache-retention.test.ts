@@ -85,22 +85,22 @@ describe("prompt cache retention", () => {
     ).toBeUndefined();
   });
 
-  it("returns undefined for openai-completions without explicit cacheRetention", () => {
-    // Without an explicit user choice, openai-completions providers fall back
-    // to the transport-level default ("short") rather than receiving a
-    // wrapper-injected value.
+  it("returns short for openai-completions without explicit cacheRetention", () => {
+    // Without an explicit user choice, openai-completions providers that opt
+    // into prompt-cache keys default to short retention, matching the
+    // transport-level default in streamOpenAICompletions.
     expect(
       resolveCacheRetention(undefined, "omlx-local", "openai-completions", "local_model", true),
-    ).toBeUndefined();
-    expect(
-      resolveCacheRetention({}, "omlx-local", "openai-completions", "local_model", true),
-    ).toBeUndefined();
+    ).toBe("short");
+    expect(resolveCacheRetention({}, "omlx-local", "openai-completions", "local_model", true)).toBe(
+      "short",
+    );
   });
 
   it("does not map legacy cacheControlTtl for openai-completions prompt-cache-key providers", () => {
     // Legacy TTL aliases were Anthropic/Google semantics; OpenAI-compatible
     // completions providers need an explicit cacheRetention value before the
-    // wrapper forwards retention to the transport.
+    // wrapper forwards retention to the transport. The default remains short.
     expect(
       resolveCacheRetention(
         { cacheControlTtl: "1h" },
@@ -109,7 +109,7 @@ describe("prompt cache retention", () => {
         "local_model",
         true,
       ),
-    ).toBeUndefined();
+    ).toBe("short");
     expect(
       resolveCacheRetention(
         { cacheControlTtl: "5m" },
@@ -118,7 +118,7 @@ describe("prompt cache retention", () => {
         "local_model",
         true,
       ),
-    ).toBeUndefined();
+    ).toBe("short");
   });
 
   it("identifies supported direct Google cache families", () => {
