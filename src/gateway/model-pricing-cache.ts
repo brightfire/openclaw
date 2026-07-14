@@ -1369,17 +1369,24 @@ export async function refreshGatewayModelPricingCache(
       // If only one source has data, use that one.
       if (openRouterPricing && litellmPricing?.tieredPricing) {
         // Both sources present and LiteLLM has tiers — merge.
+        // LiteLLM's cacheWrite is the above-1hr/long cache-write rate;
+        // OpenRouter's input_cache_write is a generic flat price.
+        // Prefer LiteLLM's cacheWrite when available so long-retention
+        // cache writes are priced correctly.
         nextPricing.set(modelKey(ref.provider, ref.model), {
           ...openRouterPricing,
           tieredPricing: litellmPricing.tieredPricing,
+          ...(litellmPricing.cacheWrite != null ? { cacheWrite: litellmPricing.cacheWrite } : {}),
           ...(litellmPricing.cacheWriteShort != null
             ? { cacheWriteShort: litellmPricing.cacheWriteShort }
             : {}),
         });
       } else if (openRouterPricing && litellmPricing?.cacheWriteShort != null) {
         // OpenRouter base + LiteLLM flat short-cache price.
+        // Also prefer LiteLLM's cacheWrite (long rate) when present.
         nextPricing.set(modelKey(ref.provider, ref.model), {
           ...openRouterPricing,
+          ...(litellmPricing.cacheWrite != null ? { cacheWrite: litellmPricing.cacheWrite } : {}),
           cacheWriteShort: litellmPricing.cacheWriteShort,
         });
       } else if (openRouterPricing) {
