@@ -151,12 +151,6 @@ export async function preparePackageChangelog(cwd = process.cwd()) {
   const backupPath = path.join(cwd, BACKUP_PATH);
   const original = await readFile(changelogPath, "utf8");
   const packageVersion = await readPackageVersion(cwd);
-  // Brightfire fork versions use a -bf<N> suffix. Ship the full changelog
-  // so users upgrading across upstream versions (e.g. 2026.5.7 → 2026.6.1)
-  // can see all changes, not just the current release section.
-  if (/-bf\d+$/u.test(packageVersion)) {
-    return false;
-  }
   const packaged = extractCurrentPackageChangelog(original, packageVersion);
   if (packaged === original) {
     return false;

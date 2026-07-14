@@ -15,24 +15,43 @@ echo "pnpm version: $(pnpm -v)"
 echo "tsx available: $(node -e 'try{require.resolve("tsx");console.log("yes")}catch{console.log("no")}')"
 echo "verifyDepsBeforeRun: $(pnpm config get verify-deps-before-run 2>/dev/null || echo 'unknown')"
 
-echo "=== Running deps:shrinkwrap:generate ==="
-pnpm --verbose deps:shrinkwrap:generate
+# All generators are independent (different inputs, non-overlapping outputs)
+# so run them all in parallel and wait for every one before committing.
+#
+#   deps:shrinkwrap:generate  reads pnpm-lock.yaml -> writes npm-shrinkwrap.json
+#   config:schema:gen         validates only; no file output
+#   protocol:gen              -> dist/protocol.schema.json
+#   protocol:gen:swift        -> apps/*/ Swift protocol files
+#   config:docs:gen           -> config doc baseline hash
+#   plugin-sdk:api:gen        -> plugin-sdk API baseline hash
+#   plugins:sync              -> propagates root package.json version to extensions/*/package.json
+#
+echo "=== Running generators in parallel ==="
+declare -a GEN_PIDS=()
+declare -a GEN_NAMES=()
 
-# Use documented pnpm commands (not raw node calls) so the script stays
-# correct even if upstream refactors the underlying generator scripts.
-# See docs/.generated/README.md and docs/gateway/protocol.md.
-echo "=== Running config:schema:gen ==="
-pnpm --verbose config:schema:gen
-echo "=== Running protocol:gen ==="
-pnpm --verbose protocol:gen
-echo "=== Running protocol:gen:swift ==="
-pnpm --verbose protocol:gen:swift
-echo "=== Running config:docs:gen ==="
-pnpm --verbose config:docs:gen
-echo "=== Running plugin-sdk:api:gen ==="
-pnpm --verbose plugin-sdk:api:gen
-echo "=== Syncing plugin versions to match root package.json ==="
-pnpm --verbose plugins:sync
+pnpm deps:shrinkwrap:generate  & GEN_PIDS+=($!) GEN_NAMES+=("deps:shrinkwrap:generate")
+pnpm config:schema:gen         & GEN_PIDS+=($!) GEN_NAMES+=("config:schema:gen")
+pnpm protocol:gen              & GEN_PIDS+=($!) GEN_NAMES+=("protocol:gen")
+pnpm protocol:gen:swift        & GEN_PIDS+=($!) GEN_NAMES+=("protocol:gen:swift")
+pnpm config:docs:gen           & GEN_PIDS+=($!) GEN_NAMES+=("config:docs:gen")
+pnpm plugin-sdk:api:gen        & GEN_PIDS+=($!) GEN_NAMES+=("plugin-sdk:api:gen")
+pnpm plugins:sync              & GEN_PIDS+=($!) GEN_NAMES+=("plugins:sync")
+
+# Wait for all — collect failures without short-circuiting so every PID is
+# reaped and the error list is complete.
+GEN_FAIL=0
+for i in "${!GEN_PIDS[@]}"; do
+  if ! wait "${GEN_PIDS[$i]}"; then
+    echo "=== FAILED: ${GEN_NAMES[$i]} ===" >&2
+    GEN_FAIL=1
+  fi
+done
+if [ "$GEN_FAIL" -ne 0 ]; then
+  echo "One or more generators failed." >&2
+  exit 1
+fi
+
 echo "=== All generators complete ==="
 
 git add -A

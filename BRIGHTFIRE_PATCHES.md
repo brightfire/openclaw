@@ -9,19 +9,20 @@ is maintained, the merge-not-rebase philosophy, and the new-entry template.
 
 ## Patches
 
-| Name                          | Canonical branch                       | Branch HEAD  | Source PR                                         | Last updated |
-| ----------------------------- | -------------------------------------- | ------------ | ------------------------------------------------- | ------------ |
-| Upstream Test Fixes | `brightfire/upstream-test-fixes` | `6abc801530` | https://github.com/brightfire/openclaw/pull/98 | 2026-06-16 |
-| Slack Markdown | `brightfire/slack-mrkdwn` | `4db19e0ed5` | — | 2026-06-16 |
-| XGW Cross-Gateway | `brightfire/xgw` | `711c73af36` | https://github.com/brightfire/openclaw/pull/87 | 2026-06-16 |
-| Cache Write TTL Cost | `brightfire/cache-write-ttl-cost` | `18f9ef482d` | <https://github.com/brightfire/openclaw/pull/24> | 2026-06-16 |
-| Context Window Min Cap | `brightfire/context-window-min-cap` | `5c10c1d69f` | <https://github.com/brightfire/openclaw/pull/31> | 2026-06-16 |
-| Session Reset Prompt | `brightfire/session-reset-prompt` | `9dbb036ead` | https://github.com/brightfire/openclaw/pull/67 | 2026-06-16 |
-| Control UI Title | `brightfire/control-ui-title` | `0f886ced90` | <https://github.com/openclaw/openclaw/pull/51067> | 2026-06-16 |
-| Store-Based Session Archiving | `brightfire/sessions-history-archived` | `b4e7fdf7bb` | https://github.com/brightfire/openclaw/pull/97 | 2026-06-16 |
-| CLI HTTP Health Fallback | `brightfire/cli-http-fallback` | `82107367f0` | — | 2026-06-16 |
-| skip changelog trimming for Brightfire -bf versions | `brightfire/changelog-bf-version` | `c41a70f132` | — | 2026-06-16 |
-| configurable sessionTarget for hook mappings | `brightfire/webhook-sessiontarget-support` | `ef22d62d59` | https://github.com/brightfire/openclaw/pull/106 | 2026-06-17 |
+| Name                                                                                | Canonical branch                           | Branch HEAD  | Source PR                                         | Last updated |
+| ----------------------------------------------------------------------------------- | ------------------------------------------ | ------------ | ------------------------------------------------- | ------------ |
+| Upstream Test Fixes | `brightfire/upstream-test-fixes` | `7c3b9ffcd5` | https://github.com/brightfire/openclaw/pull/150 | 2026-07-13 |
+| Slack Markdown                                                                      | `brightfire/slack-mrkdwn`                  | `4db19e0ed5` | —                                                 | 2026-06-16   |
+| XGW Cross-Gateway                                                                   | `brightfire/xgw`                           | `711c73af36` | https://github.com/brightfire/openclaw/pull/87    | 2026-06-16   |
+| Context Window Min Cap                                                              | `brightfire/context-window-min-cap`        | `5c10c1d69f` | <https://github.com/brightfire/openclaw/pull/31>  | 2026-06-16   |
+| Session Reset Prompt                                                                | `brightfire/session-reset-prompt`          | `9dbb036ead` | https://github.com/brightfire/openclaw/pull/67    | 2026-06-16   |
+| Control UI Title                                                                    | `brightfire/control-ui-title`              | `0f886ced90` | <https://github.com/openclaw/openclaw/pull/51067> | 2026-06-16   |
+| Store-Based Session Archiving                                                       | `brightfire/sessions-history-archived`     | `b4e7fdf7bb` | https://github.com/brightfire/openclaw/pull/97    | 2026-06-16   |
+| CLI HTTP Health Fallback                                                            | `brightfire/cli-http-fallback`             | `82107367f0` | —                                                 | 2026-06-16   |
+| skip changelog trimming for Brightfire -bf versions                                 | `brightfire/changelog-bf-version`          | `c41a70f132` | —                                                 | 2026-06-16   |
+| configurable sessionTarget for hook mappings                                        | `brightfire/webhook-sessiontarget-support` | `ef22d62d59` | https://github.com/brightfire/openclaw/pull/106   | 2026-06-17   |
+| chore(plugins): enable diagnostics-otel and slack by default                        | `brightfire/default-installed-plugins`     | `d017181ce4` | https://github.com/brightfire/openclaw/pull/129   | 2026-07-08   |
+| feat(otel): combine otel-agent-identity + skill-used-version into otel-improvements | `brightfire/otel-improvements` | `74a05b32ff` | https://github.com/brightfire/openclaw/pull/156 | 2026-07-14 |
 
 ## Slack Markdown
 
@@ -82,31 +83,6 @@ Cross-gateway (XGW) communication layer that allows OpenClaw instances to route 
 
 - `server-http.ts`: upstream added `isManagedOutgoingImagePath()` in the same area as our `isXgwPath()`. Include both; XGW handler goes AFTER upstream's `isManagedOutgoingImagePath` in the function declarations.
 - `server.impl.ts`: upstream added `else` branch after `scheduleGatewayPostReadyMaintenance`. Our `initXgw()` goes inside the `if (!minimalTestGateway)` block; preserve upstream's `else` branch.
-
-## Cache Write TTL Cost
-
-(canonical: `brightfire/cache-write-ttl-cost`)
-
-### Rationale
-
-Worker/sub-agent sessions use 5-minute cache TTL (not 1-hour), but the cost estimator always used the 2× long-TTL cache write rate. Adds `cacheWriteShort` to the model cost schema and threads `cacheRetention` through `estimateUsageCost()` so short-TTL sessions are priced at the correct 1.25× rate. Backward compatible: missing `cacheWriteShort` falls back to `cacheWrite`.
-
-### Files touched
-
-- `src/agents/pi-embedded-runner/types.ts` (`cacheRetention` on agent types)
-- `src/auto-reply/reply/agent-runner-usage-line.ts` (passes `cacheRetention`)
-- `src/auto-reply/reply/agent-runner.ts` (passes `cacheRetention`)
-- `src/auto-reply/reply/session-usage.ts` (passes `cacheRetention`)
-- `src/config/schema.base.generated.ts` (new `cacheWriteShort` field)
-- `src/config/types.models.ts` (new optional `cacheWriteShort` in cost type)
-- `src/config/zod-schema.core.ts` (new optional `cacheWriteShort` in Zod schema)
-- `src/cron/isolated-agent/run.ts` (passes `cacheRetention`)
-- `src/utils/usage-format.test.ts` (4 new test cases)
-- `src/utils/usage-format.ts` (`estimateUsageCost` accepts `cacheRetention`)
-
-### Upgrade guidance
-
-**Conflicts:** `schema.base.generated.ts` — regenerate with `npm run config:schema:gen` rather than resolving by hand.
 
 ## Context Window Min Cap
 
@@ -308,6 +284,44 @@ what tends to conflict and how to resolve it._
 ## configurable sessionTarget for hook mappings
 
 (canonical: `brightfire/webhook-sessiontarget-support`)
+
+### Rationale
+
+_Add description of what this patch does and why._
+
+### Files touched
+
+TBD — update after first stable merge
+
+### Upgrade guidance
+
+_Describe upstream changes that have historically conflicted and how they
+were resolved. Patches are absorbed by `bf-build-stable` via squash-merge of
+the canonical branch — do **not** prescribe `git cherry-pick` here. Describe
+what tends to conflict and how to resolve it._
+
+## chore(plugins): enable diagnostics-otel and slack by default
+
+(canonical: `brightfire/default-installed-plugins`)
+
+### Rationale
+
+_Add description of what this patch does and why._
+
+### Files touched
+
+TBD — update after first stable merge
+
+### Upgrade guidance
+
+_Describe upstream changes that have historically conflicted and how they
+were resolved. Patches are absorbed by `bf-build-stable` via squash-merge of
+the canonical branch — do **not** prescribe `git cherry-pick` here. Describe
+what tends to conflict and how to resolve it._
+
+## feat(otel): combine otel-agent-identity + skill-used-version into otel-improvements
+
+(canonical: `brightfire/otel-improvements`)
 
 ### Rationale
 
