@@ -22,7 +22,10 @@ import {
   getAgentRunContext,
   releaseAgentRunContext,
 } from "../../infra/agent-events.js";
-import { isDiagnosticsEnabled } from "../../infra/diagnostic-events.js";
+import {
+  emitInternalDiagnosticEvent,
+  isDiagnosticsEnabled,
+} from "../../infra/diagnostic-events.js";
 import {
   createDiagnosticTraceContextFromActiveScope,
   runWithDiagnosticTraceContext,
@@ -35,7 +38,6 @@ import {
   type SourceDeliveryVisibleDelivery,
 } from "../../infra/outbound/source-delivery-plan.js";
 import { createDiagnosticMessageLifecycle } from "../../logging/message-lifecycle.js";
-import { logMessageDispatchCompleted, logMessageDispatchStarted } from "../../logging/diagnostic.js";
 import { isCommandLaneTaskTimeoutError } from "../../process/command-queue.js";
 import { CommandLane } from "../../process/lanes.js";
 import { createLazyImportLoader } from "../../shared/lazy-promise.js";
@@ -1352,7 +1354,13 @@ export async function runCronIsolatedAgentTurn(params: {
   // this anchor via message.dispatch.started (dispatch-from-config.ts); the cron
   // isolated path must emit it explicitly.
   if (diagnosticsEnabled) {
-    logMessageDispatchStarted({
+    // Emit as an internal event so the OTel service's recordMessageDispatchStarted
+    // handler resolves the trace context (internalOrTrustedTraceContext requires
+    // metadata.trusted || metadata.internal). emitDiagnosticEvent (used by
+    // logMessageDispatchStarted) sets neither, causing the handler to bail early
+    // and never create the tracked message.processed span.
+    emitInternalDiagnosticEvent({
+      type: "message.dispatch.started",
       sessionId: prepared.context.runSessionId,
       sessionKey: prepared.context.runSessionKey,
       channel: "cron",
@@ -1465,7 +1473,9 @@ export async function runCronIsolatedAgentTurn(params: {
       sessionKey: prepared.context.runSessionKey,
     };
     if (diagnosticsEnabled) {
-      logMessageDispatchCompleted({
+      // Emit as internal for the same reason as dispatch.started above.
+      emitInternalDiagnosticEvent({
+        type: "message.dispatch.completed",
         channel: "cron",
         source: "cron-isolated",
         durationMs: Date.now() - turnStartedAtMs,
