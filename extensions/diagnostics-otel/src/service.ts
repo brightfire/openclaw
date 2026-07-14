@@ -1254,18 +1254,17 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
               ...(headers ? { headers } : {}),
             })
           : undefined;
-        // BatchSpanProcessor batches spans for export; without it NodeSDK
-        // does not flush spans to the traceExporter automatically.
-        const spanProcessors = traceExporter
-          ? [
-              new BatchSpanProcessor(
-                traceExporter,
-                typeof otel.flushIntervalMs === "number"
-                  ? { scheduledDelayMillis: Math.max(1000, otel.flushIntervalMs) }
-                  : undefined,
-              ),
-            ]
-          : undefined;
+        // Only take the spanProcessors branch when flushIntervalMs is set so
+        // NodeSDK can use createBatchSpanProcessorFromEnv (which reads
+        // OTEL_BSP_* env vars) via the traceExporter branch otherwise.
+        const spanProcessors =
+          traceExporter && typeof otel.flushIntervalMs === "number"
+            ? [
+                new BatchSpanProcessor(traceExporter, {
+                  scheduledDelayMillis: Math.max(1000, otel.flushIntervalMs),
+                }),
+              ]
+            : undefined;
 
         const metricExporter = metricsEnabled
           ? new OTLPMetricExporter({
