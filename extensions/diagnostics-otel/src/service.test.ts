@@ -545,8 +545,6 @@ describe("diagnostics-otel service", () => {
       "openclaw.parent_span_id",
       "openclaw.runId",
       "openclaw.run_id",
-      "openclaw.sessionId",
-      "openclaw.session_id",
       "openclaw.sessionKey",
       "openclaw.session_key",
       "openclaw.spanId",
@@ -1777,7 +1775,7 @@ describe("diagnostics-otel service", () => {
     expect(modelUsageOptions?.attributes?.["gen_ai.usage.cache_read.input_tokens"]).toBe(30);
     expect(modelUsageOptions?.attributes?.["gen_ai.usage.cache_creation.input_tokens"]).toBe(20);
     expect(Object.hasOwn(modelUsageOptions?.attributes ?? {}, "openclaw.sessionKey")).toBe(false);
-    expect(Object.hasOwn(modelUsageOptions?.attributes ?? {}, "openclaw.sessionId")).toBe(false);
+    expect(modelUsageOptions?.attributes?.["openclaw.sessionId"]).toBe("session-id");
     expect(Object.hasOwn(modelUsageOptions?.attributes ?? {}, "gen_ai.provider.name")).toBe(false);
     expect(Object.hasOwn(modelUsageOptions?.attributes ?? {}, "gen_ai.input.messages")).toBe(false);
     expect(Object.hasOwn(modelUsageOptions?.attributes ?? {}, "gen_ai.output.messages")).toBe(
@@ -2388,7 +2386,7 @@ describe("diagnostics-otel service", () => {
     expect(failoverOptions?.attributes?.["openclaw.failover.suspended"]).toBe(true);
     expect(failoverOptions?.attributes?.["openclaw.failover.cascade_depth"]).toBe(1);
     expect(failoverOptions?.attributes?.["openclaw.lane"]).toBe("main");
-    expect(Object.hasOwn(failoverOptions?.attributes ?? {}, "openclaw.sessionId")).toBe(false);
+    expect(failoverOptions?.attributes?.["openclaw.sessionId"]).toBe("session-1");
     expect(Object.hasOwn(failoverOptions?.attributes ?? {}, "openclaw.sessionKey")).toBe(false);
     expect(failoverOptions?.startTime).toBeTypeOf("number");
     expect(firstSpanEndTime("openclaw.model.failover")).toBeTypeOf("number");
@@ -4839,6 +4837,42 @@ describe("diagnostics-otel service", () => {
     expect(String(attrs?.["openclaw.reason"])).not.toContain(
       "ghp_abcdefghijklmnopqrstuvwxyz123456", // pragma: allowlist secret
     );
+    await service.stop?.(ctx);
+  });
+
+  test("LangfuseMetadataSpanProcessor copies agent and bot to metadata fields", async () => {
+    const { LangfuseMetadataSpanProcessor } = await import("./service.js");
+    const processor = new LangfuseMetadataSpanProcessor();
+    const setAttributeMock = vi.fn();
+    const span = {
+      attributes: { "openclaw.agent": "main" },
+      resource: { attributes: { "service.instance.id": "vash" } },
+      setAttribute: setAttributeMock,
+    } as unknown as Parameters<typeof processor.onStart>[0];
+    processor.onStart(span, undefined as unknown as Parameters<typeof processor.onStart>[1]);
+    expect(setAttributeMock).toHaveBeenCalledWith("langfuse.trace.metadata.agent", "main");
+    expect(setAttributeMock).toHaveBeenCalledWith("langfuse.trace.metadata.bot", "vash");
+  });
+
+  test("sessionId is present on spans after un-dropping", async () => {
+    const service = createDiagnosticsOtelService();
+    const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });
+    await service.start(ctx);
+
+    emitDiagnosticEvent({
+      type: "model.usage",
+      sessionKey: "agent:main:webchat",
+      sessionId: "session-abc-456",
+      channel: "webchat",
+      provider: "openai",
+      model: "gpt-5.4",
+      usage: { input: 1, total: 1 },
+      durationMs: 50,
+    });
+    await flushDiagnosticEvents();
+
+    const usageOptions = startedSpanOptions("openclaw.model.usage");
+    expect(usageOptions?.attributes?.["openclaw.sessionId"]).toBe("session-abc-456");
     await service.stop?.(ctx);
   });
 });
