@@ -742,6 +742,8 @@ export type DiagnosticEventPrivateData = Readonly<{
   skillContent?: DiagnosticSkillCallContent;
   // Content gated by captureContent policy; routed privately so it never reaches untrusted onDiagnosticEvent listeners.
   messageContent?: { userPrompt?: string; finalResponse?: string };
+  // Same gating as messageContent but for harness.run started/completed events.
+  harnessContent?: { userPrompt?: string; finalResponse?: string };
 }>;
 
 type DiagnosticEventListener = (
