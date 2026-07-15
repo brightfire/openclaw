@@ -302,6 +302,9 @@ jobs:
           wait "$BUILD_PID"    || { echo "=== FAILED: pnpm build ===" >&2;                      FAIL=1; }
           [ "$FAIL" -eq 0 ]
 
+      - name: Build Control UI
+        run: pnpm ui:build
+
       # Tests run in the foreground. Release-check and tarball pack run in the
       # background concurrently — neither depends on test results, both depend
       # only on the already-complete build. Outputs (needs_release,
