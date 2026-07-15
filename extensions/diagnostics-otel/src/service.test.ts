@@ -4902,6 +4902,118 @@ describe("diagnostics-otel service", () => {
     await service.stop?.(ctx);
   });
 
+  test("sets input.value and output.value on harness.run spans when content capture is enabled", async () => {
+    const service = createDiagnosticsOtelService();
+    const ctx = createOtelContext(OTEL_TEST_ENDPOINT, {
+      traces: true,
+      metrics: true,
+      captureContent: {
+        enabled: true,
+        inputMessages: true,
+        outputMessages: true,
+      },
+    });
+    await service.start(ctx);
+
+    emitTrustedDiagnosticEventWithPrivateData(
+      {
+        type: "harness.run.started",
+        runId: "run-1",
+        harnessId: "codex",
+        pluginId: "codex",
+        provider: "openai",
+        model: "gpt-5.5",
+        channel: "slack",
+        trace: {
+          traceId: TRACE_ID,
+          spanId: SPAN_ID,
+          traceFlags: "01",
+        },
+      },
+      { harnessContent: { userPrompt: "hello world" } },
+    );
+    emitTrustedDiagnosticEventWithPrivateData(
+      {
+        type: "harness.run.completed",
+        runId: "run-1",
+        harnessId: "codex",
+        pluginId: "codex",
+        provider: "openai",
+        model: "gpt-5.5",
+        channel: "slack",
+        durationMs: 100,
+        outcome: "completed",
+        itemLifecycle: { startedCount: 1, completedCount: 1, activeCount: 0 },
+        trace: {
+          traceId: TRACE_ID,
+          spanId: SPAN_ID,
+          traceFlags: "01",
+        },
+      },
+      { harnessContent: { finalResponse: "hi there" } },
+    );
+    await flushDiagnosticEvents();
+
+    // input.value is set at span creation time via the started handler.
+    const startAttrs = startedSpanOptions("openclaw.harness.run")?.attributes;
+    expect(startAttrs?.["input.value"]).toBe("hello world");
+    // output.value is set via setSpanAttrs on the tracked span after completion.
+    const completedAttrs = firstSpanAttributes("openclaw.harness.run");
+    expect(completedAttrs["output.value"]).toBe("hi there");
+    expect(spanByName("openclaw.harness.run").end).toHaveBeenCalledTimes(1);
+    await service.stop?.(ctx);
+  });
+
+  test("does not set input.value or output.value on harness.run spans when content capture is disabled", async () => {
+    const service = createDiagnosticsOtelService();
+    const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });
+    await service.start(ctx);
+
+    emitTrustedDiagnosticEventWithPrivateData(
+      {
+        type: "harness.run.started",
+        runId: "run-1",
+        harnessId: "codex",
+        pluginId: "codex",
+        provider: "openai",
+        model: "gpt-5.5",
+        channel: "slack",
+        trace: {
+          traceId: TRACE_ID,
+          spanId: SPAN_ID,
+          traceFlags: "01",
+        },
+      },
+      { harnessContent: { userPrompt: "hello world" } },
+    );
+    emitTrustedDiagnosticEventWithPrivateData(
+      {
+        type: "harness.run.completed",
+        runId: "run-1",
+        harnessId: "codex",
+        pluginId: "codex",
+        provider: "openai",
+        model: "gpt-5.5",
+        channel: "slack",
+        durationMs: 100,
+        outcome: "completed",
+        itemLifecycle: { startedCount: 1, completedCount: 1, activeCount: 0 },
+        trace: {
+          traceId: TRACE_ID,
+          spanId: SPAN_ID,
+          traceFlags: "01",
+        },
+      },
+      { harnessContent: { finalResponse: "hi there" } },
+    );
+    await flushDiagnosticEvents();
+
+    const attrs = firstSpanAttributes("openclaw.harness.run");
+    expect(Object.hasOwn(attrs, "input.value")).toBe(false);
+    expect(Object.hasOwn(attrs, "output.value")).toBe(false);
+    await service.stop?.(ctx);
+  });
+
   test("redacts sensitive reason in session.state metric attributes", async () => {
     const service = createDiagnosticsOtelService();
     const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { metrics: true });

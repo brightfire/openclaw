@@ -2795,9 +2795,19 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
       const recordHarnessRunStarted = (
         evt: Extract<DiagnosticEventPayload, { type: "harness.run.started" }>,
         metadata: DiagnosticEventMetadata,
+        harnessContent?: { userPrompt?: string; finalResponse?: string },
       ) => {
         if (!tracesEnabled || !metadata.trusted) {
           return;
+        }
+        const spanAttrs: Record<string, string | number> = {
+          ...harnessRunMetricAttrs(evt),
+        };
+        if (contentCapturePolicy.inputMessages && harnessContent?.userPrompt) {
+          spanAttrs["input.value"] = normalizeOtelLogString(
+            harnessContent.userPrompt,
+            MAX_OTEL_CONTENT_ATTRIBUTE_CHARS,
+          );
         }
         trackTrustedSpan(
           evt,
@@ -2805,8 +2815,10 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
           spanWithDuration(
             "openclaw.harness.run",
             {
-              ...harnessRunMetricAttrs(evt),
-              ...(evt.sessionId ? { "openclaw.sessionId": evt.sessionId } : {}),
+              ...spanAttrs,
+              ...(evt.sessionId
+                ? { "openclaw.sessionId": evt.sessionId }
+                : {}),
             },
             undefined,
             {
@@ -2820,6 +2832,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
       const recordHarnessRunCompleted = (
         evt: Extract<DiagnosticEventPayload, { type: "harness.run.completed" }>,
         metadata: DiagnosticEventMetadata,
+        harnessContent?: { userPrompt?: string; finalResponse?: string },
       ) => {
         harnessDurationHistogram.record(evt.durationMs, harnessRunMetricAttrs(evt));
         if (!tracesEnabled) {
@@ -2829,6 +2842,12 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
           ...harnessRunMetricAttrs(evt),
           ...(evt.sessionId ? { "openclaw.sessionId": evt.sessionId } : {}),
         };
+        if (contentCapturePolicy.outputMessages && harnessContent?.finalResponse) {
+          spanAttrs["output.value"] = normalizeOtelLogString(
+            harnessContent.finalResponse,
+            MAX_OTEL_CONTENT_ATTRIBUTE_CHARS,
+          );
+        }
         if (evt.resultClassification) {
           spanAttrs["openclaw.harness.result_classification"] = lowCardinalityAttr(
             evt.resultClassification,
@@ -3579,10 +3598,10 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
               recordRunCompleted(evt, metadata);
               return;
             case "harness.run.started":
-              recordHarnessRunStarted(evt, metadata);
+              recordHarnessRunStarted(evt, metadata, privateData.harnessContent);
               return;
             case "harness.run.completed":
-              recordHarnessRunCompleted(evt, metadata);
+              recordHarnessRunCompleted(evt, metadata, privateData.harnessContent);
               return;
             case "harness.run.error":
               recordHarnessRunError(evt, metadata);
