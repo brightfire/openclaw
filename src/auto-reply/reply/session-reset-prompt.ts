@@ -103,15 +103,13 @@ export function buildBareSessionResetPrompt(
   nowMs?: number,
   bootstrapMode?: BootstrapMode,
 ): string {
-  return appendCronStyleCurrentTimeLine(
+  const promptBase =
     bootstrapMode === "full"
       ? BARE_SESSION_RESET_PROMPT_BOOTSTRAP_PENDING
       : bootstrapMode === "limited"
         ? BARE_SESSION_RESET_PROMPT_BOOTSTRAP_LIMITED
-        : BARE_SESSION_RESET_PROMPT_BASE,
-    cfg ?? {},
-    nowMs ?? Date.now(),
-  );
+        : (cfg?.agents?.defaults?.sessionResetPrompt ?? BARE_SESSION_RESET_PROMPT_BASE);
+  return appendCronStyleCurrentTimeLine(promptBase, cfg ?? {}, nowMs ?? Date.now());
 }
 
 /** @deprecated Use buildBareSessionResetPrompt(cfg) instead */
