@@ -22,7 +22,14 @@ import {
   getAgentRunContext,
   releaseAgentRunContext,
 } from "../../infra/agent-events.js";
-import { isDiagnosticsEnabled } from "../../infra/diagnostic-events.js";
+import {
+  emitInternalDiagnosticEvent,
+  isDiagnosticsEnabled,
+} from "../../infra/diagnostic-events.js";
+import {
+  createDiagnosticTraceContext,
+  runWithDiagnosticTraceContext,
+} from "../../infra/diagnostic-trace-context.js";
 import {
   createSourceDeliveryPlan,
   resolveSourceDeliveryOutcome,
@@ -1326,132 +1333,181 @@ export async function runCronIsolatedAgentTurn(params: {
 
   const turnStartedAtMs = Date.now();
   const diagnosticsEnabled = isDiagnosticsEnabled(params.cfg);
-  const messageLifecycle = createDiagnosticMessageLifecycle({
-    enabled: diagnosticsEnabled,
-    sessionId: prepared.context.runSessionId,
-    sessionKey: prepared.context.runSessionKey,
-    channel: "cron",
-    source: "cron-isolated",
-    startedAtMs: turnStartedAtMs,
-    trackSessionState: true,
-  });
-  messageLifecycle.markProcessing();
-
-  let outcome: "completed" | "error" = "completed";
-  let outcomeError: string | undefined;
-  try {
-    assertAgentRunLifecycleGenerationCurrent(runLifecycleGeneration);
-    const existingRunContext = getAgentRunContext(initialSessionId);
-    runContextOwnerToken = claimAgentRunContext(
-      initialSessionId,
-      {
-        sessionKey:
-          ownsRunContext || !existingRunContext?.sessionKey
-            ? prepared.context.runSessionKey
-            : existingRunContext.sessionKey,
-        sessionId: initialSessionId,
-        lifecycleGeneration: runLifecycleGeneration,
-      },
-      {
-        trackOwner: true,
-        ownsContext: ownsRunContext,
-      },
-    );
-    const { executeCronRun } = await loadCronExecutorRuntime();
-    const execution = await executeCronRun({
-      cfg: params.cfg,
-      cfgWithAgentDefaults: prepared.context.cfgWithAgentDefaults,
-      job: params.job,
-      agentId: prepared.context.agentId,
-      agentDir: prepared.context.agentDir,
-      agentSessionKey: prepared.context.agentSessionKey,
-      runSessionKey: prepared.context.runSessionKey,
-      workspaceDir: prepared.context.workspaceDir,
-      lane: params.lane,
-      resolvedDelivery: {
-        channel: prepared.context.resolvedDelivery.channel,
-        to: prepared.context.resolvedDelivery.to,
-        accountId: prepared.context.resolvedDelivery.accountId,
-        threadId: prepared.context.resolvedDelivery.threadId,
-      },
-      resolvedDeliveryOk: prepared.context.resolvedDelivery.ok,
-      deliveryRequested: prepared.context.deliveryRequested,
-      sourceDelivery: prepared.context.sourceDelivery,
-      messageToolPromptEnabled: prepared.context.messageToolPromptEnabled,
-      skillsSnapshot: prepared.context.skillsSnapshot,
-      agentPayload: prepared.context.agentPayload,
-      useSubagentFallbacks: prepared.context.useSubagentFallbacks,
-      inheritDefaultFallbacksForAgentStringModel:
-        prepared.context.inheritDefaultFallbacksForAgentStringModel,
-      modelFallbacksOverride: prepared.context.modelFallbacksOverride,
-      agentVerboseDefault: prepared.context.agentCfg?.verboseDefault,
-      liveSelection: prepared.context.liveSelection,
-      cronSession: prepared.context.cronSession,
-      commandBody: prepared.context.commandBody,
-      persistSessionEntry: prepared.context.persistSessionEntry,
-      abortSignal,
-      onExecutionStarted: notifyExecutionStarted,
-      onExecutionPhase: notifyExecutionPhase,
-      onLaneWait: params.onLaneWait,
-      abortReason,
-      isAborted,
-      thinkLevel: prepared.context.thinkLevel,
-      timeoutMs: prepared.context.timeoutMs,
-      runTimeoutOverrideMs: prepared.context.runTimeoutOverrideMs,
-      suppressExecNotifyOnExit: prepared.context.suppressExecNotifyOnExit,
+  // Establish a diagnostic trace context so that openclaw.harness.run, openclaw.run,
+  // openclaw.model.call, and openclaw.model.usage spans emitted from the embedded agent
+  // runner nest under the same trace as openclaw.message.processed. Without this,
+  // getActiveDiagnosticTraceContext() returns undefined in the cron path and all
+  // run/harness/model spans land as a separate root trace in Langfuse.
+  // Use createDiagnosticTraceContext() (root, no parent) rather than
+  // createDiagnosticTraceContextFromActiveScope() because the HTTP request handler's
+  // trace context spanId is never tracked as an OTel span — inheriting it would
+  // create a ghost parentSpanId that Langfuse cannot resolve to a real span.
+  const trace = createDiagnosticTraceContext();
+  return runWithDiagnosticTraceContext(trace, async () => {
+    const messageLifecycle = createDiagnosticMessageLifecycle({
+      enabled: diagnosticsEnabled,
+      sessionId: prepared.context.runSessionId,
+      sessionKey: prepared.context.runSessionKey,
+      channel: "cron",
+      source: "cron-isolated",
+      startedAtMs: turnStartedAtMs,
+      trackSessionState: true,
     });
-    if (isAborted()) {
-      outcome = "error";
-      outcomeError = abortReason();
-      return prepared.context.withRunSession({
-        status: "error",
-        error: abortReason(),
-        diagnostics: createCronRunDiagnosticsFromError("cron-setup", abortReason()),
+    messageLifecycle.markProcessing();
+
+    // Anchor the diagnostics trace: create and track the openclaw.message.processed
+    // span before the embedded agent runner emits openclaw.harness.run. Without an
+    // active tracked parent span, the OTel exporter parents harness/run/model spans
+    // to nothing and they detach into a separate root trace. The webchat path gets
+    // this anchor via message.dispatch.started (dispatch-from-config.ts); the cron
+    // isolated path must emit it explicitly.
+    if (diagnosticsEnabled) {
+      // Emit as an internal event so the OTel service's recordMessageDispatchStarted
+      // handler resolves the trace context (internalOrTrustedTraceContext requires
+      // metadata.trusted || metadata.internal). emitDiagnosticEvent (used by
+      // logMessageDispatchStarted) sets neither, causing the handler to bail early
+      // and never create the tracked message.processed span.
+      emitInternalDiagnosticEvent({
+        type: "message.dispatch.started",
+        sessionId: prepared.context.runSessionId,
+        sessionKey: prepared.context.runSessionKey,
+        channel: "cron",
+        source: "cron-isolated",
       });
     }
-    const finalized = await finalizeCronRun({
-      prepared: prepared.context,
-      execution,
-      abortReason,
-      isAborted,
-    });
-    if (finalized.status === "error") {
+
+    let outcome: "completed" | "error" = "completed";
+    let outcomeError: string | undefined;
+    let finalizedOutputText: string | undefined;
+    try {
+      assertAgentRunLifecycleGenerationCurrent(runLifecycleGeneration);
+      const existingRunContext = getAgentRunContext(initialSessionId);
+      runContextOwnerToken = claimAgentRunContext(
+        initialSessionId,
+        {
+          sessionKey:
+            ownsRunContext || !existingRunContext?.sessionKey
+              ? prepared.context.runSessionKey
+              : existingRunContext.sessionKey,
+          sessionId: initialSessionId,
+          lifecycleGeneration: runLifecycleGeneration,
+        },
+        {
+          trackOwner: true,
+          ownsContext: ownsRunContext,
+        },
+      );
+      const { executeCronRun } = await loadCronExecutorRuntime();
+      const execution = await executeCronRun({
+        cfg: params.cfg,
+        cfgWithAgentDefaults: prepared.context.cfgWithAgentDefaults,
+        job: params.job,
+        agentId: prepared.context.agentId,
+        agentDir: prepared.context.agentDir,
+        agentSessionKey: prepared.context.agentSessionKey,
+        runSessionKey: prepared.context.runSessionKey,
+        workspaceDir: prepared.context.workspaceDir,
+        lane: params.lane,
+        resolvedDelivery: {
+          channel: prepared.context.resolvedDelivery.channel,
+          to: prepared.context.resolvedDelivery.to,
+          accountId: prepared.context.resolvedDelivery.accountId,
+          threadId: prepared.context.resolvedDelivery.threadId,
+        },
+        resolvedDeliveryOk: prepared.context.resolvedDelivery.ok,
+        deliveryRequested: prepared.context.deliveryRequested,
+        sourceDelivery: prepared.context.sourceDelivery,
+        messageToolPromptEnabled: prepared.context.messageToolPromptEnabled,
+        skillsSnapshot: prepared.context.skillsSnapshot,
+        agentPayload: prepared.context.agentPayload,
+        useSubagentFallbacks: prepared.context.useSubagentFallbacks,
+        inheritDefaultFallbacksForAgentStringModel:
+          prepared.context.inheritDefaultFallbacksForAgentStringModel,
+        modelFallbacksOverride: prepared.context.modelFallbacksOverride,
+        agentVerboseDefault: prepared.context.agentCfg?.verboseDefault,
+        liveSelection: prepared.context.liveSelection,
+        cronSession: prepared.context.cronSession,
+        commandBody: prepared.context.commandBody,
+        persistSessionEntry: prepared.context.persistSessionEntry,
+        abortSignal,
+        onExecutionStarted: notifyExecutionStarted,
+        onExecutionPhase: notifyExecutionPhase,
+        onLaneWait: params.onLaneWait,
+        abortReason,
+        isAborted,
+        thinkLevel: prepared.context.thinkLevel,
+        timeoutMs: prepared.context.timeoutMs,
+        runTimeoutOverrideMs: prepared.context.runTimeoutOverrideMs,
+        suppressExecNotifyOnExit: prepared.context.suppressExecNotifyOnExit,
+      });
+      if (isAborted()) {
+        outcome = "error";
+        outcomeError = abortReason();
+        return prepared.context.withRunSession({
+          status: "error",
+          error: abortReason(),
+          diagnostics: createCronRunDiagnosticsFromError("cron-setup", abortReason()),
+        });
+      }
+      const finalized = await finalizeCronRun({
+        prepared: prepared.context,
+        execution,
+        abortReason,
+        isAborted,
+      });
+      if (finalized.status === "error") {
+        outcome = "error";
+        outcomeError = finalized.error;
+      }
+      finalizedOutputText = normalizeOptionalString(finalized.outputText) || undefined;
+      return finalized;
+    } catch (err) {
+      const isCronLaneTimeout = isAborted() || isCronNestedLaneTaskTimeoutError(err);
+      const error = isCronLaneTimeout ? abortReason() : String(err);
       outcome = "error";
-      outcomeError = finalized.error;
+      outcomeError = error;
+      return prepared.context.withRunSession({
+        status: "error",
+        error,
+        diagnostics: createCronRunDiagnosticsFromError(
+          isCronLaneTimeout ? "cron-setup" : "agent-run",
+          isCronLaneTimeout ? error : err,
+        ),
+      });
+    } finally {
+      // Final lifecycle events use the adopted run session when the agent persisted one.
+      const finalSessionRef = {
+        sessionId: prepared.context.currentRunSessionId(),
+        sessionKey: prepared.context.runSessionKey,
+      };
+      if (diagnosticsEnabled) {
+        // Emit as internal for the same reason as dispatch.started above.
+        emitInternalDiagnosticEvent({
+          type: "message.dispatch.completed",
+          channel: "cron",
+          source: "cron-isolated",
+          durationMs: Date.now() - turnStartedAtMs,
+          outcome: outcome === "error" ? "error" : "completed",
+          error: outcomeError,
+          ...finalSessionRef,
+        });
+      }
+      messageLifecycle.markIdle(undefined, finalSessionRef);
+      messageLifecycle.markProcessed(outcome, {
+        ...finalSessionRef,
+        error: outcomeError,
+        userPrompt: normalizeOptionalString(prepared.context.commandBody) || undefined,
+        finalResponse: finalizedOutputText,
+      });
+      // Release runtime references after the run completes (success or failure).
+      // The session entry has already been persisted to disk by this point,
+      // so the in-memory store and run context can be safely dropped.
+      await disposeCronRunContext({
+        sessionId: initialSessionId,
+        cronSession: prepared.context.cronSession,
+        ownsRunContext,
+        runContextOwnerToken,
+      });
     }
-    return finalized;
-  } catch (err) {
-    const isCronLaneTimeout = isAborted() || isCronNestedLaneTaskTimeoutError(err);
-    const error = isCronLaneTimeout ? abortReason() : String(err);
-    outcome = "error";
-    outcomeError = error;
-    return prepared.context.withRunSession({
-      status: "error",
-      error,
-      diagnostics: createCronRunDiagnosticsFromError(
-        isCronLaneTimeout ? "cron-setup" : "agent-run",
-        isCronLaneTimeout ? error : err,
-      ),
-    });
-  } finally {
-    // Final lifecycle events use the adopted run session when the agent persisted one.
-    const finalSessionRef = {
-      sessionId: prepared.context.currentRunSessionId(),
-      sessionKey: prepared.context.runSessionKey,
-    };
-    messageLifecycle.markIdle(undefined, finalSessionRef);
-    messageLifecycle.markProcessed(outcome, {
-      ...finalSessionRef,
-      error: outcomeError,
-    });
-    // Release runtime references after the run completes (success or failure).
-    // The session entry has already been persisted to disk by this point,
-    // so the in-memory store and run context can be safely dropped.
-    await disposeCronRunContext({
-      sessionId: initialSessionId,
-      cronSession: prepared.context.cronSession,
-      ownsRunContext,
-      runContextOwnerToken,
-    });
-  }
+  });
 }
