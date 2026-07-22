@@ -56,8 +56,6 @@ const DROPPED_OTEL_ATTRIBUTE_KEYS = new Set([
   "openclaw.parent_span_id",
   "openclaw.runId",
   "openclaw.run_id",
-  "openclaw.sessionKey",
-  "openclaw.session_key",
   "openclaw.spanId",
   "openclaw.span_id",
   "openclaw.toolCallId",
@@ -2110,6 +2108,9 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         if (evt.sessionId) {
           spanAttrs["openclaw.sessionId"] = evt.sessionId;
         }
+        if (evt.sessionKey) {
+          spanAttrs["openclaw.sessionKey"] = evt.sessionKey;
+        }
       };
 
       const paramsSummaryAttrs = (
@@ -2816,9 +2817,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
             "openclaw.harness.run",
             {
               ...spanAttrs,
-              ...(evt.sessionId
-                ? { "openclaw.sessionId": evt.sessionId }
-                : {}),
+              ...(evt.sessionId ? { "openclaw.sessionId": evt.sessionId } : {}),
             },
             undefined,
             {
