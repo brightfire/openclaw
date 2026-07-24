@@ -7,7 +7,7 @@ import {
   SpanStatusCode,
   TraceFlags,
 } from "@opentelemetry/api";
-import type { SpanContext } from "@opentelemetry/api";
+import type { SpanContext, Context } from "@opentelemetry/api";
 import type { LogRecord, SeverityNumber } from "@opentelemetry/api-logs";
 import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-proto";
 import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-proto";
@@ -21,6 +21,7 @@ import {
   ParentBasedSampler,
   TraceIdRatioBasedSampler,
 } from "@opentelemetry/sdk-trace-base";
+import type { ReadableSpan, SpanProcessor, Span } from "@opentelemetry/sdk-trace-base";
 import { ATTR_SERVICE_NAME } from "@opentelemetry/semantic-conventions";
 import {
   ATTR_GEN_AI_INPUT_MESSAGES,
@@ -55,9 +56,6 @@ const DROPPED_OTEL_ATTRIBUTE_KEYS = new Set([
   "openclaw.parent_span_id",
   "openclaw.runId",
   "openclaw.run_id",
-  "openclaw.sessionId",
-  "openclaw.session_id",
-  "openclaw.sessionKey",
   "openclaw.session_key",
   "openclaw.spanId",
   "openclaw.span_id",
@@ -112,6 +110,10 @@ type OtelModelCallContent = {
 type OtelToolCallContent = {
   toolInput?: unknown;
   toolOutput?: unknown;
+};
+
+type OtelSkillCallContent = {
+  trigger?: string;
 };
 
 type MessageDeliveryDiagnosticEvent = Extract<
@@ -306,6 +308,39 @@ function redactOtelAttributes(attributes: Record<string, string | number | boole
   return redactedAttributes;
 }
 
+/**
+ * SpanProcessor that copies openclaw.agent → langfuse.trace.metadata.agent,
+ * service.instance.id → langfuse.trace.metadata.bot, and
+ * openclaw.sessionId → langfuse.session.id on every span.
+ * Reads from the span's own attributes and resource, same way for both.
+ */
+class LangfuseMetadataSpanProcessor implements SpanProcessor {
+  onStart(span: Span, _parentContext: Context): void {
+    const agent = span.attributes["openclaw.agent"];
+    if (typeof agent === "string" && agent) {
+      span.setAttribute("langfuse.trace.metadata.agent", agent);
+    }
+    const bot = span.resource?.attributes?.["service.instance.id"];
+    if (typeof bot === "string" && bot) {
+      span.setAttribute("langfuse.trace.metadata.bot", bot);
+    }
+    const sessionId = span.attributes["openclaw.sessionId"];
+    if (typeof sessionId === "string" && sessionId) {
+      span.setAttribute("langfuse.session.id", sessionId);
+    }
+  }
+
+  onEnd(_span: ReadableSpan): void {}
+
+  forceFlush(): Promise<void> {
+    return Promise.resolve();
+  }
+
+  shutdown(): Promise<void> {
+    return Promise.resolve();
+  }
+}
+
 function lowCardinalityAttr(value: string | undefined, fallback = "unknown"): string {
   if (!value) {
     return fallback;
@@ -316,6 +351,24 @@ function lowCardinalityAttr(value: string | undefined, fallback = "unknown"): st
     return fallback;
   }
   return LOW_CARDINALITY_VALUE_RE.test(redacted) ? redacted : fallback;
+}
+
+/**
+ * Sanitizes model IDs for OTel attributes. Unlike lowCardinalityAttr, allows `/`
+ * because provider-prefixed model IDs (e.g. `z-ai/glm-5.2`, `openai/gpt-5.6-sol`)
+ * are legitimate, low-cardinality identifiers used by OpenRouter and similar providers.
+ */
+const MODEL_ID_VALUE_RE = /^[A-Za-z0-9_./:@+-]{1,120}$/u;
+function modelIdAttr(value: string | undefined, fallback = "unknown"): string {
+  if (!value) {
+    return fallback;
+  }
+  const redacted = redactSensitiveText(value.trim());
+  const redactedLower = redacted.toLowerCase();
+  if (redactedLower.startsWith("agent:") || redactedLower.includes(":agent:")) {
+    return fallback;
+  }
+  return MODEL_ID_VALUE_RE.test(redacted) ? redacted : fallback;
 }
 
 function lowCardinalityQueueLaneAttr(value: string | undefined, fallback = "unknown"): string {
@@ -330,6 +383,26 @@ function lowCardinalityQueueLaneAttr(value: string | undefined, fallback = "unkn
   const scopedLaneIndex = redacted.indexOf(":");
   const lane = scopedLaneIndex >= 0 ? redacted.slice(0, scopedLaneIndex) : redacted;
   return LOW_CARDINALITY_VALUE_RE.test(lane) ? lane : fallback;
+}
+
+// Resolves the openclaw.agent span attribute from agentLabel (preferred) or by
+// stripping the "agent:" session-key prefix from agentId as fallback.
+function resolveAgentLabelAttr(evt: { agentId?: string; agentLabel?: string }): string {
+  if (evt.agentLabel) {
+    const candidate = lowCardinalityAttr(evt.agentLabel);
+    if (candidate !== "unknown") {
+      return candidate;
+    }
+  }
+  const id = evt.agentId;
+  if (!id) {
+    return "unknown";
+  }
+  const lower = id.toLowerCase();
+  const stripped = lower.startsWith("agent:") ? id.slice("agent:".length) : id;
+  const colonIdx = stripped.indexOf(":");
+  const label = colonIdx >= 0 ? stripped.slice(0, colonIdx) : stripped;
+  return lowCardinalityAttr(label || undefined);
 }
 
 function shouldCaptureOtelLogBody(policy: OtelContentCapturePolicy): boolean {
@@ -410,7 +483,7 @@ function assignGenAiSpanIdentityAttrs(
     attrs["gen_ai.system"] = lowCardinalityAttr(input.provider);
   }
   if (input.model) {
-    attrs["gen_ai.request.model"] = lowCardinalityAttr(input.model);
+    attrs["gen_ai.request.model"] = modelIdAttr(input.model);
   }
   attrs["gen_ai.operation.name"] = genAiOperationName(input.api);
 }
@@ -426,7 +499,7 @@ function modelCallSpanName(evt: { api?: string; model?: string }): string {
   if (!emitLatestGenAiSemconv()) {
     return "openclaw.model.call";
   }
-  return `${genAiOperationName(evt.api)} ${lowCardinalityAttr(evt.model)}`;
+  return `${genAiOperationName(evt.api)} ${modelIdAttr(evt.model)}`;
 }
 
 function modelCallSpanKind(): SpanKind | undefined {
@@ -1180,6 +1253,9 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
               ...(headers ? { headers } : {}),
             })
           : undefined;
+        // Only take the spanProcessors branch when flushIntervalMs is set so
+        // NodeSDK can use createBatchSpanProcessorFromEnv (which reads
+        // OTEL_BSP_* env vars) via the traceExporter branch otherwise.
         const spanProcessors =
           traceExporter && typeof otel.flushIntervalMs === "number"
             ? [
@@ -1664,6 +1740,30 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         };
       }
 
+      // Applies langfuse.trace.metadata.{agent,bot} and langfuse.session.id
+      // attributes directly on each span so metadata works in both preloaded
+      // and non-preloaded SDK modes. The LangfuseMetadataSpanProcessor class
+      // is kept for external consumers but is no longer registered as a span
+      // processor here.
+      const resolveLangfuseMetadata = (
+        attributes: Record<string, string | number | boolean>,
+        span: ReturnType<typeof tracer.startSpan>,
+      ): Record<string, string> => {
+        const result: Record<string, string> = {};
+        const agent = attributes["openclaw.agent"];
+        if (typeof agent === "string" && agent) {
+          result["langfuse.trace.metadata.agent"] = agent;
+        }
+        const bot = (span as unknown as ReadableSpan).resource?.attributes?.["service.instance.id"];
+        if (typeof bot === "string" && bot) {
+          result["langfuse.trace.metadata.bot"] = bot;
+        }
+        const sessionId = attributes["openclaw.sessionId"];
+        if (typeof sessionId === "string" && sessionId) {
+          result["langfuse.session.id"] = sessionId;
+        }
+        return result;
+      };
       const spanWithDuration = (
         name: string,
         attributes: Record<string, string | number | boolean>,
@@ -1693,6 +1793,10 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
           },
           parentContext,
         );
+        const langfuseMeta = resolveLangfuseMetadata(attributes, span);
+        if (Object.keys(langfuseMeta).length > 0) {
+          span.setAttributes?.(langfuseMeta);
+        }
         return span;
       };
       const trustedTraceContext = (
@@ -1884,6 +1988,10 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         attributes: Record<string, string | number | boolean>,
       ) => {
         span.setAttributes?.(redactOtelAttributes(attributes));
+        const langfuseMeta = resolveLangfuseMetadata(attributes, span);
+        if (Object.keys(langfuseMeta).length > 0) {
+          span.setAttributes?.(langfuseMeta);
+        }
       };
       const retainTrustedSpanContext = (
         traceId: string,
@@ -1974,6 +2082,18 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         scheduleRetainedTrustedSpanContextCleanup(token);
       };
 
+      const addSessionAttrs = (
+        spanAttrs: Record<string, string | number | boolean>,
+        evt: { sessionId?: string; sessionKey?: string },
+      ) => {
+        if (evt.sessionId) {
+          spanAttrs["openclaw.sessionId"] = evt.sessionId;
+        }
+        if (evt.sessionKey) {
+          spanAttrs["openclaw.sessionKey"] = evt.sessionKey;
+        }
+      };
+
       const addRunAttrs = (
         spanAttrs: Record<string, string | number | boolean>,
         evt: {
@@ -1998,6 +2118,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         if (evt.trigger) {
           spanAttrs["openclaw.trigger"] = evt.trigger;
         }
+        addSessionAttrs(spanAttrs, evt);
       };
 
       const paramsSummaryAttrs = (
@@ -2021,14 +2142,14 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
       ) => {
         const attrs = {
           "openclaw.channel": evt.channel ?? "unknown",
-          "openclaw.agent": lowCardinalityAttr(evt.agentId),
+          "openclaw.agent": resolveAgentLabelAttr(evt),
           "openclaw.provider": evt.provider ?? "unknown",
           "openclaw.model": evt.model ?? "unknown",
         };
         const genAiAttrs: Record<string, string> = {
           "gen_ai.operation.name": "chat",
           "gen_ai.provider.name": lowCardinalityAttr(evt.provider),
-          "gen_ai.request.model": lowCardinalityAttr(evt.model),
+          "gen_ai.request.model": modelIdAttr(evt.model),
         };
 
         const usage = evt.usage;
@@ -2092,6 +2213,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
           "openclaw.tokens.cache_write": usage.cacheWrite ?? 0,
           "openclaw.tokens.total": usage.total ?? 0,
         };
+        addSessionAttrs(spanAttrs, evt);
         assignGenAiSpanIdentityAttrs(spanAttrs, evt);
         assignPositiveNumberAttr(spanAttrs, "gen_ai.usage.input_tokens", genAiInputTokens);
         assignPositiveNumberAttr(spanAttrs, "gen_ai.usage.output_tokens", usage.output);
@@ -2160,6 +2282,10 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         const span = tracer.startSpan("openclaw.webhook.error", {
           attributes: spanAttrs,
         });
+        const langfuseMeta = resolveLangfuseMetadata(spanAttrs, span);
+        if (Object.keys(langfuseMeta).length > 0) {
+          span.setAttributes?.(langfuseMeta);
+        }
         span.setStatus({ code: SpanStatusCode.ERROR, message: redactedError });
         span.end();
       };
@@ -2202,10 +2328,14 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         if (!traceContext?.spanId || activeTrustedSpans.has(traceContext.spanId)) {
           return;
         }
+        const spanAttrs: Record<string, string | number> = {
+          ...attrs,
+        };
+        addSessionAttrs(spanAttrs, evt);
         trackInternalOrTrustedSpan(
           evt,
           metadata,
-          spanWithDuration("openclaw.message.processed", attrs, undefined, {
+          spanWithDuration("openclaw.message.processed", spanAttrs, undefined, {
             parentContext: internalOrTrustedExplicitParentContext(evt, metadata),
             startTimeMs: evt.ts,
           }),
@@ -2228,6 +2358,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
       const recordMessageProcessed = (
         evt: Extract<DiagnosticEventPayload, { type: "message.processed" }>,
         metadata: DiagnosticEventMetadata,
+        messageContent?: { userPrompt?: string; finalResponse?: string },
       ) => {
         const attrs = {
           "openclaw.channel": lowCardinalityAttr(evt.channel),
@@ -2240,9 +2371,24 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         if (!tracesEnabled) {
           return;
         }
-        const spanAttrs: Record<string, string | number> = { ...attrs };
+        const spanAttrs: Record<string, string | number> = {
+          ...attrs,
+        };
+        addSessionAttrs(spanAttrs, evt);
         if (evt.reason) {
           spanAttrs["openclaw.reason"] = lowCardinalityAttr(evt.reason, "unknown");
+        }
+        if (contentCapturePolicy.inputMessages && messageContent?.userPrompt) {
+          spanAttrs["input.value"] = normalizeOtelLogString(
+            messageContent.userPrompt,
+            MAX_OTEL_CONTENT_ATTRIBUTE_CHARS,
+          );
+        }
+        if (contentCapturePolicy.outputMessages && messageContent?.finalResponse) {
+          spanAttrs["output.value"] = normalizeOtelLogString(
+            messageContent.finalResponse,
+            MAX_OTEL_CONTENT_ATTRIBUTE_CHARS,
+          );
         }
         const trackedSpan = getTrackedInternalOrTrustedSpan(evt, metadata);
         const span =
@@ -2385,7 +2531,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         evt: Extract<DiagnosticEventPayload, { type: "session.turn.created" }>,
       ) => {
         sessionTurnCreatedCounter.add(1, {
-          "openclaw.agent": lowCardinalityAttr(evt.agentId, "unknown"),
+          "openclaw.agent": resolveAgentLabelAttr(evt),
           "openclaw.channel": lowCardinalityAttr(evt.channel, "unknown"),
           "openclaw.trigger": evt.trigger,
         });
@@ -2406,6 +2552,10 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         spanAttrs["openclaw.queueDepth"] = evt.queueDepth ?? 0;
         spanAttrs["openclaw.ageMs"] = evt.ageMs;
         const span = tracer.startSpan("openclaw.session.stuck", { attributes: spanAttrs });
+        const langfuseMeta = resolveLangfuseMetadata(spanAttrs, span);
+        if (Object.keys(langfuseMeta).length > 0) {
+          span.setAttributes?.(langfuseMeta);
+        }
         span.setStatus({ code: SpanStatusCode.ERROR, message: "session stuck" });
         span.end();
       };
@@ -2488,7 +2638,11 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         if (!tracesEnabled) {
           return;
         }
-        const span = spanWithDuration("openclaw.tool.loop", attrs, 0, { endTimeMs: evt.ts });
+        const toolLoopSpanAttrs: Record<string, string | number | boolean> = { ...attrs };
+        addSessionAttrs(toolLoopSpanAttrs, evt);
+        const span = spanWithDuration("openclaw.tool.loop", toolLoopSpanAttrs, 0, {
+          endTimeMs: evt.ts,
+        });
         if (evt.level === "critical" || evt.action === "block") {
           span.setStatus({
             code: SpanStatusCode.ERROR,
@@ -2649,23 +2803,42 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
       const recordHarnessRunStarted = (
         evt: Extract<DiagnosticEventPayload, { type: "harness.run.started" }>,
         metadata: DiagnosticEventMetadata,
+        harnessContent?: { userPrompt?: string; finalResponse?: string },
       ) => {
         if (!tracesEnabled || !metadata.trusted) {
           return;
         }
+        const spanAttrs: Record<string, string | number> = {
+          ...harnessRunMetricAttrs(evt),
+        };
+        addSessionAttrs(spanAttrs, evt);
+        if (contentCapturePolicy.inputMessages && harnessContent?.userPrompt) {
+          spanAttrs["input.value"] = normalizeOtelLogString(
+            harnessContent.userPrompt,
+            MAX_OTEL_CONTENT_ATTRIBUTE_CHARS,
+          );
+        }
         trackTrustedSpan(
           evt,
           metadata,
-          spanWithDuration("openclaw.harness.run", harnessRunMetricAttrs(evt), undefined, {
-            parentContext: activeTrustedParentContext(evt, metadata),
-            startTimeMs: evt.ts,
-          }),
+          spanWithDuration(
+            "openclaw.harness.run",
+            {
+              ...spanAttrs,
+            },
+            undefined,
+            {
+              parentContext: activeTrustedParentContext(evt, metadata),
+              startTimeMs: evt.ts,
+            },
+          ),
         );
       };
 
       const recordHarnessRunCompleted = (
         evt: Extract<DiagnosticEventPayload, { type: "harness.run.completed" }>,
         metadata: DiagnosticEventMetadata,
+        harnessContent?: { userPrompt?: string; finalResponse?: string },
       ) => {
         harnessDurationHistogram.record(evt.durationMs, harnessRunMetricAttrs(evt));
         if (!tracesEnabled) {
@@ -2674,6 +2847,13 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         const spanAttrs: Record<string, string | number | boolean> = {
           ...harnessRunMetricAttrs(evt),
         };
+        addSessionAttrs(spanAttrs, evt);
+        if (contentCapturePolicy.outputMessages && harnessContent?.finalResponse) {
+          spanAttrs["output.value"] = normalizeOtelLogString(
+            harnessContent.finalResponse,
+            MAX_OTEL_CONTENT_ATTRIBUTE_CHARS,
+          );
+        }
         if (evt.resultClassification) {
           spanAttrs["openclaw.harness.result_classification"] = lowCardinalityAttr(
             evt.resultClassification,
@@ -2730,6 +2910,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
           "error.type": errorType,
           ...(evt.cleanupFailed ? { "openclaw.harness.cleanup_failed": true } : {}),
         };
+        addSessionAttrs(spanAttrs, evt);
         const span =
           takeTrackedTrustedSpan(evt, metadata) ??
           spanWithDuration("openclaw.harness.run", spanAttrs, evt.durationMs, {
@@ -2795,6 +2976,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         const spanAttrs: Record<string, string | number | boolean> = {
           "openclaw.failover.reason": lowCardinalityAttr(evt.reason, "unknown"),
         };
+        addSessionAttrs(spanAttrs, evt);
         if (evt.fromProvider) {
           spanAttrs["openclaw.provider"] = evt.fromProvider;
         }
@@ -2835,7 +3017,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
       ) => ({
         "gen_ai.operation.name": genAiOperationName(evt.api),
         "gen_ai.provider.name": lowCardinalityAttr(evt.provider),
-        "gen_ai.request.model": lowCardinalityAttr(evt.model),
+        "gen_ai.request.model": modelIdAttr(evt.model),
         ...(errorType ? { "error.type": errorType } : {}),
       });
       const recordModelCallSizeTimingMetrics = (
@@ -2867,6 +3049,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
           "openclaw.provider": evt.provider,
           "openclaw.model": evt.model,
         };
+        addSessionAttrs(spanAttrs, evt);
         assignGenAiModelCallAttrs(spanAttrs, evt);
         if (evt.api) {
           spanAttrs["openclaw.api"] = evt.api;
@@ -2904,6 +3087,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
           "openclaw.provider": evt.provider,
           "openclaw.model": evt.model,
         };
+        addSessionAttrs(spanAttrs, evt);
         assignGenAiModelCallAttrs(spanAttrs, evt);
         if (evt.api) {
           spanAttrs["openclaw.api"] = evt.api;
@@ -2953,6 +3137,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
           "openclaw.errorCategory": errorType,
           "error.type": errorType,
         };
+        addSessionAttrs(spanAttrs, evt);
         if (evt.failureKind) {
           spanAttrs["openclaw.failureKind"] = lowCardinalityAttr(evt.failureKind, "other");
         }
@@ -3006,13 +3191,14 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         "openclaw.skill.name": lowCardinalityAttr(evt.skillName, "skill"),
         "openclaw.skill.source": lowCardinalityAttr(evt.skillSource),
         "openclaw.skill.activation": lowCardinalityAttr(evt.activation),
-        ...(evt.agentId ? { "openclaw.agent": lowCardinalityAttr(evt.agentId) } : {}),
+        ...(evt.agentId || evt.agentLabel ? { "openclaw.agent": resolveAgentLabelAttr(evt) } : {}),
         ...(evt.toolName ? { "openclaw.toolName": lowCardinalityAttr(evt.toolName, "tool") } : {}),
       });
 
       const recordSkillUsed = (
         evt: Extract<DiagnosticEventPayload, { type: "skill.used" }>,
         metadata: DiagnosticEventMetadata,
+        skillContent?: OtelSkillCallContent,
       ) => {
         if (!metadata.trusted) {
           return;
@@ -3024,6 +3210,22 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         }
         const spanAttrs: Record<string, string | number | boolean> = { ...attrs };
         addRunAttrs(spanAttrs, evt);
+        // skillVersion (sha256 fingerprint) and trigger are high-cardinality and must not
+        // appear in metric labels, so they are span-only.
+        if (evt.skillVersion) {
+          spanAttrs["openclaw.skill.version"] = evt.skillVersion;
+        }
+        // Command-activated trigger (command name) is always safe in the public event payload.
+        if (evt.trigger) {
+          spanAttrs["openclaw.skill.trigger"] = evt.trigger;
+        }
+        // Read-activated trigger is user message text — only export it when the
+        // exporter-side captureContent.inputMessages is enabled, not just when the
+        // emission site opted in. A config mismatch or reload must not leak the excerpt.
+        // Redact before export regardless: the excerpt may contain keys/tokens.
+        if (skillContent?.trigger && contentCapturePolicy.inputMessages) {
+          spanAttrs["openclaw.skill.trigger"] = redactSensitiveText(skillContent.trigger);
+        }
         const span = spanWithDuration("openclaw.skill.used", spanAttrs, 0, {
           parentContext: activeTrustedParentContext(evt, metadata),
           endTimeMs: evt.ts,
@@ -3343,7 +3545,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
               recordMessageDispatchCompleted(evt);
               return;
             case "message.processed":
-              recordMessageProcessed(evt, metadata);
+              recordMessageProcessed(evt, metadata, privateData.messageContent);
               return;
             case "message.delivery.started":
               recordMessageDeliveryStarted(evt);
@@ -3402,10 +3604,10 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
               recordRunCompleted(evt, metadata);
               return;
             case "harness.run.started":
-              recordHarnessRunStarted(evt, metadata);
+              recordHarnessRunStarted(evt, metadata, privateData.harnessContent);
               return;
             case "harness.run.completed":
-              recordHarnessRunCompleted(evt, metadata);
+              recordHarnessRunCompleted(evt, metadata, privateData.harnessContent);
               return;
             case "harness.run.error":
               recordHarnessRunError(evt, metadata);
@@ -3435,7 +3637,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
               recordToolExecutionBlocked(evt, metadata);
               return;
             case "skill.used":
-              recordSkillUsed(evt, metadata);
+              recordSkillUsed(evt, metadata, privateData.skillContent);
               return;
             case "exec.process.completed":
               recordExecProcessCompleted(evt);
@@ -3498,3 +3700,5 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
     },
   } satisfies OpenClawPluginService;
 }
+
+export { LangfuseMetadataSpanProcessor };
