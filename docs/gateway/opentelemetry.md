@@ -131,11 +131,12 @@ Raw model/tool content is **not** exported by default. Spans carry bounded
 identifiers (channel, provider, model, error category, hash-only request ids,
 tool source, tool owner, and skill name/source) and never include prompt text,
 response text, tool inputs, tool outputs, or skill file paths.
-Spans and OTLP log records carry `openclaw.sessionId` (opaque UUID) and
+Spans and OTLP log records carry `openclaw.sessionId` (opaque UUID) and/or
 `openclaw.sessionKey` (human-readable grouping key, e.g.
-`agent:main:main`) on events that have session context, so traces can be
-filtered by session in a trace backend. These are stable identifiers, not
-secrets. OTLP log records keep severity, logger, code location, trusted trace
+`agent:main:main`) when the originating event includes those fields and the
+span handler calls `addSessionAttrs` or `addRunAttrs`. Not every span type
+includes session attributes — see the span catalog below for which attributes
+each span emits. These are stable identifiers, not secrets. OTLP log records keep severity, logger, code location, trusted trace
 context, and sanitized attributes by default, but the raw log message body is
 exported only when `diagnostics.otel.captureContent` is set to boolean `true`.
 Granular `captureContent.*` subkeys do not enable log bodies.
