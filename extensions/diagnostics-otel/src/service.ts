@@ -3012,13 +3012,14 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
           : undefined;
         if (runSpan) {
           // DEV-334: Set attrs immediately on the active span AND stash by
-          // run span ID so recordRunCompleted can apply them if it fires
-          // after this (normal ordering). The stash is only created when
-          // the span is still active to avoid stale entries on the fast
-          // path where run.completed has already closed the span.
+          // the run span's own span ID (from spanContext) so
+          // recordRunCompleted can find and delete the entry by its own
+          // trustedTrace.spanId. Using parentSpanId here would miss the
+          // alias case where parentSpanId differs from the run span's ID.
           setSpanAttrs(runSpan, runSpanAttrs);
-          if (parentSpanId) {
-            pendingContextTokenAttrs.set(parentSpanId, runSpanAttrs);
+          const runSpanId = runSpan.spanContext().spanId;
+          if (runSpanId) {
+            pendingContextTokenAttrs.set(runSpanId, runSpanAttrs);
           }
         }
       };
