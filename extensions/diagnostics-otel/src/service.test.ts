@@ -1818,7 +1818,7 @@ describe("diagnostics-otel service", () => {
     expect(modelUsageOptions?.attributes?.["gen_ai.usage.output_tokens"]).toBe(40);
     expect(modelUsageOptions?.attributes?.["gen_ai.usage.cache_read.input_tokens"]).toBe(30);
     expect(modelUsageOptions?.attributes?.["gen_ai.usage.cache_creation.input_tokens"]).toBe(20);
-    expect(Object.hasOwn(modelUsageOptions?.attributes ?? {}, "openclaw.sessionKey")).toBe(false);
+    expect(modelUsageOptions?.attributes?.["openclaw.sessionKey"]).toBe("session-key");
     expect(modelUsageOptions?.attributes?.["openclaw.sessionId"]).toBe("session-id");
     expect(Object.hasOwn(modelUsageOptions?.attributes ?? {}, "gen_ai.provider.name")).toBe(false);
     expect(Object.hasOwn(modelUsageOptions?.attributes ?? {}, "gen_ai.input.messages")).toBe(false);
@@ -1826,7 +1826,6 @@ describe("diagnostics-otel service", () => {
       false,
     );
     expect(modelUsageOptions?.startTime).toBeTypeOf("number");
-    expect(JSON.stringify(modelUsageOptions)).not.toContain("session-key");
     await service.stop?.(ctx);
   });
 
@@ -2379,7 +2378,7 @@ describe("diagnostics-otel service", () => {
     expect(harnessOptions?.attributes?.["openclaw.harness.items.active"]).toBe(1);
     expect(Object.hasOwn(harnessOptions?.attributes ?? {}, "openclaw.runId")).toBe(false);
     expect(harnessOptions?.attributes?.["openclaw.sessionId"]).toBe("session-1");
-    expect(Object.hasOwn(harnessOptions?.attributes ?? {}, "openclaw.sessionKey")).toBe(false);
+    expect(harnessOptions?.attributes?.["openclaw.sessionKey"]).toBe("session-key");
     expect(Object.hasOwn(harnessOptions?.attributes ?? {}, "openclaw.traceId")).toBe(false);
     expect(harnessOptions?.startTime).toBeTypeOf("number");
     expect(harnessCall?.[2]).toBeUndefined();
@@ -2794,7 +2793,7 @@ describe("diagnostics-otel service", () => {
       code: 2,
       message: "known_poll_no_progress:block",
     });
-    expect(JSON.stringify(loopSpanCall)).not.toContain("session-key");
+    expect(JSON.stringify(loopSpanCall)).toContain("session-key");
     expect(JSON.stringify(loopSpanCall)).not.toContain("secret-bearing");
     await service.stop?.(ctx);
   });
@@ -5181,5 +5180,150 @@ describe("diagnostics-otel service", () => {
     expect(harnessErrorOptions?.attributes?.["openclaw.sessionId"]).toBe("session-hr-2");
 
     await service.stop?.(ctx);
+  });
+
+  // --- DEV-457: addSessionAttrs helper tests ---
+  test("addSessionAttrs: sets both sessionId and sessionKey when both are present", async () => {
+    const service = createDiagnosticsOtelService();
+    const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true, logs: true });
+    await service.start(ctx);
+
+    emitDiagnosticEvent({
+      type: "message.processed",
+      channel: "webchat",
+      outcome: "completed",
+      sessionId: "sess-both-id",
+      sessionKey: "sess-both-key",
+      durationMs: 10,
+    });
+    await flushDiagnosticEvents();
+
+    const processedSpanOptions = startedSpanOptions("openclaw.message.processed");
+    expect(processedSpanOptions?.attributes?.["openclaw.sessionId"]).toBe("sess-both-id");
+    expect(processedSpanOptions?.attributes?.["openclaw.sessionKey"]).toBe("sess-both-key");
+    await service.stop?.(ctx);
+  });
+
+  test("addSessionAttrs: sets only sessionId when sessionKey is absent", async () => {
+    const service = createDiagnosticsOtelService();
+    const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true, logs: true });
+    await service.start(ctx);
+
+    emitDiagnosticEvent({
+      type: "message.processed",
+      channel: "webchat",
+      outcome: "completed",
+      sessionId: "sess-id-only",
+      durationMs: 10,
+    });
+    await flushDiagnosticEvents();
+
+    const processedSpanOptions = startedSpanOptions("openclaw.message.processed");
+    expect(processedSpanOptions?.attributes?.["openclaw.sessionId"]).toBe("sess-id-only");
+    expect(Object.hasOwn(processedSpanOptions?.attributes ?? {}, "openclaw.sessionKey")).toBe(
+      false,
+    );
+    await service.stop?.(ctx);
+  });
+
+  test("addSessionAttrs: sets nothing when both sessionId and sessionKey are absent", async () => {
+    const service = createDiagnosticsOtelService();
+    const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true, logs: true });
+    await service.start(ctx);
+
+    emitDiagnosticEvent({
+      type: "message.processed",
+      channel: "webchat",
+      outcome: "completed",
+      durationMs: 10,
+    });
+    await flushDiagnosticEvents();
+
+    const processedSpanOptions = startedSpanOptions("openclaw.message.processed");
+    expect(Object.hasOwn(processedSpanOptions?.attributes ?? {}, "openclaw.sessionId")).toBe(false);
+    expect(Object.hasOwn(processedSpanOptions?.attributes ?? {}, "openclaw.sessionKey")).toBe(
+      false,
+    );
+    await service.stop?.(ctx);
+  });
+
+  test("addSessionAttrs: does not set sessionKey when only sessionId is present (no false keys)", async () => {
+    const service = createDiagnosticsOtelService();
+    const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true, logs: true });
+    await service.start(ctx);
+
+    emitDiagnosticEvent({
+      type: "tool.loop",
+      sessionId: "sess-no-key-id",
+      toolName: "process",
+      level: "warning",
+      action: "warn",
+      detector: "generic_repeat",
+      count: 3,
+      message: "repeated tool",
+    });
+    await flushDiagnosticEvents();
+
+    const toolLoopOptions = startedSpanOptions("openclaw.tool.loop");
+    expect(toolLoopOptions?.attributes?.["openclaw.sessionId"]).toBe("sess-no-key-id");
+    expect(Object.hasOwn(toolLoopOptions?.attributes ?? {}, "openclaw.sessionKey")).toBe(false);
+    await service.stop?.(ctx);
+  });
+
+  test("addRunAttrs: sets provider/model/channel/trigger AND session attrs", async () => {
+    const service = createDiagnosticsOtelService();
+    const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true, logs: true });
+    await service.start(ctx);
+
+    emitDiagnosticEvent({
+      type: "run.completed",
+      runId: "run-1",
+      provider: "openai",
+      model: "gpt-5.5",
+      channel: "webchat",
+      trigger: "chat",
+      sessionId: "run-sess-id",
+      sessionKey: "run-sess-key",
+      outcome: "completed",
+      durationMs: 100,
+    });
+    await flushDiagnosticEvents();
+
+    const runSpanOptions = startedSpanOptions("openclaw.run");
+    expect(runSpanOptions?.attributes?.["openclaw.provider"]).toBe("openai");
+    expect(runSpanOptions?.attributes?.["openclaw.model"]).toBe("gpt-5.5");
+    expect(runSpanOptions?.attributes?.["openclaw.channel"]).toBe("webchat");
+    expect(runSpanOptions?.attributes?.["openclaw.trigger"]).toBe("chat");
+    expect(runSpanOptions?.attributes?.["openclaw.sessionId"]).toBe("run-sess-id");
+    expect(runSpanOptions?.attributes?.["openclaw.sessionKey"]).toBe("run-sess-key");
+    await service.stop?.(ctx);
+  });
+
+  test("DROPPED_OTEL_ATTRIBUTE_KEYS: sessionKey is NOT dropped, other IDs ARE dropped", async () => {
+    // Use a log.record with event attributes that will be prefixed with openclaw.
+    // redactOtelAttributes on log attributes drops DROPPED keys but keeps sessionKey/sessionId.
+    const logCall = await emitAndCaptureLog({
+      level: "INFO",
+      message: "dropped keys test",
+      attributes: {
+        callId: "call-should-drop",
+        runId: "run-should-drop",
+        traceId: "trace-should-drop",
+        spanId: "span-should-drop",
+        toolCallId: "tool-should-drop",
+        sessionKey: "session-key-should-keep",
+        sessionId: "session-id-should-keep",
+      },
+    });
+
+    // sessionKey and sessionId should be KEPT (not in dropped set)
+    expect(logCall.attributes?.["openclaw.sessionKey"]).toBe("session-key-should-keep");
+    expect(logCall.attributes?.["openclaw.sessionId"]).toBe("session-id-should-keep");
+    // Other ID fields should be DROPPED
+    expect(Object.hasOwn(logCall.attributes ?? {}, "openclaw.callId")).toBe(false);
+    expect(Object.hasOwn(logCall.attributes ?? {}, "openclaw.runId")).toBe(false);
+    expect(Object.hasOwn(logCall.attributes ?? {}, "openclaw.traceId")).toBe(false);
+    expect(Object.hasOwn(logCall.attributes ?? {}, "openclaw.spanId")).toBe(false);
+    expect(Object.hasOwn(logCall.attributes ?? {}, "openclaw.toolCallId")).toBe(false);
   });
 });

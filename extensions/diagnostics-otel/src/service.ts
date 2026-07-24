@@ -2081,6 +2081,18 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         scheduleRetainedTrustedSpanContextCleanup(token);
       };
 
+      const addSessionAttrs = (
+        spanAttrs: Record<string, string | number | boolean>,
+        evt: { sessionId?: string; sessionKey?: string },
+      ) => {
+        if (evt.sessionId) {
+          spanAttrs["openclaw.sessionId"] = evt.sessionId;
+        }
+        if (evt.sessionKey) {
+          spanAttrs["openclaw.sessionKey"] = evt.sessionKey;
+        }
+      };
+
       const addRunAttrs = (
         spanAttrs: Record<string, string | number | boolean>,
         evt: {
@@ -2105,12 +2117,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         if (evt.trigger) {
           spanAttrs["openclaw.trigger"] = evt.trigger;
         }
-        if (evt.sessionId) {
-          spanAttrs["openclaw.sessionId"] = evt.sessionId;
-        }
-        if (evt.sessionKey) {
-          spanAttrs["openclaw.sessionKey"] = evt.sessionKey;
-        }
+        addSessionAttrs(spanAttrs, evt);
       };
 
       const paramsSummaryAttrs = (
@@ -2199,13 +2206,13 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
           (usage.input ?? 0) + (usage.cacheRead ?? 0) + (usage.cacheWrite ?? 0);
         const spanAttrs: Record<string, string | number> = {
           ...attrs,
-          ...(evt.sessionId ? { "openclaw.sessionId": evt.sessionId } : {}),
           "openclaw.tokens.input": usage.input ?? 0,
           "openclaw.tokens.output": usage.output ?? 0,
           "openclaw.tokens.cache_read": usage.cacheRead ?? 0,
           "openclaw.tokens.cache_write": usage.cacheWrite ?? 0,
           "openclaw.tokens.total": usage.total ?? 0,
         };
+        addSessionAttrs(spanAttrs, evt);
         assignGenAiSpanIdentityAttrs(spanAttrs, evt);
         assignPositiveNumberAttr(spanAttrs, "gen_ai.usage.input_tokens", genAiInputTokens);
         assignPositiveNumberAttr(spanAttrs, "gen_ai.usage.output_tokens", usage.output);
@@ -2322,8 +2329,8 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         }
         const spanAttrs: Record<string, string | number> = {
           ...attrs,
-          ...(evt.sessionId ? { "openclaw.sessionId": evt.sessionId } : {}),
         };
+        addSessionAttrs(spanAttrs, evt);
         trackInternalOrTrustedSpan(
           evt,
           metadata,
@@ -2365,8 +2372,8 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         }
         const spanAttrs: Record<string, string | number> = {
           ...attrs,
-          ...(evt.sessionId ? { "openclaw.sessionId": evt.sessionId } : {}),
         };
+        addSessionAttrs(spanAttrs, evt);
         if (evt.reason) {
           spanAttrs["openclaw.reason"] = lowCardinalityAttr(evt.reason, "unknown");
         }
@@ -2630,12 +2637,11 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         if (!tracesEnabled) {
           return;
         }
-        const span = spanWithDuration(
-          "openclaw.tool.loop",
-          { ...attrs, ...(evt.sessionId ? { "openclaw.sessionId": evt.sessionId } : {}) },
-          0,
-          { endTimeMs: evt.ts },
-        );
+        const toolLoopSpanAttrs: Record<string, string | number | boolean> = { ...attrs };
+        addSessionAttrs(toolLoopSpanAttrs, evt);
+        const span = spanWithDuration("openclaw.tool.loop", toolLoopSpanAttrs, 0, {
+          endTimeMs: evt.ts,
+        });
         if (evt.level === "critical" || evt.action === "block") {
           span.setStatus({
             code: SpanStatusCode.ERROR,
@@ -2804,6 +2810,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         const spanAttrs: Record<string, string | number> = {
           ...harnessRunMetricAttrs(evt),
         };
+        addSessionAttrs(spanAttrs, evt);
         if (contentCapturePolicy.inputMessages && harnessContent?.userPrompt) {
           spanAttrs["input.value"] = normalizeOtelLogString(
             harnessContent.userPrompt,
@@ -2817,7 +2824,6 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
             "openclaw.harness.run",
             {
               ...spanAttrs,
-              ...(evt.sessionId ? { "openclaw.sessionId": evt.sessionId } : {}),
             },
             undefined,
             {
@@ -2839,8 +2845,8 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         }
         const spanAttrs: Record<string, string | number | boolean> = {
           ...harnessRunMetricAttrs(evt),
-          ...(evt.sessionId ? { "openclaw.sessionId": evt.sessionId } : {}),
         };
+        addSessionAttrs(spanAttrs, evt);
         if (contentCapturePolicy.outputMessages && harnessContent?.finalResponse) {
           spanAttrs["output.value"] = normalizeOtelLogString(
             harnessContent.finalResponse,
@@ -2902,8 +2908,8 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
           ...attrs,
           "error.type": errorType,
           ...(evt.cleanupFailed ? { "openclaw.harness.cleanup_failed": true } : {}),
-          ...(evt.sessionId ? { "openclaw.sessionId": evt.sessionId } : {}),
         };
+        addSessionAttrs(spanAttrs, evt);
         const span =
           takeTrackedTrustedSpan(evt, metadata) ??
           spanWithDuration("openclaw.harness.run", spanAttrs, evt.durationMs, {
@@ -2968,8 +2974,8 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         }
         const spanAttrs: Record<string, string | number | boolean> = {
           "openclaw.failover.reason": lowCardinalityAttr(evt.reason, "unknown"),
-          ...(evt.sessionId ? { "openclaw.sessionId": evt.sessionId } : {}),
         };
+        addSessionAttrs(spanAttrs, evt);
         if (evt.fromProvider) {
           spanAttrs["openclaw.provider"] = evt.fromProvider;
         }
@@ -3041,8 +3047,8 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         const spanAttrs: Record<string, string | number | boolean> = {
           "openclaw.provider": evt.provider,
           "openclaw.model": evt.model,
-          ...(evt.sessionId ? { "openclaw.sessionId": evt.sessionId } : {}),
         };
+        addSessionAttrs(spanAttrs, evt);
         assignGenAiModelCallAttrs(spanAttrs, evt);
         if (evt.api) {
           spanAttrs["openclaw.api"] = evt.api;
@@ -3079,8 +3085,8 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         const spanAttrs: Record<string, string | number | boolean> = {
           "openclaw.provider": evt.provider,
           "openclaw.model": evt.model,
-          ...(evt.sessionId ? { "openclaw.sessionId": evt.sessionId } : {}),
         };
+        addSessionAttrs(spanAttrs, evt);
         assignGenAiModelCallAttrs(spanAttrs, evt);
         if (evt.api) {
           spanAttrs["openclaw.api"] = evt.api;
@@ -3129,8 +3135,8 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
           "openclaw.model": evt.model,
           "openclaw.errorCategory": errorType,
           "error.type": errorType,
-          ...(evt.sessionId ? { "openclaw.sessionId": evt.sessionId } : {}),
         };
+        addSessionAttrs(spanAttrs, evt);
         if (evt.failureKind) {
           spanAttrs["openclaw.failureKind"] = lowCardinalityAttr(evt.failureKind, "other");
         }
