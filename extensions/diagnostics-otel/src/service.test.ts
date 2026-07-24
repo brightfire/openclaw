@@ -2751,6 +2751,24 @@ describe("diagnostics-otel service", () => {
     expect(
       (contextCall?.[2] as { spanContext?: { spanId?: string } } | undefined)?.spanContext?.spanId,
     ).toBe(runSpanId);
+
+    // DEV-334: pre-call context token estimate set on the openclaw.run span
+    const runSpanSetAttrsCalls = runSpan?.setAttributes.mock.calls ?? [];
+    const contextTokenAttrs = runSpanSetAttrsCalls.find(
+      (call: unknown[]) =>
+        call[0] &&
+        typeof call[0] === "object" &&
+        "openclaw.context.tokens" in (call[0] as Record<string, unknown>),
+    )?.[0] as Record<string, unknown> | undefined;
+    expect(contextTokenAttrs).toBeDefined();
+    expect(contextTokenAttrs?.["openclaw.context.tokens"]).toBe(
+      Math.round(789 / 4) + Math.round(1234 / 4) + Math.round(42 / 4),
+    );
+    expect(contextTokenAttrs?.["openclaw.context.system_prompt_tokens"]).toBe(Math.round(789 / 4));
+    expect(contextTokenAttrs?.["openclaw.context.history_tokens"]).toBe(Math.round(1234 / 4));
+    expect(contextTokenAttrs?.["openclaw.context.prompt_tokens"]).toBe(Math.round(42 / 4));
+    expect(contextTokenAttrs?.["openclaw.context.token_budget"]).toBe(128_000);
+
     await service.stop?.(ctx);
   });
 

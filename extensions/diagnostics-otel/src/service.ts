@@ -2953,6 +2953,32 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
           endTimeMs: evt.ts,
         });
         span.end(evt.ts);
+
+        // Set pre-call context token estimate on the active openclaw.run span.
+        // char/4 is a widely used approximation for common tokenizers.
+        const systemPromptTokens = Math.round(evt.systemPromptChars / 4);
+        const historyTokens = Math.round(evt.historyTextChars / 4);
+        const promptTokens = Math.round(evt.promptChars / 4);
+        const estimatedContextTokens = systemPromptTokens + historyTokens + promptTokens;
+        const runSpanAttrs: Record<string, string | number | boolean> = {
+          "openclaw.context.tokens": estimatedContextTokens,
+          "openclaw.context.system_prompt_tokens": systemPromptTokens,
+          "openclaw.context.history_tokens": historyTokens,
+          "openclaw.context.prompt_tokens": promptTokens,
+        };
+        if (evt.contextTokenBudget !== undefined) {
+          runSpanAttrs["openclaw.context.token_budget"] = evt.contextTokenBudget;
+        }
+        const trace = trustedTraceContext(evt, metadata);
+        const parentSpanId = trace?.parentSpanId ?? trace?.spanId;
+        const owner = trustedSpanAliasOwner(evt);
+        const runSpan = parentSpanId
+          ? (activeTrustedSpans.get(parentSpanId) ??
+            (owner ? activeTrustedSpanAlias(parentSpanId, owner) : undefined))
+          : undefined;
+        if (runSpan) {
+          setSpanAttrs(runSpan, runSpanAttrs);
+        }
       };
 
       const recordModelFailover = (
