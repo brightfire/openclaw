@@ -2809,6 +2809,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
             if (!activeTrustedSpans.has(spanId)) {
               return;
             }
+            pendingContextTokenAttrs.delete(spanId);
             completeTrackedLifecycleSpan(spanId, trackedSpan, endTs);
           });
           return;
