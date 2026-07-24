@@ -4242,7 +4242,7 @@ describe("diagnostics-otel service", () => {
     for (const call of deliverySpanCalls) {
       const options = call[1] as { attributes?: Record<string, unknown>; startTime?: unknown };
       expect(Object.hasOwn(options.attributes ?? {}, "openclaw.chatId")).toBe(false);
-      expect(Object.hasOwn(options.attributes ?? {}, "openclaw.sessionKey")).toBe(false);
+      expect(options.attributes?.["openclaw.sessionKey"]).toBe("session-secret");
       expect(Object.hasOwn(options.attributes ?? {}, "openclaw.messageId")).toBe(false);
       expect(Object.hasOwn(options.attributes ?? {}, "openclaw.conversationId")).toBe(false);
       expect(Object.hasOwn(options.attributes ?? {}, "openclaw.content")).toBe(false);

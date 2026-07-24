@@ -2434,15 +2434,15 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         if (!tracesEnabled) {
           return;
         }
-        const span = spanWithDuration(
-          "openclaw.message.delivery",
-          {
-            ...attrs,
-            "openclaw.delivery.result_count": evt.resultCount,
-          },
-          evt.durationMs,
-          { parentContext: activeInternalOrTrustedContext(evt, metadata), endTimeMs: evt.ts },
-        );
+        const spanAttrs: Record<string, string | number> = {
+          ...attrs,
+          "openclaw.delivery.result_count": evt.resultCount,
+        };
+        addSessionAttrs(spanAttrs, evt);
+        const span = spanWithDuration("openclaw.message.delivery", spanAttrs, evt.durationMs, {
+          parentContext: activeInternalOrTrustedContext(evt, metadata),
+          endTimeMs: evt.ts,
+        });
         span.end(evt.ts);
       };
 
@@ -2459,7 +2459,9 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         if (!tracesEnabled) {
           return;
         }
-        const span = spanWithDuration("openclaw.message.delivery", attrs, evt.durationMs, {
+        const spanAttrs: Record<string, string | number> = { ...attrs };
+        addSessionAttrs(spanAttrs, evt);
+        const span = spanWithDuration("openclaw.message.delivery", spanAttrs, evt.durationMs, {
           parentContext: activeInternalOrTrustedContext(evt, metadata),
           endTimeMs: evt.ts,
         });
