@@ -58,6 +58,7 @@ const DROPPED_OTEL_ATTRIBUTE_KEYS = new Set([
   "openclaw.run_id",
   "openclaw.spanId",
   "openclaw.span_id",
+  "openclaw.session_key",
   "openclaw.toolCallId",
   "openclaw.tool_call_id",
   "openclaw.traceId",

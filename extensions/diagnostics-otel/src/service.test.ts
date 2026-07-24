@@ -5313,12 +5313,15 @@ describe("diagnostics-otel service", () => {
         toolCallId: "tool-should-drop",
         sessionKey: "session-key-should-keep",
         sessionId: "session-id-should-keep",
+        session_key: "session-key-snake-should-drop",
       },
     });
 
     // sessionKey and sessionId should be KEPT (not in dropped set)
     expect(logCall.attributes?.["openclaw.sessionKey"]).toBe("session-key-should-keep");
     expect(logCall.attributes?.["openclaw.sessionId"]).toBe("session-id-should-keep");
+    // Snake-case session_key should be DROPPED (non-canonical)
+    expect(Object.hasOwn(logCall.attributes ?? {}, "openclaw.session_key")).toBe(false);
     // Other ID fields should be DROPPED
     expect(Object.hasOwn(logCall.attributes ?? {}, "openclaw.callId")).toBe(false);
     expect(Object.hasOwn(logCall.attributes ?? {}, "openclaw.runId")).toBe(false);
