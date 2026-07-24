@@ -2797,16 +2797,15 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
           });
         }
         if (trackedSpan && trustedTrace?.spanId) {
-          // DEV-334: Delay ending the span by one microtask so the async
-          // event queue can drain pending context.assembled events (which
-          // are async-dispatched) before the span closes. Without this,
-          // fast-exit runs that finish in the same event-loop turn as
-          // context assembly end the span before context.assembled fires,
-          // silently dropping openclaw.context.* attrs.
+          // DEV-334: Defer ending the span until after the diagnostic async
+          // queue drains. The queue uses setImmediate, which runs after all
+          // microtasks, so queueMicrotask is not sufficient — we also use
+          // setImmediate to ensure context.assembled fires (and sets
+          // openclaw.context.* attrs) before the span closes.
           const spanId = trustedTrace.spanId;
           const endTs = evt.ts;
-          queueMicrotask(() => {
-            // Guard against shutdown between run.completed and microtask.
+          setImmediate(() => {
+            // Guard against shutdown between run.completed and drain.
             if (!activeTrustedSpans.has(spanId)) {
               return;
             }
