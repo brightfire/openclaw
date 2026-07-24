@@ -136,9 +136,11 @@ Spans and OTLP log records carry `openclaw.sessionId` (opaque UUID) and/or
 `agent:main:main`) when the originating event includes those fields and the
 span handler calls `addSessionAttrs` or `addRunAttrs`. Not every span type
 includes session attributes — see the span catalog below for which attributes
-each span emits. These are stable identifiers, not secrets. OTLP log records keep severity, logger, code location, trusted trace
-context, and sanitized attributes by default, but the raw log message body is
-exported only when `diagnostics.otel.captureContent` is set to boolean `true`.
+each span emits. These are stable identifiers, not secrets.
+
+OTLP log records keep severity, logger, code location, trusted trace context,
+and sanitized attributes by default. The raw log message body is exported
+only when `diagnostics.otel.captureContent` is set to boolean `true`.
 Granular `captureContent.*` subkeys do not enable log bodies.
 Talk metrics export only bounded event metadata such as mode, transport,
 provider, and event type. They do not include transcripts, audio payloads,
