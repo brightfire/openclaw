@@ -552,13 +552,13 @@ describe("diagnostics-otel service", () => {
       "openclaw.parent_span_id",
       "openclaw.runId",
       "openclaw.run_id",
+      "openclaw.session_key",
       "openclaw.spanId",
       "openclaw.span_id",
       "openclaw.toolCallId",
       "openclaw.tool_call_id",
       "openclaw.traceId",
       "openclaw.trace_id",
-      "openclaw.session_key",
     ]) {
       expect(Object.hasOwn(emitCall.attributes ?? {}, key)).toBe(false);
     }

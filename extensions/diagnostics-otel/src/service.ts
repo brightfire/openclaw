@@ -56,13 +56,13 @@ const DROPPED_OTEL_ATTRIBUTE_KEYS = new Set([
   "openclaw.parent_span_id",
   "openclaw.runId",
   "openclaw.run_id",
+  "openclaw.session_key",
   "openclaw.spanId",
   "openclaw.span_id",
   "openclaw.toolCallId",
   "openclaw.tool_call_id",
   "openclaw.traceId",
   "openclaw.trace_id",
-  "openclaw.session_key",
 ]);
 const LOW_CARDINALITY_VALUE_RE = /^[A-Za-z0-9_.:-]{1,120}$/u;
 const MAX_OTEL_CONTENT_ATTRIBUTE_CHARS = 128 * 1024;
