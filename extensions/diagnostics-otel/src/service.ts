@@ -3006,20 +3006,25 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         const trustedTrace = trustedTraceContext(evt, metadata);
         const parentSpanId = trustedTrace?.parentSpanId ?? trustedTrace?.spanId;
         const owner = trustedSpanAliasOwner(evt);
-        const runSpan = parentSpanId
-          ? (activeTrustedSpans.get(parentSpanId) ??
-            (owner ? activeTrustedSpanAlias(parentSpanId, owner) : undefined))
-          : undefined;
+        // DEV-334: Find the run span. When found directly in activeTrustedSpans,
+        // parentSpanId is the run's diagnostic span ID (same key that
+        // recordRunCompleted uses as trustedTrace.spanId). When found via
+        // alias, parentSpanId is the PARENT's span ID, not the run's own —
+        // stashing under it would never be consumed by recordRunCompleted.
+        // In the alias case, attrs are set immediately on the span and the
+        // stash is skipped since the keys don't match.
+        const directSpan = parentSpanId ? activeTrustedSpans.get(parentSpanId) : undefined;
+        const aliasSpan =
+          !directSpan && parentSpanId && owner
+            ? activeTrustedSpanAlias(parentSpanId, owner)
+            : undefined;
+        const runSpan = directSpan ?? aliasSpan;
         if (runSpan) {
-          // DEV-334: Set attrs immediately on the active span AND stash by
-          // the run span's own span ID (from spanContext) so
-          // recordRunCompleted can find and delete the entry by its own
-          // trustedTrace.spanId. Using parentSpanId here would miss the
-          // alias case where parentSpanId differs from the run span's ID.
           setSpanAttrs(runSpan, runSpanAttrs);
-          const runSpanId = runSpan.spanContext().spanId;
-          if (runSpanId) {
-            pendingContextTokenAttrs.set(runSpanId, runSpanAttrs);
+          // Only stash when found directly — parentSpanId matches the
+          // diagnostic run span ID that recordRunCompleted keys by.
+          if (directSpan && parentSpanId) {
+            pendingContextTokenAttrs.set(parentSpanId, runSpanAttrs);
           }
         }
       };
