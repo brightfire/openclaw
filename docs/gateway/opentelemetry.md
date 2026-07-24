@@ -339,7 +339,7 @@ Liveness warnings also emit:
 - `openclaw.message.processed`
   - `openclaw.channel`, `openclaw.outcome`, `openclaw.reason`, `openclaw.sessionId`, `openclaw.sessionKey`
 - `openclaw.message.delivery`
-  - `openclaw.channel`, `openclaw.delivery.kind`, `openclaw.outcome`, `openclaw.errorCategory`, `openclaw.delivery.result_count`, `openclaw.sessionKey`
+  - `openclaw.channel`, `openclaw.delivery.kind`, `openclaw.outcome`, `openclaw.errorCategory`, `openclaw.delivery.result_count`
 - `openclaw.session.stuck`
   - `openclaw.state`, `openclaw.ageMs`, `openclaw.queueDepth`
 - `openclaw.context.assembled`
