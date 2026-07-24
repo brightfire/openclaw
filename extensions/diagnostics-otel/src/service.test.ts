@@ -3768,11 +3768,11 @@ describe("diagnostics-otel service", () => {
 
     const runSpan = spanByName("openclaw.run");
     const runSpanContext = runSpan.spanContext();
-    // run.completed now defers completeTrackedLifecycleSpan via setImmediate
-    // so context.assembled can drain first (DEV-334). Flush before asserting.
-    await flushDiagnosticEvents();
-    expect(runSpan.end).toHaveBeenCalledTimes(1);
+    // run.completed now defers completeTrackedLifecycleSpan until the async
+    // diagnostic queue is fully drained (DEV-334). Wait for that before
+    // asserting the span was ended.
     await waitForDiagnosticEventsDrained();
+    expect(runSpan.end).toHaveBeenCalledTimes(1);
 
     const modelParentContexts = startedSpanParentContexts("openclaw.model.call");
     expect(modelParentContexts).toHaveLength(125);
