@@ -1333,6 +1333,11 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         string,
         { span: ReturnType<typeof tracer.startSpan>; spanId: string; owner: TrustedSpanAliasOwner }
       >();
+      // DEV-334: Stash context token attrs by run span ID so they can be
+      // applied in recordRunCompleted before the span closes. This handles
+      // the ordering where context.assembled (async-dispatched) fires after
+      // run.completed (sync-dispatched) in the same event-loop turn.
+      const pendingContextTokenAttrs = new Map<string, Record<string, string | number | boolean>>();
       const retainedTrustedSpanContexts = new Map<
         string,
         { spanContext: SpanContext; token: symbol; owner?: TrustedSpanAliasOwner }
@@ -1353,6 +1358,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         }
         activeTrustedSpans.clear();
         activeTrustedSpanAliases.clear();
+        pendingContextTokenAttrs.clear();
       };
 
       const tokensCounter = meter.createCounter("openclaw.tokens", {
@@ -2774,6 +2780,16 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
             endTimeMs: evt.ts,
           });
         setSpanAttrs(span, spanAttrs);
+        // DEV-334: Apply stashed context token attrs before the span closes.
+        const stashedContextAttrs = trustedTrace?.spanId
+          ? pendingContextTokenAttrs.get(trustedTrace.spanId)
+          : undefined;
+        if (stashedContextAttrs) {
+          setSpanAttrs(span, stashedContextAttrs);
+          if (trustedTrace?.spanId) {
+            pendingContextTokenAttrs.delete(trustedTrace.spanId);
+          }
+        }
         if (evt.outcome === "error") {
           span.setStatus({
             code: SpanStatusCode.ERROR,
@@ -2785,6 +2801,9 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
           return;
         }
         span.end(evt.ts);
+        if (trustedTrace?.spanId) {
+          pendingContextTokenAttrs.delete(trustedTrace.spanId);
+        }
       };
 
       const harnessRunMetricAttrs = (evt: HarnessRunDiagnosticEvent) => ({
@@ -2969,9 +2988,16 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         if (evt.contextTokenBudget !== undefined) {
           runSpanAttrs["openclaw.context.token_budget"] = evt.contextTokenBudget;
         }
-        const trace = trustedTraceContext(evt, metadata);
-        const parentSpanId = trace?.parentSpanId ?? trace?.spanId;
+        const trustedTrace = trustedTraceContext(evt, metadata);
+        const parentSpanId = trustedTrace?.parentSpanId ?? trustedTrace?.spanId;
         const owner = trustedSpanAliasOwner(evt);
+        // DEV-334: Stash attrs by run span ID so recordRunCompleted can
+        // apply them if the run span is still active when it fires. This
+        // handles the async-dispatch ordering of context.assembled vs the
+        // sync dispatch of run.completed.
+        if (parentSpanId) {
+          pendingContextTokenAttrs.set(parentSpanId, runSpanAttrs);
+        }
         const runSpan = parentSpanId
           ? (activeTrustedSpans.get(parentSpanId) ??
             (owner ? activeTrustedSpanAlias(parentSpanId, owner) : undefined))

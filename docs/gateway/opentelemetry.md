@@ -318,6 +318,7 @@ Liveness warnings also emit:
   - `gen_ai.request.model`, `gen_ai.operation.name`, `gen_ai.usage.*`
 - `openclaw.run`
   - `openclaw.outcome`, `openclaw.channel`, `openclaw.provider`, `openclaw.model`, `openclaw.errorCategory`, `openclaw.sessionId`, `openclaw.sessionKey`
+  - Pre-call context token estimate (set when `context.assembled` fires before the run span closes): `openclaw.context.tokens`, `openclaw.context.system_prompt_tokens`, `openclaw.context.history_tokens`, `openclaw.context.prompt_tokens`, `openclaw.context.token_budget`
 - `openclaw.model.call`
   - `gen_ai.system` by default, or `gen_ai.provider.name` when the latest GenAI semantic conventions are opted in
   - `gen_ai.request.model`, `gen_ai.operation.name`, `openclaw.provider`, `openclaw.model`, `openclaw.api`, `openclaw.transport`
