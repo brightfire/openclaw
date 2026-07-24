@@ -558,6 +558,7 @@ describe("diagnostics-otel service", () => {
       "openclaw.tool_call_id",
       "openclaw.traceId",
       "openclaw.trace_id",
+      "openclaw.session_key",
     ]) {
       expect(Object.hasOwn(emitCall.attributes ?? {}, key)).toBe(false);
     }
