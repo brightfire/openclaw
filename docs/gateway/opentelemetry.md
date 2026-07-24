@@ -130,12 +130,18 @@ are exported only when `diagnostics.otel.logs` is explicitly `true`.
 Raw model/tool content is **not** exported by default. Spans carry bounded
 identifiers (channel, provider, model, error category, hash-only request ids,
 tool source, tool owner, and skill name/source) and never include prompt text,
-response text, tool inputs, tool outputs, skill file paths, or session keys.
+response text, tool inputs, tool outputs, or skill file paths.
+Spans and OTLP log records carry `openclaw.sessionId` (opaque UUID) and/or
+`openclaw.sessionKey` (human-readable grouping key, e.g.
+`agent:main:main`) when the originating event includes those fields and the
+span handler calls `addSessionAttrs` or `addRunAttrs`. Not every span type
+includes session attributes — see the span catalog below for which attributes
+each span emits. These are stable identifiers, not secrets.
+
 OTLP log records keep severity, logger, code location, trusted trace context,
-and sanitized attributes by default, but the raw log message body is exported
-only when `diagnostics.otel.captureContent` is set to boolean `true`. Granular
-`captureContent.*` subkeys do not enable log bodies. Labels that look like
-scoped agent session keys are replaced with `unknown`.
+and sanitized attributes by default. The raw log message body is exported
+only when `diagnostics.otel.captureContent` is set to boolean `true`.
+Granular `captureContent.*` subkeys do not enable log bodies.
 Talk metrics export only bounded event metadata such as mode, transport,
 provider, and event type. They do not include transcripts, audio payloads,
 session ids, turn ids, call ids, room ids, or handoff tokens.
@@ -306,12 +312,12 @@ Liveness warnings also emit:
 ## Exported spans
 
 - `openclaw.model.usage`
-  - `openclaw.channel`, `openclaw.provider`, `openclaw.model`
+  - `openclaw.channel`, `openclaw.provider`, `openclaw.model`, `openclaw.sessionId`, `openclaw.sessionKey`
   - `openclaw.tokens.*` (input/output/cache_read/cache_write/total)
   - `gen_ai.system` by default, or `gen_ai.provider.name` when the latest GenAI semantic conventions are opted in
   - `gen_ai.request.model`, `gen_ai.operation.name`, `gen_ai.usage.*`
 - `openclaw.run`
-  - `openclaw.outcome`, `openclaw.channel`, `openclaw.provider`, `openclaw.model`, `openclaw.errorCategory`
+  - `openclaw.outcome`, `openclaw.channel`, `openclaw.provider`, `openclaw.model`, `openclaw.errorCategory`, `openclaw.sessionId`, `openclaw.sessionKey`
 - `openclaw.model.call`
   - `gen_ai.system` by default, or `gen_ai.provider.name` when the latest GenAI semantic conventions are opted in
   - `gen_ai.request.model`, `gen_ai.operation.name`, `openclaw.provider`, `openclaw.model`, `openclaw.api`, `openclaw.transport`
@@ -320,29 +326,29 @@ Liveness warnings also emit:
   - `openclaw.provider.request_id_hash` (bounded SHA-based hash of the upstream provider request id; raw ids are not exported)
   - With `OTEL_SEMCONV_STABILITY_OPT_IN=gen_ai_latest_experimental`, model-call spans use the latest GenAI inference span name `{gen_ai.operation.name} {gen_ai.request.model}` and `CLIENT` span kind instead of `openclaw.model.call`.
 - `openclaw.harness.run`
-  - `openclaw.harness.id`, `openclaw.harness.plugin`, `openclaw.outcome`, `openclaw.provider`, `openclaw.model`, `openclaw.channel`
+  - `openclaw.harness.id`, `openclaw.harness.plugin`, `openclaw.outcome`, `openclaw.provider`, `openclaw.model`, `openclaw.channel`, `openclaw.sessionId`, `openclaw.sessionKey`
   - On completion: `openclaw.harness.result_classification`, `openclaw.harness.yield_detected`, `openclaw.harness.items.started`, `openclaw.harness.items.completed`, `openclaw.harness.items.active`
   - With `captureContent.inputMessages`: `input.value` (redacted user prompt)
   - With `captureContent.outputMessages`: `output.value` (redacted final response)
   - On error: `openclaw.harness.phase`, `openclaw.errorCategory`, optional `openclaw.harness.cleanup_failed`
 - `openclaw.tool.execution`
-  - `gen_ai.tool.name`, `openclaw.toolName`, `openclaw.errorCategory`, `openclaw.tool.params.*`
+  - `gen_ai.tool.name`, `openclaw.toolName`, `openclaw.errorCategory`, `openclaw.tool.params.*`, `openclaw.sessionId`, `openclaw.sessionKey`
 - `openclaw.exec`
   - `openclaw.exec.target`, `openclaw.exec.mode`, `openclaw.outcome`, `openclaw.failureKind`, `openclaw.exec.command_length`, `openclaw.exec.exit_code`, `openclaw.exec.timed_out`
 - `openclaw.webhook.processed`
-  - `openclaw.channel`, `openclaw.webhook`
+  - `openclaw.channel`, `openclaw.webhook`, `openclaw.sessionId`, `openclaw.sessionKey`
 - `openclaw.webhook.error`
-  - `openclaw.channel`, `openclaw.webhook`, `openclaw.error`
+  - `openclaw.channel`, `openclaw.webhook`, `openclaw.error`, `openclaw.sessionId`, `openclaw.sessionKey`
 - `openclaw.message.processed`
-  - `openclaw.channel`, `openclaw.outcome`, `openclaw.reason`
+  - `openclaw.channel`, `openclaw.outcome`, `openclaw.reason`, `openclaw.sessionId`, `openclaw.sessionKey`
 - `openclaw.message.delivery`
   - `openclaw.channel`, `openclaw.delivery.kind`, `openclaw.outcome`, `openclaw.errorCategory`, `openclaw.delivery.result_count`
 - `openclaw.session.stuck`
   - `openclaw.state`, `openclaw.ageMs`, `openclaw.queueDepth`
 - `openclaw.context.assembled`
-  - `openclaw.prompt.size`, `openclaw.history.size`, `openclaw.context.tokens`, `openclaw.errorCategory` (no prompt, history, response, or session-key content)
+  - `openclaw.prompt.size`, `openclaw.history.size`, `openclaw.context.tokens`, `openclaw.errorCategory`, `openclaw.sessionId`, `openclaw.sessionKey` (no prompt, history, or response content)
 - `openclaw.tool.loop`
-  - `openclaw.toolName`, `openclaw.outcome`, `openclaw.iterations`, `openclaw.errorCategory` (no loop messages, params, or tool output)
+  - `openclaw.toolName`, `openclaw.outcome`, `openclaw.iterations`, `openclaw.errorCategory`, `openclaw.sessionId`, `openclaw.sessionKey` (no loop messages, params, or tool output)
 - `openclaw.memory.pressure`
   - `openclaw.memory.level`, `openclaw.memory.heap_used_bytes`, `openclaw.memory.rss_bytes`
 

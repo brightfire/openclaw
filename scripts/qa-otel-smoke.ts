@@ -102,7 +102,6 @@ const DISALLOWED_ATTRIBUTE_KEYS = new Set([
   "openclaw.runId",
   "openclaw.chatId",
   "openclaw.messageId",
-  "openclaw.sessionKey",
   "openclaw.callId",
   "openclaw.toolCallId",
   "openclaw.run_id",
