@@ -3768,6 +3768,9 @@ describe("diagnostics-otel service", () => {
 
     const runSpan = spanByName("openclaw.run");
     const runSpanContext = runSpan.spanContext();
+    // run.completed now defers completeTrackedLifecycleSpan by one microtask
+    // so context.assembled can drain first (DEV-334). Flush before asserting.
+    await flushDiagnosticEvents();
     expect(runSpan.end).toHaveBeenCalledTimes(1);
     await waitForDiagnosticEventsDrained();
 

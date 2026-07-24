@@ -2797,7 +2797,21 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
           });
         }
         if (trackedSpan && trustedTrace?.spanId) {
-          completeTrackedLifecycleSpan(trustedTrace.spanId, trackedSpan, evt.ts);
+          // DEV-334: Delay ending the span by one microtask so the async
+          // event queue can drain pending context.assembled events (which
+          // are async-dispatched) before the span closes. Without this,
+          // fast-exit runs that finish in the same event-loop turn as
+          // context assembly end the span before context.assembled fires,
+          // silently dropping openclaw.context.* attrs.
+          const spanId = trustedTrace.spanId;
+          const endTs = evt.ts;
+          queueMicrotask(() => {
+            // Guard against shutdown between run.completed and microtask.
+            if (!activeTrustedSpans.has(spanId)) {
+              return;
+            }
+            completeTrackedLifecycleSpan(spanId, trackedSpan, endTs);
+          });
           return;
         }
         span.end(evt.ts);
@@ -2991,19 +3005,20 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         const trustedTrace = trustedTraceContext(evt, metadata);
         const parentSpanId = trustedTrace?.parentSpanId ?? trustedTrace?.spanId;
         const owner = trustedSpanAliasOwner(evt);
-        // DEV-334: Stash attrs by run span ID so recordRunCompleted can
-        // apply them if the run span is still active when it fires. This
-        // handles the async-dispatch ordering of context.assembled vs the
-        // sync dispatch of run.completed.
-        if (parentSpanId) {
-          pendingContextTokenAttrs.set(parentSpanId, runSpanAttrs);
-        }
         const runSpan = parentSpanId
           ? (activeTrustedSpans.get(parentSpanId) ??
             (owner ? activeTrustedSpanAlias(parentSpanId, owner) : undefined))
           : undefined;
         if (runSpan) {
+          // DEV-334: Set attrs immediately on the active span AND stash by
+          // run span ID so recordRunCompleted can apply them if it fires
+          // after this (normal ordering). The stash is only created when
+          // the span is still active to avoid stale entries on the fast
+          // path where run.completed has already closed the span.
           setSpanAttrs(runSpan, runSpanAttrs);
+          if (parentSpanId) {
+            pendingContextTokenAttrs.set(parentSpanId, runSpanAttrs);
+          }
         }
       };
 
