@@ -5,7 +5,7 @@ import {
   recordPendingHistoryEntryWithMedia,
 } from "../../auto-reply/reply/history.js";
 import {
-  createDiagnosticTraceContextFromActiveScope,
+  createDiagnosticTraceContext,
   runWithDiagnosticTraceContext,
 } from "../../infra/diagnostic-trace-context.js";
 import { toHistoryMediaEntries } from "../inbound-event/media.js";
@@ -463,7 +463,7 @@ async function runPreparedChannelTurnCore<
   params: PreparedChannelTurn<TDispatchResult>,
   options: { suppressObserveOnlyDispatch: boolean },
 ): Promise<ChannelTurnResult<TDispatchResult>> {
-  const trace = createDiagnosticTraceContextFromActiveScope();
+  const trace = createDiagnosticTraceContext();
   return await runWithDiagnosticTraceContext(trace, () =>
     runPreparedChannelTurnCoreInTrace(params, options),
   );

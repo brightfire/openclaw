@@ -1,13 +1,16 @@
 // Verifies harness lifecycle capability checks, diagnostics, and trace scoping.
 import type { Model } from "openclaw/plugin-sdk/llm";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import * as configModule from "../../config/config.js";
 import { OPENCLAW_EMBEDDED_CONTEXT_ENGINE_HOST } from "../../context-engine/host-compat.js";
 import type { ContextEngine } from "../../context-engine/types.js";
 import {
   onInternalDiagnosticEvent,
+  onTrustedInternalDiagnosticEvent,
   resetDiagnosticEventsForTest,
   type DiagnosticEventMetadata,
   type DiagnosticEventPayload,
+  type DiagnosticEventPrivateData,
 } from "../../infra/diagnostic-events.js";
 import {
   getActiveDiagnosticTraceContext,
@@ -465,5 +468,112 @@ describe("AgentHarness lifecycle runner", () => {
     await runAgentHarnessLifecycleAttempt(harness, createAttemptParams());
 
     expect(dispose).not.toHaveBeenCalled();
+  });
+
+  it("routes userPrompt and finalResponse via harnessContent private data when content capture is enabled", async () => {
+    resetDiagnosticEventsForTest();
+    const spy = vi.spyOn(configModule, "getRuntimeConfig").mockReturnValue({
+      diagnostics: {
+        enabled: true,
+        otel: {
+          enabled: true,
+          traces: true,
+          captureContent: {
+            enabled: true,
+            inputMessages: true,
+            outputMessages: true,
+          },
+        },
+      },
+    } as never);
+
+    try {
+      const params = createAttemptParams();
+      params.prompt = "what is 2+2?";
+      const result = {
+        ...createAttemptResult(),
+        assistantTexts: ["4"],
+      } as EmbeddedRunAttemptResult;
+      const harness: AgentHarness = {
+        id: "codex",
+        label: "Codex",
+        supports: () => ({ supported: true }),
+        runAttempt: async () => result,
+      };
+
+      const trustedEvents: Array<{
+        event: DiagnosticEventPayload;
+        privateData: DiagnosticEventPrivateData | undefined;
+      }> = [];
+      const unsubscribe = onTrustedInternalDiagnosticEvent((event, _metadata, privateData) => {
+        if (event.type === "harness.run.started" || event.type === "harness.run.completed") {
+          trustedEvents.push({ event, privateData });
+        }
+      });
+
+      try {
+        await runAgentHarnessLifecycleAttempt(harness, params);
+        await flushDiagnosticEvents();
+      } finally {
+        unsubscribe();
+      }
+
+      expect(trustedEvents).toHaveLength(2);
+      const startedEvent = trustedEvents[0];
+      const completedEvent = trustedEvents[1];
+
+      expect(startedEvent?.event.type).toBe("harness.run.started");
+      expect(startedEvent?.privateData?.harnessContent?.userPrompt).toBe("what is 2+2?");
+      expect(startedEvent?.privateData?.harnessContent?.finalResponse).toBeUndefined();
+
+      expect(completedEvent?.event.type).toBe("harness.run.completed");
+      expect(completedEvent?.privateData?.harnessContent?.finalResponse).toBe("4");
+      expect(completedEvent?.privateData?.harnessContent?.userPrompt).toBeUndefined();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("suppresses harnessContent private data when content capture is disabled", async () => {
+    resetDiagnosticEventsForTest();
+    const spy = vi.spyOn(configModule, "getRuntimeConfig").mockReturnValue({} as never);
+
+    try {
+      const params = createAttemptParams();
+      params.prompt = "what is 2+2?";
+      const result = {
+        ...createAttemptResult(),
+        assistantTexts: ["4"],
+      } as EmbeddedRunAttemptResult;
+      const harness: AgentHarness = {
+        id: "codex",
+        label: "Codex",
+        supports: () => ({ supported: true }),
+        runAttempt: async () => result,
+      };
+
+      const trustedEvents: Array<{
+        event: DiagnosticEventPayload;
+        privateData: DiagnosticEventPrivateData | undefined;
+      }> = [];
+      const unsubscribe = onTrustedInternalDiagnosticEvent((event, _metadata, privateData) => {
+        if (event.type === "harness.run.started" || event.type === "harness.run.completed") {
+          trustedEvents.push({ event, privateData });
+        }
+      });
+
+      try {
+        await runAgentHarnessLifecycleAttempt(harness, params);
+        await flushDiagnosticEvents();
+      } finally {
+        unsubscribe();
+      }
+
+      expect(trustedEvents).toHaveLength(2);
+      expect(trustedEvents[0]?.privateData?.harnessContent).toBeUndefined();
+      expect(trustedEvents[1]?.privateData?.harnessContent).toBeUndefined();
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
