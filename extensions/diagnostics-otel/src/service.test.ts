@@ -5331,4 +5331,28 @@ describe("diagnostics-otel service", () => {
     expect(Object.hasOwn(logCall.attributes ?? {}, "openclaw.spanId")).toBe(false);
     expect(Object.hasOwn(logCall.attributes ?? {}, "openclaw.toolCallId")).toBe(false);
   });
+
+  test("logs debug message when scrubbing fires on sensitive values during OTel export", async () => {
+    const service = createDiagnosticsOtelService();
+    const ctx = createOtelContext(OTEL_TEST_ENDPOINT, {
+      logs: true,
+      captureContent: true,
+    });
+    await service.start(ctx);
+
+    emitDiagnosticEvent({
+      type: "log.record",
+      level: "INFO",
+      message: "Using API key sk-1234567890abcdef1234567890abcdef",
+    });
+    await flushDiagnosticEvents();
+
+    expect(logEmit).toHaveBeenCalled();
+    expect(ctx.logger.debug).toHaveBeenCalledWith(
+      expect.stringContaining("diagnostics-otel: scrubbed"),
+    );
+    expect(ctx.logger.debug).toHaveBeenCalledWith(expect.stringContaining("sensitive value"));
+
+    await service.stop?.(ctx);
+  });
 });
