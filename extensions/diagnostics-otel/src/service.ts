@@ -1352,7 +1352,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
       const tracer = trace.getTracer("openclaw");
       // Wire the scrubbing debug sink so OTel redaction functions can log when scrubbing fires.
       otelScrubbingSink = () => {
-        ctx.logger.debug("diagnostics-otel: scrubbed sensitive value(s) before OTel export");
+        ctx.logger.debug?.("diagnostics-otel: scrubbed sensitive value(s) before OTel export");
       };
       const activeTrustedSpans = new Map<string, ReturnType<typeof tracer.startSpan>>();
       const activeTrustedSpanAliases = new Map<
