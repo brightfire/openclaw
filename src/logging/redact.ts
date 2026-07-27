@@ -872,9 +872,13 @@ function redactMatch(
   const token = selected.value;
   // An earlier pass (form-body or quoted-assignment masking) may already have replaced this
   // value with *** or a [REDACTED:type] tag; re-masking would corrupt the placeholder
-  // (e.g. appending extra ] brackets from the suffix extraction).
+  // (e.g. appending extra ] brackets from the suffix extraction). Check the raw token
+  // before splitting so the closing ] is still part of the placeholder.
+  if (token === "***" || /^\[REDACTED:[a-z_]+\]$/.test(token)) {
+    return match;
+  }
   const preMasked = splitSecretValueForMask(token).maskable;
-  if (preMasked === "***" || preMasked.startsWith("[REDACTED:")) {
+  if (preMasked === "***") {
     return match;
   }
   const isShellReferencePattern = shellReferencePreservingPatterns.has(pattern);
