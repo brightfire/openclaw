@@ -5039,6 +5039,48 @@ describe("diagnostics-otel service", () => {
     await service.stop?.(ctx);
   });
 
+  test("emits redaction counter when scrubbing fires on log body", async () => {
+    const service = createDiagnosticsOtelService();
+    const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { logs: true, captureContent: true });
+    await service.start(ctx);
+
+    emitDiagnosticEvent({
+      type: "log.record",
+      level: "INFO",
+      message: "Using Bearer sk-test1234567890abcdefghij in config", // pragma: allowlist secret
+    });
+
+    await flushDiagnosticEvents();
+    expect(logEmit).toHaveBeenCalled();
+    const emitCall = mockCallArg(logEmit, 0) as { body?: string };
+    expect(emitCall.body).not.toContain("sk-test1234567890abcdefghij");
+
+    const redactionCall = firstCounterAddCall("openclaw.redaction.fired");
+    expect(redactionCall[0]).toBeGreaterThan(0);
+    await service.stop?.(ctx);
+  });
+
+  test("lowCardinalityAttr is applied to model.usage metric labels", async () => {
+    const service = createDiagnosticsOtelService();
+    const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { metrics: true });
+    await service.start(ctx);
+
+    emitDiagnosticEvent({
+      type: "model.usage",
+      agentId: "agent:main:main",
+      provider: "openai",
+      model: "gpt-4",
+      channel: "webchat",
+      usage: { input: 10, output: 5, total: 15 },
+    });
+
+    const tokensCall = firstCounterAddCall("openclaw.tokens");
+    const attrs = tokensCall[1];
+    expect(attrs?.["openclaw.provider"]).toBe("openai");
+    expect(attrs?.["openclaw.model"]).toBe("gpt-4");
+    await service.stop?.(ctx);
+  });
+
   test("LangfuseMetadataSpanProcessor copies agent and bot to metadata fields", async () => {
     const { LangfuseMetadataSpanProcessor } = await import("./service.js");
     const processor = new LangfuseMetadataSpanProcessor();
