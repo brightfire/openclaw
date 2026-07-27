@@ -5060,14 +5060,34 @@ describe("diagnostics-otel service", () => {
     emitDiagnosticEvent({
       type: "message.processed",
       channel: "webchat",
-      outcome: "completed",
+      outcome: "error",
+      error: "upstream rejected key sk-1234567890abcdef1234567890abcdef",
       durationMs: 10,
     });
     await flushDiagnosticEvents();
 
-    // Verify span attributes are redacted with [REDACTED:type] format
-    const spanCalls = telemetryState.tracer.startSpan.mock.calls;
-    expect(spanCalls.length).toBeGreaterThan(0);
+    // Verify a span was started for the message
+    const spanCalls = telemetryState.tracer.startSpan.mock.calls as unknown as Array<
+      [string, unknown?, unknown?]
+    >;
+    const messageSpan = spanCalls.find(([name]) => name === "openclaw.message.processed");
+    expect(messageSpan).toBeDefined();
+
+    // The error message contains an sk-* key; the span status message must be
+    // redacted with [REDACTED:api_key] rather than leaking the secret value.
+    const span = telemetryState.spans.find((s) => s.name === "openclaw.message.processed");
+    expect(span).toBeDefined();
+    const setStatusCall = span?.setStatus.mock.calls[0]?.[0] as
+      | { code?: number; message?: string }
+      | undefined;
+    expect(setStatusCall?.code).toBe(2); // SpanStatusCode.ERROR
+    expect(setStatusCall?.message).toContain("[REDACTED:api_key]");
+    expect(setStatusCall?.message).not.toContain("sk-1234567890abcdef1234567890abcdef");
+
+    // The scrubbing debug sink should have fired.
+    expect(ctx.logger.debug).toHaveBeenCalledWith(
+      "diagnostics-otel: scrubbed sensitive value(s) before OTel export",
+    );
     await service.stop?.(ctx);
   });
 
