@@ -453,7 +453,11 @@ function maskSecretValue(token: string, options?: { hinted?: boolean }): string 
 
 function maskForFormat(token: string, format: "hint" | "redacted", tag: string): string {
   if (format === "redacted") {
-    return `[REDACTED:${tag}]`;
+    if (/^\[REDACTED:[a-z_]+\]$/.test(token)) {
+      return token;
+    }
+    const { suffix } = splitSecretValueForMask(token);
+    return `[REDACTED:${tag}]${suffix}`;
   }
   return maskSecretValue(token, { hinted: true });
 }
