@@ -9,18 +9,39 @@ export type RedactPattern = string | RegExp;
 const patternTagMap = new WeakMap<RegExp, string>();
 
 function classifyPatternTag(source: string): string {
-  if (source.includes("PRIVATE KEY")) return "private_key";
-  if (/Bearer/u.test(source)) return "bearer";
-  if (/Authorization.*Basic/u.test(source)) return "bearer";
-  if (/Authorization.*Bot/u.test(source)) return "bearer";
-  if (/postgres|mysql|mongodb|amqp|redis/u.test(source)) return "connection_string";
-  if (/https|wss|ftp|:\/\//u.test(source) && source.includes("@")) return "connection_string";
-  if (/sk[-_]/u.test(source) || /sk_(?:live|test)_/u.test(source) || /rk_live_/u.test(source))
+  if (source.includes("PRIVATE KEY")) {
+    return "private_key";
+  }
+  if (/Bearer/u.test(source)) {
+    return "bearer";
+  }
+  if (/Authorization.*Basic/u.test(source)) {
+    return "bearer";
+  }
+  if (/Authorization.*Bot/u.test(source)) {
+    return "bearer";
+  }
+  if (/postgres|mysql|mongodb|amqp|redis/u.test(source)) {
+    return "connection_string";
+  }
+  if (/https|wss|ftp|:\/\//u.test(source) && source.includes("@")) {
+    return "connection_string";
+  }
+  if (/sk[-_]/u.test(source) || /sk_(?:live|test)_/u.test(source) || /rk_live_/u.test(source)) {
     return "api_key";
-  if (/gh[prsoux]_|github_pat_/u.test(source)) return "github_token";
-  if (/xox|hooks.*slack|xapp-/u.test(source)) return "slack_token";
-  if (/AKIA|ASIA/u.test(source)) return "aws_key";
-  if (/AIza/u.test(source)) return "google_key";
+  }
+  if (/gh[prsoux]_|github_pat_/u.test(source)) {
+    return "github_token";
+  }
+  if (/xox|hooks.*slack|xapp-/u.test(source)) {
+    return "slack_token";
+  }
+  if (/AKIA|ASIA/u.test(source)) {
+    return "aws_key";
+  }
+  if (/AIza/u.test(source)) {
+    return "google_key";
+  }
   return "secret";
 }
 
