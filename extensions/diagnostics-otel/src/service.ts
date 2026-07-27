@@ -301,6 +301,15 @@ function findOtlpExporterError(reason: unknown): object | undefined {
 // redaction functions can report when scrubbing fires without depending on a meter.
 let otelScrubbingSink: ((redactedCount: number) => void) | undefined;
 
+/** Counter-aware wrapper: redacts and fires the scrubbing sink when content changes. */
+function redactForOtel(value: string): string {
+  const redacted = redactSensitiveText(value);
+  if (redacted !== value) {
+    otelScrubbingSink?.(1);
+  }
+  return redacted;
+}
+
 function redactOtelAttributes(attributes: Record<string, string | number | boolean>) {
   const redactedAttributes: Record<string, string | number | boolean> = {};
   let scrubbed = 0;
@@ -678,7 +687,7 @@ function stringifyJsonForOtelAttribute(value: unknown): string | undefined {
     if (!json) {
       return undefined;
     }
-    return redactSensitiveText(json);
+    return redactForOtel(json);
   } catch {
     return undefined;
   }
@@ -756,7 +765,7 @@ function truncateJsonObjectForOtelAttribute(
 }
 
 function truncateJsonTextForOtelAttribute(value: string, maxChars: number): string {
-  const redacted = redactSensitiveText(value);
+  const redacted = redactForOtel(value);
   if (redacted.length <= maxChars) {
     return redacted;
   }
@@ -2316,7 +2325,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         if (!tracesEnabled) {
           return;
         }
-        const redactedError = redactSensitiveText(evt.error);
+        const redactedError = redactForOtel(evt.error);
         const spanAttrs: Record<string, string | number> = {
           ...attrs,
           "openclaw.error": redactedError,
@@ -2441,7 +2450,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
           });
         setSpanAttrs(span, spanAttrs);
         if (evt.outcome === "error" && evt.error) {
-          span.setStatus({ code: SpanStatusCode.ERROR, message: redactSensitiveText(evt.error) });
+          span.setStatus({ code: SpanStatusCode.ERROR, message: redactForOtel(evt.error) });
         }
         const traceContext = internalOrTrustedTraceContext(evt, metadata);
         if (trackedSpan && traceContext?.spanId) {
@@ -2507,7 +2516,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         });
         span.setStatus({
           code: SpanStatusCode.ERROR,
-          message: redactSensitiveText(evt.errorCategory),
+          message: redactForOtel(evt.errorCategory),
         });
         span.end(evt.ts);
       };
@@ -2566,7 +2575,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
           "openclaw.state": lowCardinalityAttr(evt.state, "unknown"),
         };
         if (evt.reason) {
-          attrs["openclaw.reason"] = redactSensitiveText(evt.reason);
+          attrs["openclaw.reason"] = redactForOtel(evt.reason);
         }
         sessionStateCounter.add(1, attrs);
       };
@@ -2613,7 +2622,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
           "openclaw.state": lowCardinalityAttr(evt.state, "unknown"),
         };
         if (evt.reason) {
-          attrs["openclaw.reason"] = redactSensitiveText(evt.reason);
+          attrs["openclaw.reason"] = redactForOtel(evt.reason);
         }
         if (evt.activeWorkKind) {
           attrs["openclaw.active_work_kind"] = lowCardinalityAttr(evt.activeWorkKind, "unknown");
@@ -2637,7 +2646,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         attrs["openclaw.status"] = evt.status;
         attrs["openclaw.action"] = lowCardinalityAttr(evt.action, "unknown");
         if (evt.outcomeReason) {
-          attrs["openclaw.reason"] = redactSensitiveText(evt.outcomeReason);
+          attrs["openclaw.reason"] = redactForOtel(evt.outcomeReason);
         }
         sessionRecoveryCompletedCounter.add(1, attrs);
         sessionRecoveryAgeHistogram.record(evt.ageMs, attrs);
@@ -2755,7 +2764,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         if (evt.level === "critical") {
           span.setStatus({
             code: SpanStatusCode.ERROR,
-            message: redactSensitiveText(evt.reason),
+            message: redactForOtel(evt.reason),
           });
         }
         span.end(evt.ts);
@@ -2827,7 +2836,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         if (evt.outcome === "error") {
           span.setStatus({
             code: SpanStatusCode.ERROR,
-            ...(evt.errorCategory ? { message: redactSensitiveText(evt.errorCategory) } : {}),
+            ...(evt.errorCategory ? { message: redactForOtel(evt.errorCategory) } : {}),
           });
         }
         if (trackedSpan && trustedTrace?.spanId) {
@@ -3211,7 +3220,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         addUpstreamRequestIdSpanEvent(span, evt.upstreamRequestIdHash);
         span.setStatus({
           code: SpanStatusCode.ERROR,
-          message: redactSensitiveText(evt.errorCategory),
+          message: redactForOtel(evt.errorCategory),
         });
         span.end(evt.ts);
       };
@@ -3274,7 +3283,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         // emission site opted in. A config mismatch or reload must not leak the excerpt.
         // Redact before export regardless: the excerpt may contain keys/tokens.
         if (skillContent?.trigger && contentCapturePolicy.inputMessages) {
-          spanAttrs["openclaw.skill.trigger"] = redactSensitiveText(skillContent.trigger);
+          spanAttrs["openclaw.skill.trigger"] = redactForOtel(skillContent.trigger);
         }
         const span = spanWithDuration("openclaw.skill.used", spanAttrs, 0, {
           parentContext: activeTrustedParentContext(evt, metadata),
@@ -3357,7 +3366,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         setSpanAttrs(span, spanAttrs);
         span.setStatus({
           code: SpanStatusCode.ERROR,
-          message: redactSensitiveText(evt.errorCategory),
+          message: redactForOtel(evt.errorCategory),
         });
         span.end(evt.ts);
       };
@@ -3509,7 +3518,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         });
         span.setStatus({
           code: SpanStatusCode.ERROR,
-          message: redactSensitiveText(reason),
+          message: redactForOtel(reason),
         });
         span.end(evt.ts);
       };
