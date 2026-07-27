@@ -299,8 +299,9 @@ Liveness warnings also emit:
 
 - `openclaw.exec.duration_ms` (histogram, attrs: `openclaw.exec.target`, `openclaw.exec.mode`, `openclaw.outcome`, `openclaw.failureKind`)
 
-### Diagnostics internals (memory and tool loop)
+### Diagnostics internals (memory, tool loop, and redaction)
 
+- `openclaw.redaction.fired` (counter, unit `1`, attr: `openclaw.redaction.surface` = `otel_export`) — fires when `redactSensitiveText` modifies a value during OTel export (attribute normalization, log body sanitization, or low-cardinality/model-id label construction)
 - `openclaw.payload.large` (counter, attrs: `openclaw.payload.surface`, `openclaw.payload.action`, `openclaw.channel`, `openclaw.plugin`, `openclaw.reason`)
 - `openclaw.payload.large_bytes` (histogram, attrs: same as `openclaw.payload.large`)
 - `openclaw.memory.heap_used_bytes` (histogram, attrs: `openclaw.memory.kind`)

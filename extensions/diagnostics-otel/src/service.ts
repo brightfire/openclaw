@@ -361,7 +361,11 @@ function lowCardinalityAttr(value: string | undefined, fallback = "unknown"): st
   if (!value) {
     return fallback;
   }
-  const redacted = redactSensitiveText(value.trim());
+  const trimmed = value.trim();
+  const redacted = redactSensitiveText(trimmed);
+  if (redacted !== trimmed) {
+    otelScrubbingSink?.(1);
+  }
   const redactedLower = redacted.toLowerCase();
   if (redactedLower.startsWith("agent:") || redactedLower.includes(":agent:")) {
     return fallback;
@@ -379,7 +383,11 @@ function modelIdAttr(value: string | undefined, fallback = "unknown"): string {
   if (!value) {
     return fallback;
   }
-  const redacted = redactSensitiveText(value.trim());
+  const trimmed = value.trim();
+  const redacted = redactSensitiveText(trimmed);
+  if (redacted !== trimmed) {
+    otelScrubbingSink?.(1);
+  }
   const redactedLower = redacted.toLowerCase();
   if (redactedLower.startsWith("agent:") || redactedLower.includes(":agent:")) {
     return fallback;
@@ -391,7 +399,11 @@ function lowCardinalityQueueLaneAttr(value: string | undefined, fallback = "unkn
   if (!value) {
     return fallback;
   }
-  const redacted = redactSensitiveText(value.trim());
+  const trimmed = value.trim();
+  const redacted = redactSensitiveText(trimmed);
+  if (redacted !== trimmed) {
+    otelScrubbingSink?.(1);
+  }
   const redactedLower = redacted.toLowerCase();
   if (redactedLower.startsWith("agent:")) {
     return fallback;
