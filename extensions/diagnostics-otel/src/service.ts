@@ -42,7 +42,6 @@ import {
   isValidDiagnosticTraceFlags,
   isValidDiagnosticTraceId,
   redactForExport,
-  redactSensitiveText,
 } from "../api.js";
 
 const DEFAULT_SERVICE_NAME = "openclaw";
@@ -358,7 +357,7 @@ function lowCardinalityAttr(value: string | undefined, fallback = "unknown"): st
   if (!value) {
     return fallback;
   }
-  const redacted = redactSensitiveText(value.trim());
+  const redacted = redactForExport(value.trim());
   const redactedLower = redacted.toLowerCase();
   if (redactedLower.startsWith("agent:") || redactedLower.includes(":agent:")) {
     return fallback;
@@ -376,7 +375,7 @@ function modelIdAttr(value: string | undefined, fallback = "unknown"): string {
   if (!value) {
     return fallback;
   }
-  const redacted = redactSensitiveText(value.trim());
+  const redacted = redactForExport(value.trim());
   const redactedLower = redacted.toLowerCase();
   if (redactedLower.startsWith("agent:") || redactedLower.includes(":agent:")) {
     return fallback;
@@ -388,7 +387,7 @@ function lowCardinalityQueueLaneAttr(value: string | undefined, fallback = "unkn
   if (!value) {
     return fallback;
   }
-  const redacted = redactSensitiveText(value.trim());
+  const redacted = redactForExport(value.trim());
   const redactedLower = redacted.toLowerCase();
   if (redactedLower.startsWith("agent:")) {
     return fallback;
@@ -1031,7 +1030,7 @@ function assignOtelLogAttribute(
   if (BLOCKED_OTEL_LOG_ATTRIBUTE_KEYS.has(key)) {
     return;
   }
-  if (redactSensitiveText(key) !== key) {
+  if (redactForExport(key) !== key) {
     return;
   }
   if (!OTEL_LOG_ATTRIBUTE_KEY_RE.test(key)) {
@@ -1093,7 +1092,7 @@ function assignOtelLogEventAttributes(
     if (BLOCKED_OTEL_LOG_ATTRIBUTE_KEYS.has(key)) {
       continue;
     }
-    if (redactSensitiveText(key) !== key) {
+    if (redactForExport(key) !== key) {
       continue;
     }
     if (!OTEL_LOG_RAW_ATTRIBUTE_KEY_RE.test(key)) {
@@ -2300,7 +2299,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         if (!tracesEnabled) {
           return;
         }
-        const redactedError = redactSensitiveText(evt.error);
+        const redactedError = redactForExport(evt.error);
         const spanAttrs: Record<string, string | number> = {
           ...attrs,
           "openclaw.error": redactedError,
@@ -2425,7 +2424,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
           });
         setSpanAttrs(span, spanAttrs);
         if (evt.outcome === "error" && evt.error) {
-          span.setStatus({ code: SpanStatusCode.ERROR, message: redactSensitiveText(evt.error) });
+          span.setStatus({ code: SpanStatusCode.ERROR, message: redactForExport(evt.error) });
         }
         const traceContext = internalOrTrustedTraceContext(evt, metadata);
         if (trackedSpan && traceContext?.spanId) {
@@ -2491,7 +2490,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         });
         span.setStatus({
           code: SpanStatusCode.ERROR,
-          message: redactSensitiveText(evt.errorCategory),
+          message: redactForExport(evt.errorCategory),
         });
         span.end(evt.ts);
       };
@@ -2548,7 +2547,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
       ) => {
         const attrs: Record<string, string> = { "openclaw.state": evt.state };
         if (evt.reason) {
-          attrs["openclaw.reason"] = redactSensitiveText(evt.reason);
+          attrs["openclaw.reason"] = redactForExport(evt.reason);
         }
         sessionStateCounter.add(1, attrs);
       };
@@ -2589,7 +2588,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
       const sessionRecoveryAttrs = (evt: SessionRecoveryDiagnosticEvent) => {
         const attrs: Record<string, string> = { "openclaw.state": evt.state };
         if (evt.reason) {
-          attrs["openclaw.reason"] = redactSensitiveText(evt.reason);
+          attrs["openclaw.reason"] = redactForExport(evt.reason);
         }
         if (evt.activeWorkKind) {
           attrs["openclaw.active_work_kind"] = evt.activeWorkKind;
@@ -2613,7 +2612,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         attrs["openclaw.status"] = evt.status;
         attrs["openclaw.action"] = lowCardinalityAttr(evt.action, "unknown");
         if (evt.outcomeReason) {
-          attrs["openclaw.reason"] = redactSensitiveText(evt.outcomeReason);
+          attrs["openclaw.reason"] = redactForExport(evt.outcomeReason);
         }
         sessionRecoveryCompletedCounter.add(1, attrs);
         sessionRecoveryAgeHistogram.record(evt.ageMs, attrs);
@@ -2803,7 +2802,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         if (evt.outcome === "error") {
           span.setStatus({
             code: SpanStatusCode.ERROR,
-            ...(evt.errorCategory ? { message: redactSensitiveText(evt.errorCategory) } : {}),
+            ...(evt.errorCategory ? { message: redactForExport(evt.errorCategory) } : {}),
           });
         }
         if (trackedSpan && trustedTrace?.spanId) {
@@ -3189,7 +3188,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         addUpstreamRequestIdSpanEvent(span, evt.upstreamRequestIdHash);
         span.setStatus({
           code: SpanStatusCode.ERROR,
-          message: redactSensitiveText(evt.errorCategory),
+          message: redactForExport(evt.errorCategory),
         });
         span.end(evt.ts);
       };
@@ -3252,7 +3251,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         // emission site opted in. A config mismatch or reload must not leak the excerpt.
         // Redact before export regardless: the excerpt may contain keys/tokens.
         if (skillContent?.trigger && contentCapturePolicy.inputMessages) {
-          spanAttrs["openclaw.skill.trigger"] = redactSensitiveText(skillContent.trigger);
+          spanAttrs["openclaw.skill.trigger"] = redactForExport(skillContent.trigger);
         }
         const span = spanWithDuration("openclaw.skill.used", spanAttrs, 0, {
           parentContext: activeTrustedParentContext(evt, metadata),
@@ -3335,7 +3334,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         setSpanAttrs(span, spanAttrs);
         span.setStatus({
           code: SpanStatusCode.ERROR,
-          message: redactSensitiveText(evt.errorCategory),
+          message: redactForExport(evt.errorCategory),
         });
         span.end(evt.ts);
       };
