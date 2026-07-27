@@ -2751,6 +2751,15 @@ describe("diagnostics-otel service", () => {
     expect(
       (contextCall?.[2] as { spanContext?: { spanId?: string } } | undefined)?.spanContext?.spanId,
     ).toBe(runSpanId);
+
+    // DEV-334: total_chars derived attribute on the openclaw.context.assembled span
+    const contextSpanOptions = startedSpanOptions("openclaw.context.assembled");
+    expect(contextSpanOptions?.attributes?.["openclaw.context.total_chars"]).toBe(789 + 1234 + 42);
+    expect(contextSpanOptions?.attributes?.["openclaw.context.system_prompt_chars"]).toBe(789);
+    expect(contextSpanOptions?.attributes?.["openclaw.context.history_text_chars"]).toBe(1234);
+    expect(contextSpanOptions?.attributes?.["openclaw.context.prompt_chars"]).toBe(42);
+    expect(contextSpanOptions?.attributes?.["openclaw.context.token_budget"]).toBe(128_000);
+
     await service.stop?.(ctx);
   });
 

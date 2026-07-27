@@ -2948,6 +2948,11 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         if (evt.reserveTokens !== undefined) {
           spanAttrs["openclaw.context.reserve_tokens"] = evt.reserveTokens;
         }
+        // DEV-334: Derived total context size — simple sum of the three
+        // character-count components above, for a convenient pre-call context
+        // size metric without needing to add component fields together.
+        spanAttrs["openclaw.context.total_chars"] =
+          evt.systemPromptChars + evt.historyTextChars + evt.promptChars;
         const span = spanWithDuration("openclaw.context.assembled", spanAttrs, 0, {
           parentContext: activeTrustedParentContext(evt, metadata),
           endTimeMs: evt.ts,
