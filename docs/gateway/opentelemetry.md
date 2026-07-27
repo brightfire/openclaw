@@ -346,7 +346,7 @@ Liveness warnings also emit:
 - `openclaw.session.stuck`
   - `openclaw.state`, `openclaw.ageMs`, `openclaw.queueDepth`
 - `openclaw.context.assembled`
-  - `openclaw.prompt.size`, `openclaw.history.size`, `openclaw.context.tokens`, `openclaw.errorCategory`, `openclaw.sessionId`, `openclaw.sessionKey` (no prompt, history, or response content)
+  - `openclaw.prompt.size`, `openclaw.history.size`, `openclaw.context.tokens`, `openclaw.context.total_chars`, `openclaw.errorCategory`, `openclaw.sessionId`, `openclaw.sessionKey` (no prompt, history, or response content)
 - `openclaw.tool.loop`
   - `openclaw.toolName`, `openclaw.outcome`, `openclaw.iterations`, `openclaw.errorCategory`, `openclaw.sessionId`, `openclaw.sessionKey` (no loop messages, params, or tool output)
 - `openclaw.memory.pressure`
