@@ -278,8 +278,8 @@ display, and Gateway WebSocket protocol logs. Custom `logging.redactPatterns`
 can still add project-specific patterns on those surfaces.
 
 When redaction is active, OpenTelemetry export paths (span attributes, log
-bodies, status messages) use the `[REDACTED:type]` format (e.g.
-`[REDACTED:api_key]`, `[REDACTED:github_token]`) instead of the hint-mask
+bodies, status messages) use the `__REDACTED_type__` format (e.g.
+`__REDACTED_api_key__`, `__REDACTED_github_token__`) instead of the hint-mask
 format used elsewhere. Operator-configured `logging.redactPatterns` are merged
 with the built-in defaults on these surfaces, so adding a pattern never weakens
 existing redaction.

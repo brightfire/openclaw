@@ -453,11 +453,16 @@ function maskSecretValue(token: string, options?: { hinted?: boolean }): string 
 
 function maskForFormat(token: string, format: "hint" | "redacted", tag: string): string {
   if (format === "redacted") {
-    if (/^\[REDACTED:[a-z_]+\]$/.test(token)) {
+    // Skip tokens that are already a __REDACTED_type__ placeholder, possibly with
+    // trailing delimiters that earlier passes preserved. The suffix check
+    // ensures attacker-crafted values like __REDACTED_fake__real-secret are
+    // not mistaken for already-redacted placeholders.
+    const placeholderMatch = token.match(/^__REDACTED_[a-z_]+__(.*)$/s);
+    if (placeholderMatch && SECRET_VALUE_SUFFIX_RE.test(placeholderMatch[1])) {
       return token;
     }
     const { suffix } = splitSecretValueForMask(token);
-    return `[REDACTED:${tag}]${suffix}`;
+    return `__REDACTED_${tag}__${suffix}`;
   }
   return maskSecretValue(token, { hinted: true });
 }
@@ -506,7 +511,7 @@ function redactFormEncodedPairs(
       const token = pair.slice(equalsIndex + 1);
       const masked =
         format === "redacted"
-          ? "[REDACTED:secret]"
+          ? maskForFormat(token, format, "secret")
           : maskSecretValue(token, { hinted: options?.maskValues === "hinted" });
       return `${key}=${masked}`;
     })
@@ -750,7 +755,7 @@ function markFormBodyRedactions(text: string, bitmap: boolean[]): void {
 
 function redactPemBlock(block: string, format: "hint" | "redacted" = "hint"): string {
   if (format === "redacted") {
-    return "[REDACTED:private_key]";
+    return "__REDACTED_private_key__";
   }
   const lines = block.split(/\r?\n/).filter(Boolean);
   if (lines.length < 2) {
@@ -875,10 +880,12 @@ function redactMatch(
   const selected = selectSecretCapture(match, groups);
   const token = selected.value;
   // An earlier pass (form-body or quoted-assignment masking) may already have replaced this
-  // value with *** or a [REDACTED:type] tag; re-masking would corrupt the placeholder
-  // (e.g. appending extra ] brackets from the suffix extraction). Check the raw token
-  // before splitting so the closing ] is still part of the placeholder.
-  if (token === "***" || /^\[REDACTED:[a-z_]+\]$/.test(token)) {
+  // value with *** or a __REDACTED_type__ tag; re-masking would corrupt the placeholder.
+  if (token === "***") {
+    return match;
+  }
+  const placeholderMatch = token.match(/^__REDACTED_[a-z_]+__(.*)$/s);
+  if (placeholderMatch && SECRET_VALUE_SUFFIX_RE.test(placeholderMatch[1])) {
     return match;
   }
   const preMasked = splitSecretValueForMask(token).maskable;
@@ -899,7 +906,7 @@ function redactMatch(
     const tag = patternTagMap.get(pattern) ?? "secret";
     const { suffix } = splitSecretValueForMask(token);
     if (token === match) {
-      return `[REDACTED:${tag}]${suffix}`;
+      return `__REDACTED_${tag}__${suffix}`;
     }
     const tokenIndex = getSecretCaptureStart(
       pattern,
@@ -911,7 +918,7 @@ function redactMatch(
     if (tokenIndex < 0) {
       return match;
     }
-    return `${match.slice(0, tokenIndex)}[REDACTED:${tag}]${suffix}${match.slice(tokenIndex + token.length)}`;
+    return `${match.slice(0, tokenIndex)}__REDACTED_${tag}__${suffix}${match.slice(tokenIndex + token.length)}`;
   }
   // Assignment values can legitimately include trailing shell/structural characters
   // (e.g. `${VAR:-default}`); mask the captured token whole so those characters count toward the
@@ -1100,7 +1107,7 @@ export function redactToolDetail(detail: string): string {
 
 // OTel export redaction that respects the operator's `logging.redactSensitive`
 // setting (so `"off"` disables it per the documented contract) while forcing the
-// `[REDACTED:type]` format and merging operator-configured `logging.redactPatterns`
+// `__REDACTED_type__` format and merging operator-configured `logging.redactPatterns`
 // with the built-in defaults when redaction is active.
 export function redactForExport(text: string): string {
   if (!text) {

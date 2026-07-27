@@ -1402,7 +1402,7 @@ describe("diagnostics-otel service", () => {
     );
 
     expect(emitCall?.body).not.toContain("sk-1234567890abcdef1234567890abcdef");
-    expect(emitCall?.body).toContain("[REDACTED:api_key]");
+    expect(emitCall?.body).toContain("__REDACTED_api_key__");
   });
 
   test("redacts sensitive data from log attributes before export", async () => {
@@ -1417,33 +1417,39 @@ describe("diagnostics-otel service", () => {
     const tokenAttr = emitCall?.attributes?.["openclaw.token"];
     expect(tokenAttr).not.toBe("ghp_abcdefghijklmnopqrstuvwxyz123456"); // pragma: allowlist secret
     if (typeof tokenAttr === "string") {
-      expect(tokenAttr).toContain("[REDACTED:github_token]");
+      expect(tokenAttr).toContain("__REDACTED_github_token__");
     }
   });
 
   test("preserves trailing delimiters when inserting redaction tags", async () => {
-    const emitCall = await emitAndCaptureLog({
-      level: "INFO",
-      message: 'callback url: {"url":"https://x.test/cb?token=opaque-secret-value"}',
-    });
+    const emitCall = await emitAndCaptureLog(
+      {
+        level: "INFO",
+        message: 'callback url: {"url":"https://x.test/cb?token=opaque-secret-value"}',
+      },
+      { captureContent: true },
+    );
 
     const body = emitCall?.body ?? "";
     // The closing quote and brace must survive redaction — not truncated.
-    expect(body).toContain('[REDACTED:secret]"}');
+    expect(body).toContain('__REDACTED_secret__"}');
     expect(body).not.toContain("opaque-secret-value");
   });
 
-  test("does not stack brackets when a [REDACTED] placeholder is processed a second time", async () => {
+  test("does not stack redaction tags when a __REDACTED__ placeholder is processed a second time", async () => {
     // form-body redaction runs first, then assignment patterns scan the result;
-    // a [REDACTED:tag] placeholder must not accumulate extra ] brackets on each pass.
-    const emitCall = await emitAndCaptureLog({
-      level: "INFO",
-      message: "token=opaque-secret-value&safe=1",
-    });
+    // a __REDACTED_type__ placeholder must not be re-processed on each pass.
+    const emitCall = await emitAndCaptureLog(
+      {
+        level: "INFO",
+        message: "token=opaque-secret-value&safe=1",
+      },
+      { captureContent: true },
+    );
 
     const body = emitCall?.body ?? "";
-    expect(body).toContain("[REDACTED:secret]");
-    expect(body).not.toMatch(/\[REDACTED:[a-z_]+\]\]+/); // no extra ] brackets
+    expect(body).toContain("__REDACTED_secret__");
+    expect(body).not.toContain("__REDACTED_secret___"); // no doubled trailing underscores
     expect(body).toContain("&safe=1");
   });
 
@@ -5057,7 +5063,7 @@ describe("diagnostics-otel service", () => {
     const sessionStateCall = firstCounterAddCall("openclaw.session.state");
     const attrs = sessionStateCall[1];
     expect(sessionStateCall[0]).toBe(1);
-    expect(String(attrs?.["openclaw.reason"])).toContain("…");
+    expect(String(attrs?.["openclaw.reason"])).toContain("__REDACTED_secret__");
     expect(typeof attrs?.["openclaw.reason"]).toBe("string");
     expect(String(attrs?.["openclaw.reason"])).not.toContain(
       "ghp_abcdefghijklmnopqrstuvwxyz123456", // pragma: allowlist secret
@@ -5065,7 +5071,7 @@ describe("diagnostics-otel service", () => {
     await service.stop?.(ctx);
   });
 
-  test("replaces Bearer tokens with [REDACTED:bearer] in OTel export", async () => {
+  test("replaces Bearer tokens with __REDACTED_bearer__ in OTel export", async () => {
     const emitCall = await emitAndCaptureLog(
       {
         level: "INFO",
@@ -5074,11 +5080,11 @@ describe("diagnostics-otel service", () => {
       { captureContent: true },
     );
 
-    expect(emitCall?.body).toContain("[REDACTED:bearer]");
+    expect(emitCall?.body).toContain("__REDACTED_bearer__");
     expect(emitCall?.body).not.toContain("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9");
   });
 
-  test("replaces sk-* keys with [REDACTED:api_key] in span attributes", async () => {
+  test("replaces sk-* keys with __REDACTED_api_key__ in span attributes", async () => {
     const service = createDiagnosticsOtelService();
     const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true });
     await service.start(ctx);
@@ -5100,14 +5106,14 @@ describe("diagnostics-otel service", () => {
     expect(messageSpan).toBeDefined();
 
     // The error message contains an sk-* key; the span status message must be
-    // redacted with [REDACTED:api_key] rather than leaking the secret value.
+    // redacted with __REDACTED_api_key__ rather than leaking the secret value.
     const span = telemetryState.spans.find((s) => s.name === "openclaw.message.processed");
     expect(span).toBeDefined();
     const setStatusCall = span?.setStatus.mock.calls[0]?.[0] as
       | { code?: number; message?: string }
       | undefined;
     expect(setStatusCall?.code).toBe(2); // SpanStatusCode.ERROR
-    expect(setStatusCall?.message).toContain("[REDACTED:api_key]");
+    expect(setStatusCall?.message).toContain("__REDACTED_api_key__");
     expect(setStatusCall?.message).not.toContain("sk-1234567890abcdef1234567890abcdef");
 
     // The scrubbing debug sink should have fired.
