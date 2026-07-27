@@ -1087,11 +1087,16 @@ export function redactToolDetail(detail: string): string {
   return redactToolPayloadText(detail);
 }
 
-// Forces tools-mode and redacted format for OTel export paths. Merges
-// operator-configured logging.redactPatterns with the built-in defaults so
-// organisation-specific patterns are honoured in telemetry as well.
+// OTel export redaction that respects the operator's `logging.redactSensitive`
+// setting (so `"off"` disables it per the documented contract) while forcing the
+// `[REDACTED:type]` format and merging operator-configured `logging.redactPatterns`
+// with the built-in defaults when redaction is active.
 export function redactForExport(text: string): string {
   if (!text) {
+    return text;
+  }
+  const configOptions = resolveConfigRedaction();
+  if (normalizeMode(configOptions.mode) === "off") {
     return text;
   }
   return redactSensitiveText(text, { ...resolveToolPayloadRedaction(), format: "redacted" });
