@@ -41,6 +41,7 @@ import {
   isValidDiagnosticSpanId,
   isValidDiagnosticTraceFlags,
   isValidDiagnosticTraceId,
+  redactForExport,
   redactSensitiveText,
 } from "../api.js";
 
@@ -308,7 +309,7 @@ function redactOtelAttributes(attributes: Record<string, string | number | boole
       continue;
     }
     if (typeof value === "string") {
-      const redacted = redactSensitiveText(value, { format: "redacted" });
+      const redacted = redactForExport(value);
       if (redacted !== value) {
         otelScrubbingSink?.();
       }
@@ -539,7 +540,7 @@ function clampOtelLogText(value: string, maxChars: number): string {
 }
 
 function normalizeOtelLogString(value: string, maxChars: number): string {
-  const redacted = redactSensitiveText(value, { format: "redacted" });
+  const redacted = redactForExport(value);
   if (redacted !== value) {
     otelScrubbingSink?.();
   }
@@ -662,7 +663,7 @@ function stringifyJsonForOtelAttribute(value: unknown): string | undefined {
     if (!json) {
       return undefined;
     }
-    const redacted = redactSensitiveText(json, { format: "redacted" });
+    const redacted = redactForExport(json);
     if (redacted !== json) {
       otelScrubbingSink?.();
     }
@@ -744,7 +745,7 @@ function truncateJsonObjectForOtelAttribute(
 }
 
 function truncateJsonTextForOtelAttribute(value: string, maxChars: number): string {
-  const redacted = redactSensitiveText(value);
+  const redacted = redactForExport(value);
   if (redacted.length <= maxChars) {
     return redacted;
   }
