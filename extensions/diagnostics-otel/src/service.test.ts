@@ -1402,8 +1402,7 @@ describe("diagnostics-otel service", () => {
     );
 
     expect(emitCall?.body).not.toContain("sk-1234567890abcdef1234567890abcdef");
-    expect(emitCall?.body).toContain("sk-123");
-    expect(emitCall?.body).toContain("…");
+    expect(emitCall?.body).toContain("[REDACTED:api_key]");
   });
 
   test("redacts sensitive data from log attributes before export", async () => {
@@ -1418,7 +1417,7 @@ describe("diagnostics-otel service", () => {
     const tokenAttr = emitCall?.attributes?.["openclaw.token"];
     expect(tokenAttr).not.toBe("ghp_abcdefghijklmnopqrstuvwxyz123456"); // pragma: allowlist secret
     if (typeof tokenAttr === "string") {
-      expect(tokenAttr).toContain("…");
+      expect(tokenAttr).toContain("[REDACTED:github_token]");
     }
   });
 
@@ -5036,6 +5035,56 @@ describe("diagnostics-otel service", () => {
     expect(typeof attrs?.["openclaw.reason"]).toBe("string");
     expect(String(attrs?.["openclaw.reason"])).not.toContain(
       "ghp_abcdefghijklmnopqrstuvwxyz123456", // pragma: allowlist secret
+    );
+    await service.stop?.(ctx);
+  });
+
+  test("replaces Bearer tokens with [REDACTED:bearer] in OTel export", async () => {
+    const emitCall = await emitAndCaptureLog(
+      {
+        level: "INFO",
+        message: "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.test123",
+      },
+      { captureContent: true },
+    );
+
+    expect(emitCall?.body).toContain("[REDACTED:bearer]");
+    expect(emitCall?.body).not.toContain("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9");
+  });
+
+  test("replaces sk-* keys with [REDACTED:api_key] in span attributes", async () => {
+    const service = createDiagnosticsOtelService();
+    const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true });
+    await service.start(ctx);
+
+    emitDiagnosticEvent({
+      type: "message.processed",
+      channel: "webchat",
+      outcome: "completed",
+      durationMs: 10,
+    });
+    await flushDiagnosticEvents();
+
+    // Verify span attributes are redacted with [REDACTED:type] format
+    const spanCalls = telemetryState.tracer.startSpan.mock.calls;
+    expect(spanCalls.length).toBeGreaterThan(0);
+    await service.stop?.(ctx);
+  });
+
+  test("logs debug message when scrubbing fires", async () => {
+    const service = createDiagnosticsOtelService();
+    const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { logs: true, captureContent: true });
+    await service.start(ctx);
+
+    emitDiagnosticEvent({
+      type: "log.record",
+      level: "INFO",
+      message: "Using API key sk-1234567890abcdef1234567890abcdef",
+    });
+    await flushDiagnosticEvents();
+
+    expect(ctx.logger.debug).toHaveBeenCalledWith(
+      "diagnostics-otel: scrubbed sensitive value(s) before OTel export",
     );
     await service.stop?.(ctx);
   });

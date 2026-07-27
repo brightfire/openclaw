@@ -1010,6 +1010,7 @@ describe("redactSensitiveText", () => {
       mode: "off",
       patterns: [],
       redactFormBodies: false,
+      format: "hint",
     });
     expect(redactSensitiveText("OPENAI_API_KEY=sk-1234567890abcdef", options)).toBe(
       "OPENAI_API_KEY=sk-1234567890abcdef",

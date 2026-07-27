@@ -297,13 +297,25 @@ function findOtlpExporterError(reason: unknown): object | undefined {
   return undefined;
 }
 
+// Scrubbing debug sink — set by the OTel service on start so the module-level
+// redaction functions can log when scrubbing fires without depending on a logger.
+let otelScrubbingSink: (() => void) | undefined;
+
 function redactOtelAttributes(attributes: Record<string, string | number | boolean>) {
   const redactedAttributes: Record<string, string | number | boolean> = {};
   for (const [key, value] of Object.entries(attributes)) {
     if (DROPPED_OTEL_ATTRIBUTE_KEYS.has(key)) {
       continue;
     }
-    redactedAttributes[key] = typeof value === "string" ? redactSensitiveText(value) : value;
+    if (typeof value === "string") {
+      const redacted = redactSensitiveText(value, { format: "redacted" });
+      if (redacted !== value) {
+        otelScrubbingSink?.();
+      }
+      redactedAttributes[key] = redacted;
+    } else {
+      redactedAttributes[key] = value;
+    }
   }
   return redactedAttributes;
 }
@@ -527,7 +539,11 @@ function clampOtelLogText(value: string, maxChars: number): string {
 }
 
 function normalizeOtelLogString(value: string, maxChars: number): string {
-  return clampOtelLogText(redactSensitiveText(value), maxChars);
+  const redacted = redactSensitiveText(value, { format: "redacted" });
+  if (redacted !== value) {
+    otelScrubbingSink?.();
+  }
+  return clampOtelLogText(redacted, maxChars);
 }
 
 function resolveContentCapturePolicy(value: unknown): OtelContentCapturePolicy {
@@ -646,7 +662,11 @@ function stringifyJsonForOtelAttribute(value: unknown): string | undefined {
     if (!json) {
       return undefined;
     }
-    return redactSensitiveText(json);
+    const redacted = redactSensitiveText(json, { format: "redacted" });
+    if (redacted !== json) {
+      otelScrubbingSink?.();
+    }
+    return redacted;
   } catch {
     return undefined;
   }
@@ -1148,6 +1168,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
     sdk = null;
     stopActiveTrustedSpans = null;
     unregisterUnhandledRejectionHandler = null;
+    otelScrubbingSink = undefined;
 
     currentUnregisterUnhandledRejectionHandler?.();
     currentUnsubscribe?.();
@@ -1328,6 +1349,10 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
 
       const meter = metrics.getMeter("openclaw");
       const tracer = trace.getTracer("openclaw");
+      // Wire the scrubbing debug sink so OTel redaction functions can log when scrubbing fires.
+      otelScrubbingSink = () => {
+        ctx.logger.debug("diagnostics-otel: scrubbed sensitive value(s) before OTel export");
+      };
       const activeTrustedSpans = new Map<string, ReturnType<typeof tracer.startSpan>>();
       const activeTrustedSpanAliases = new Map<
         string,
