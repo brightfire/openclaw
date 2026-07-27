@@ -1421,6 +1421,18 @@ describe("diagnostics-otel service", () => {
     }
   });
 
+  test("preserves trailing delimiters when inserting redaction tags", async () => {
+    const emitCall = await emitAndCaptureLog({
+      level: "INFO",
+      message: 'callback url: {"url":"https://x.test/cb?token=opaque-secret-value"}',
+    });
+
+    const body = emitCall?.body ?? "";
+    // The closing quote and brace must survive redaction — not truncated.
+    expect(body).toContain('[REDACTED:secret]"}');
+    expect(body).not.toContain("opaque-secret-value");
+  });
+
   test("does not attach untrusted diagnostic trace context to exported logs", async () => {
     const emitCall = await emitAndCaptureLog({
       level: "INFO",

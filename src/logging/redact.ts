@@ -887,8 +887,9 @@ function redactMatch(
   }
   if (format === "redacted") {
     const tag = patternTagMap.get(pattern) ?? "secret";
+    const { suffix } = splitSecretValueForMask(token);
     if (token === match) {
-      return `[REDACTED:${tag}]`;
+      return `[REDACTED:${tag}]${suffix}`;
     }
     const tokenIndex = getSecretCaptureStart(
       pattern,
@@ -900,7 +901,7 @@ function redactMatch(
     if (tokenIndex < 0) {
       return match;
     }
-    return `${match.slice(0, tokenIndex)}[REDACTED:${tag}]${match.slice(tokenIndex + token.length)}`;
+    return `${match.slice(0, tokenIndex)}[REDACTED:${tag}]${suffix}${match.slice(tokenIndex + token.length)}`;
   }
   // Assignment values can legitimately include trailing shell/structural characters
   // (e.g. `${VAR:-default}`); mask the captured token whole so those characters count toward the
