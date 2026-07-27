@@ -1433,6 +1433,20 @@ describe("diagnostics-otel service", () => {
     expect(body).not.toContain("opaque-secret-value");
   });
 
+  test("does not stack brackets when a [REDACTED] placeholder is processed a second time", async () => {
+    // form-body redaction runs first, then assignment patterns scan the result;
+    // a [REDACTED:tag] placeholder must not accumulate extra ] brackets on each pass.
+    const emitCall = await emitAndCaptureLog({
+      level: "INFO",
+      message: "token=opaque-secret-value&safe=1",
+    });
+
+    const body = emitCall?.body ?? "";
+    expect(body).toContain("[REDACTED:secret]");
+    expect(body).not.toMatch(/\[REDACTED:[a-z_]+\]\]+/); // no extra ] brackets
+    expect(body).toContain("&safe=1");
+  });
+
   test("does not attach untrusted diagnostic trace context to exported logs", async () => {
     const emitCall = await emitAndCaptureLog({
       level: "INFO",

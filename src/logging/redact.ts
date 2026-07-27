@@ -871,8 +871,10 @@ function redactMatch(
   const selected = selectSecretCapture(match, groups);
   const token = selected.value;
   // An earlier pass (form-body or quoted-assignment masking) may already have replaced this
-  // value with ***; re-masking would strip its quote wrapper around the placeholder.
-  if (splitSecretValueForMask(token).maskable === "***") {
+  // value with *** or a [REDACTED:type] tag; re-masking would corrupt the placeholder
+  // (e.g. appending extra ] brackets from the suffix extraction).
+  const preMasked = splitSecretValueForMask(token).maskable;
+  if (preMasked === "***" || preMasked.startsWith("[REDACTED:")) {
     return match;
   }
   const isShellReferencePattern = shellReferencePreservingPatterns.has(pattern);

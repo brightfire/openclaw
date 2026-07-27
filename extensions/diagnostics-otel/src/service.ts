@@ -551,6 +551,12 @@ function clampOtelLogText(value: string, maxChars: number): string {
   return value.length > maxChars ? `${value.slice(0, maxChars)}...(truncated)` : value;
 }
 
+// Note: log record text emitted via the application logger path has already been
+// hint-masked by src/logging/logger.ts:redactLogRecordForTransport before reaching
+// the diagnostic event bus. redactForExport therefore converts raw secrets to
+// [REDACTED:type] tags but cannot re-tag already-masked hint values such as
+// `sk-123…cdef`. This is a known pipeline limitation; the [REDACTED:type] format
+// applies fully to text emitted directly by diagnostic event producers.
 function normalizeOtelLogString(value: string, maxChars: number): string {
   const redacted = redactForExport(value);
   if (redacted !== value) {
