@@ -2940,6 +2940,8 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
           "openclaw.context.system_prompt_chars": evt.systemPromptChars,
           "openclaw.context.prompt_chars": evt.promptChars,
           "openclaw.context.prompt_images": evt.promptImages,
+          "openclaw.context.total_chars":
+            evt.systemPromptChars + evt.historyTextChars + evt.promptChars,
         };
         addRunAttrs(spanAttrs, evt);
         if (evt.contextTokenBudget !== undefined) {

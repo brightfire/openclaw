@@ -2738,6 +2738,7 @@ describe("diagnostics-otel service", () => {
     expect(contextOptions?.attributes?.["openclaw.context.system_prompt_chars"]).toBe(789);
     expect(contextOptions?.attributes?.["openclaw.context.prompt_chars"]).toBe(42);
     expect(contextOptions?.attributes?.["openclaw.context.prompt_images"]).toBe(1);
+    expect(contextOptions?.attributes?.["openclaw.context.total_chars"]).toBe(789 + 1234 + 42);
     expect(contextOptions?.attributes?.["openclaw.context.token_budget"]).toBe(128_000);
     expect(contextOptions?.attributes?.["openclaw.context.reserve_tokens"]).toBe(4096);
     expect(contextOptions?.attributes).toBeTypeOf("object");
