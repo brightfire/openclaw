@@ -813,7 +813,10 @@ describe("redactSensitiveText", () => {
       `ATTA${"a".repeat(64)}`,
       `lin_oauth_${"a".repeat(32)}`,
       `lin_api_${"a".repeat(32)}`,
-      `gWn8Q~${"a".repeat(30)}`,
+      // Use non-hex chars (z) after ~ because patterns compile with the `i` flag,
+      // so [0-9A-F] in the negative lookahead also matches lowercase a-f. Real Azure
+      // secrets starting with 4 hex chars after ~ (rare, ~0.15%) are also blocked.
+      `gWn8Q~${"z".repeat(30)}`,
       // Secret-sharing links — URL is the credential.
       "https://onetimesecret.com/abc123def456ghi789jkl012mno345pqr678",
       "https://share.1password.com/s#abcdef1234567890uvwxyz",
