@@ -276,8 +276,8 @@ const DEFAULT_REDACT_PATTERNS: string[] = [
   String.raw`(glc_eyJ[A-Za-z0-9+/=]{60,160})`,
   String.raw`(nfp_[A-Za-z0-9_]{36})`,
   String.raw`(CFPAT-[A-Za-z0-9_\-]{40,})`,
-  // Cloudflare API token (new format).
-  String.raw`\b(cfat_[A-Za-z0-9_-]{37})\b`,
+  // Cloudflare API token (new format). Cloudflare docs: cfat_ + 40 chars + checksum.
+  String.raw`\b(cfat_[A-Za-z0-9_-]{40,})\b`,
   // Trello token.
   String.raw`\b(ATTA[a-f0-9]{64,})\b`,
   // Linear OAuth token.
