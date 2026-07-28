@@ -15,6 +15,8 @@ export const ErrorCodes = {
   APPROVAL_NOT_FOUND: "APPROVAL_NOT_FOUND",
   /** Gateway service or required backend is temporarily unavailable. */
   UNAVAILABLE: "UNAVAILABLE",
+  FORBIDDEN: "FORBIDDEN",
+  GATEWAY_ERROR: "GATEWAY_ERROR",
 } as const;
 
 /** Closed set of canonical gateway error code strings. */
