@@ -1010,6 +1010,7 @@ describe("redactSensitiveText", () => {
       mode: "off",
       patterns: [],
       redactFormBodies: false,
+      format: "hint",
     });
     expect(redactSensitiveText("OPENAI_API_KEY=sk-1234567890abcdef", options)).toBe(
       "OPENAI_API_KEY=sk-1234567890abcdef",
@@ -1141,7 +1142,12 @@ describe("redactSensitiveLines", () => {
   it("returns lines unmodified when resolved patterns is empty — does not fall back to defaults", () => {
     // Simulates the case where all user-configured patterns fail to compile.
     // The pre-resolved empty array must be honored, not silently replaced with defaults.
-    const resolved = { mode: "tools" as const, patterns: [], redactFormBodies: false };
+    const resolved = {
+      mode: "tools" as const,
+      patterns: [],
+      redactFormBodies: false,
+      format: "hint" as const,
+    };
     const lines = ["TOKEN=abcdef1234567890ghij"];
     expect(redactSensitiveLines(lines, resolved)).toEqual(lines);
   });
