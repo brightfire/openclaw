@@ -71,6 +71,11 @@ function agentHarnessDiagnosticBase(
 ) {
   const diagnosticTrace = trace ?? getActiveDiagnosticTraceContext();
   const channel = diagnosticChannel(params);
+  const { sessionAgentId } = resolveSessionAgentIds({
+    sessionKey: params.sessionKey,
+    config: params.config,
+    agentId: params.agentId,
+  });
   return {
     runId: params.runId,
     sessionId: params.sessionId,
@@ -79,6 +84,7 @@ function agentHarnessDiagnosticBase(
     harnessId: harness.id,
     ...(harness.pluginId ? { pluginId: harness.pluginId } : {}),
     ...(params.sessionKey ? { sessionKey: params.sessionKey } : {}),
+    ...(sessionAgentId ? { agentId: sessionAgentId } : {}),
     ...(params.trigger ? { trigger: params.trigger } : {}),
     ...(channel ? { channel } : {}),
     ...(diagnosticTrace ? { trace: freezeDiagnosticTraceContext(diagnosticTrace) } : {}),
