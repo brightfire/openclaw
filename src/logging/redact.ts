@@ -42,6 +42,21 @@ function classifyPatternTag(source: string): string {
   if (/AIza/u.test(source)) {
     return "google_key";
   }
+  if (/cfat_/u.test(source)) {
+    return "cloudflare_token";
+  }
+  if (/ATTA/u.test(source)) {
+    return "trello_token";
+  }
+  if (/lin_oauth_/u.test(source)) {
+    return "linear_token";
+  }
+  if (/lin_api_/u.test(source)) {
+    return "linear_api_key";
+  }
+  if (/~/u.test(source)) {
+    return "azure_secret";
+  }
   return "secret";
 }
 
@@ -255,6 +270,16 @@ const DEFAULT_REDACT_PATTERNS: string[] = [
   String.raw`(glc_eyJ[A-Za-z0-9+/=]{60,160})`,
   String.raw`(nfp_[A-Za-z0-9_]{36})`,
   String.raw`(CFPAT-[A-Za-z0-9_\-]{40,})`,
+  // Cloudflare API token (new format).
+  String.raw`\b(cfat_[A-Za-z0-9_-]{37})\b`,
+  // Trello token.
+  String.raw`\b(ATTA[a-f0-9]{64,})\b`,
+  // Linear OAuth token.
+  String.raw`\b(lin_oauth_[a-f0-9]{32,})\b`,
+  // Linear API key.
+  String.raw`\b(lin_api_[A-Za-z0-9]{32,})\b`,
+  // Azure/M365 client secret (tilde-delimited format, e.g. gWn8Q~EjZDo...).
+  String.raw`\b([A-Za-z0-9]{3,6}~[A-Za-z0-9._-]{30,})\b`,
   String.raw`${BASE64_SAFE_TOKEN_BOUNDARY}(ATCTT3xFfG[A-Za-z0-9+/=_-]+=[A-Za-z0-9]{8})`,
   String.raw`${BASE64_SAFE_TOKEN_BOUNDARY}(ATATT[A-Za-z0-9+/=_-]+=[A-Za-z0-9]{8})`,
   String.raw`${BASE64_SAFE_TOKEN_BOUNDARY}(ATBB[A-Za-z0-9_=.-]{16,})`,
@@ -300,7 +325,8 @@ const DEFAULT_REDACT_PREFILTER_SOURCES: string[] = [
   // URL userinfo and connection-string password slots (`scheme://user:pass@host`).
   String.raw`:\/\/[^\/\s:@]*:[^\/\s@]+@`,
   // Vendor token prefixes and webhook hosts, ordered like DEFAULT_REDACT_PATTERNS.
-  String.raw`sk-|gh[opsur]_|github_pat_|glpat-|gloas-|xox[baprs]-|xapp-|hooks\.slack\.com|discord|gsk_|AIza|ya29\.|1\/\/0|eyJ|pplx-|fal_|fc-|bb_live_|gAAAA|[sr]k_(?:live|test)_|\bSG\.|npm_|pypi-|do[opr]_v1_|dp\.(?:ct|pt|sa|st|scim|audit)\.|dckr_|bkua_|CCIPAT_|sbp_|dapi[0-9a-f]|dd[pw]_|glsa_|nfp_|CFPAT-|ATCTT3|ATATT|ATBB|BBDC-|HRKU-|pat-(?:eu|na)1-|apify_api_|FlyV1|fio-u-|tvly-|exa_|syt_|retaindb_|mem0_|brv_|xai-`,
+  String.raw`sk-|gh[opsur]_|github_pat_|glpat-|gloas-|xox[baprs]-|xapp-|hooks\.slack\.com|discord|gsk_|AIza|ya29\.|1\/\/0|eyJ|pplx-|fal_|fc-|bb_live_|gAAAA|[sr]k_(?:live|test)_|\bSG\.|npm_|pypi-|do[opr]_v1_|dp\.(?:ct|pt|sa|st|scim|audit)\.|dckr_|bkua_|CCIPAT_|sbp_|dapi[0-9a-f]|dd[pw]_|glsa_|nfp_|CFPAT-|cfat_|ATTA|lin_oauth_|lin_api_|ATCTT3|ATATT|ATBB|BBDC-|HRKU-|pat-(?:eu|na)1-|apify_api_|FlyV1|fio-u-|tvly-|exa_|syt_|retaindb_|mem0_|brv_|xai-`,
+  String.raw`[A-Za-z0-9]{3,6}~[A-Za-z0-9._-]{30,}`,
   String.raw`(?:^|[^A-Za-z0-9_])(?:am_|sk_)`,
   String.raw`A[KS]IA[A-Z0-9]|AKID|LTAI|hf_|api_org_|r8_`,
   String.raw`\bbot\d{6,}:|\b\d{6,}:[A-Za-z0-9_-]{20,}`,

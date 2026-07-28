@@ -797,6 +797,12 @@ describe("redactSensitiveText", () => {
       "mem0_abcdefghijklmnopqrstuvwxyz",
       "brv_abcdefghijklmnopqrstuvwxyz",
       "xai-abcdefghijklmnopqrstuvwxyzABCDE",
+      // Fleet credential patterns from DEV-330 audit.
+      `cfat_${"a".repeat(37)}`,
+      `ATTA${"a".repeat(64)}`,
+      `lin_oauth_${"a".repeat(32)}`,
+      `lin_api_${"a".repeat(32)}`,
+      `gWn8Q~${"a".repeat(30)}`,
     ];
     // Redact each fixture alone so every vendor pattern proves it stays reachable through
     // DEFAULT_REDACT_PREFILTER_RE; a joined corpus would let one trigger unlock all others.
