@@ -1172,7 +1172,7 @@ describe("diagnostics-otel service", () => {
     await service.stop?.(ctx);
   });
 
-  test("sets openclaw.agent on run span from agentLabel", async () => {
+  test("sets openclaw.agent on run span from agentId", async () => {
     const service = createDiagnosticsOtelService();
     const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });
     await service.start(ctx);
@@ -1180,8 +1180,7 @@ describe("diagnostics-otel service", () => {
     emitDiagnosticEvent({
       type: "run.completed",
       runId: "run-1",
-      agentId: "agent:ops:webchat",
-      agentLabel: "ops",
+      agentId: "main",
       provider: "openai",
       model: "gpt-5.4",
       outcome: "completed",
@@ -1190,34 +1189,12 @@ describe("diagnostics-otel service", () => {
     await flushDiagnosticEvents();
 
     const runSpanOptions = startedSpanOptions("openclaw.run");
-    expect(runSpanOptions?.attributes?.["openclaw.agent"]).toBe("ops");
+    expect(runSpanOptions?.attributes?.["openclaw.agent"]).toBe("main");
 
     await service.stop?.(ctx);
   });
 
-  test("sets openclaw.agent on run span from agentId when agentLabel is absent", async () => {
-    const service = createDiagnosticsOtelService();
-    const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });
-    await service.start(ctx);
-
-    emitDiagnosticEvent({
-      type: "run.completed",
-      runId: "run-1",
-      agentId: "agent:vash:webchat",
-      provider: "openai",
-      model: "gpt-5.4",
-      outcome: "completed",
-      durationMs: 100,
-    });
-    await flushDiagnosticEvents();
-
-    const runSpanOptions = startedSpanOptions("openclaw.run");
-    expect(runSpanOptions?.attributes?.["openclaw.agent"]).toBe("vash");
-
-    await service.stop?.(ctx);
-  });
-
-  test("does not set openclaw.agent on run span when neither agentId nor agentLabel is present", async () => {
+  test("does not set openclaw.agent on run span when agentId is absent", async () => {
     const service = createDiagnosticsOtelService();
     const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });
     await service.start(ctx);
@@ -1234,52 +1211,6 @@ describe("diagnostics-otel service", () => {
 
     const runSpanOptions = startedSpanOptions("openclaw.run");
     expect(runSpanOptions?.attributes?.["openclaw.agent"]).toBeUndefined();
-
-    await service.stop?.(ctx);
-  });
-
-  test("sanitizes agentLabel with spaces on run span, falls back to agentId", async () => {
-    const service = createDiagnosticsOtelService();
-    const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });
-    await service.start(ctx);
-
-    emitDiagnosticEvent({
-      type: "run.completed",
-      runId: "run-1",
-      agentId: "agent:test:webchat",
-      agentLabel: "My Agent Name!",
-      provider: "openai",
-      model: "gpt-5.4",
-      outcome: "completed",
-      durationMs: 100,
-    });
-    await flushDiagnosticEvents();
-
-    const runSpanOptions = startedSpanOptions("openclaw.run");
-    // lowCardinalityAttr rejects spaces/special chars → falls back to agentId stripping
-    expect(runSpanOptions?.attributes?.["openclaw.agent"]).toBe("test");
-
-    await service.stop?.(ctx);
-  });
-
-  test("sets openclaw.agent on run span from agentId without agent: prefix", async () => {
-    const service = createDiagnosticsOtelService();
-    const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });
-    await service.start(ctx);
-
-    emitDiagnosticEvent({
-      type: "run.completed",
-      runId: "run-1",
-      agentId: "some-agent-id",
-      provider: "openai",
-      model: "gpt-5.4",
-      outcome: "completed",
-      durationMs: 100,
-    });
-    await flushDiagnosticEvents();
-
-    const runSpanOptions = startedSpanOptions("openclaw.run");
-    expect(runSpanOptions?.attributes?.["openclaw.agent"]).toBe("some-agent-id");
 
     await service.stop?.(ctx);
   });

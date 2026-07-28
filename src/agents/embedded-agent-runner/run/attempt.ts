@@ -86,7 +86,7 @@ import {
   materializeBundleMcpToolsForRun,
 } from "../../agent-bundle-mcp-tools.js";
 import { createPreparedEmbeddedAgentSettingsManager } from "../../agent-project-settings.js";
-import { resolveAgentConfig, resolveAgentDir, resolveSessionAgentIds } from "../../agent-scope.js";
+import { resolveAgentDir, resolveSessionAgentIds } from "../../agent-scope.js";
 import {
   applyAgentAutoCompactionGuard,
   applyAgentCompactionSettingsFromConfig,
@@ -1129,9 +1129,6 @@ export async function runEmbeddedAttempt(
       ...(params.sessionKey && { sessionKey: params.sessionKey }),
       ...(params.sessionId && { sessionId: params.sessionId }),
       ...(sessionAgentId && { agentId: sessionAgentId }),
-      ...(sessionAgentId && {
-        agentLabel: resolveAgentConfig(params.config ?? {}, sessionAgentId)?.name,
-      }),
       provider: params.provider,
       model: params.modelId,
       trigger: params.trigger,

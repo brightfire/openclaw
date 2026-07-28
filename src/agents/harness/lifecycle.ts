@@ -1,4 +1,4 @@
-import { resolveAgentConfig } from "../../agents/agent-scope.js";
+import { resolveSessionAgentIds } from "../../agents/agent-scope.js";
 import { getRuntimeConfig } from "../../config/config.js";
 /**
  * Agent harness lifecycle diagnostics wrapper.
@@ -108,13 +108,16 @@ function diagnosticChannel(params: AgentHarnessAttemptParams): string | undefine
 
 function agentRunDiagnosticBase(params: AgentHarnessAttemptParams, trace: DiagnosticTraceContext) {
   const channel = diagnosticChannel(params);
-  const agentId = params.agentId;
+  const { sessionAgentId } = resolveSessionAgentIds({
+    sessionKey: params.sessionKey,
+    config: params.config,
+    agentId: params.agentId,
+  });
   return {
     runId: params.runId,
     ...(params.sessionKey ? { sessionKey: params.sessionKey } : {}),
     ...(params.sessionId ? { sessionId: params.sessionId } : {}),
-    ...(agentId ? { agentId } : {}),
-    ...(agentId ? { agentLabel: resolveAgentConfig(params.config ?? {}, agentId)?.name } : {}),
+    ...(sessionAgentId ? { agentId: sessionAgentId } : {}),
     provider: params.provider,
     model: params.modelId,
     ...(params.trigger ? { trigger: params.trigger } : {}),

@@ -462,7 +462,6 @@ type DiagnosticRunBaseEvent = DiagnosticBaseEvent & {
   sessionKey?: string;
   sessionId?: string;
   agentId?: string;
-  agentLabel?: string;
   provider?: string;
   model?: string;
   trigger?: string;
