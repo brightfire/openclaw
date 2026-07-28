@@ -804,6 +804,7 @@ describe("redactSensitiveText", () => {
       "hsk-abcdefghijklmnopqrstuvwxyz",
       "mem0_abcdefghijklmnopqrstuvwxyz",
       "BSAabcdefghijklmnopqrstuvwxyz",
+      "brv_abcdefghijklmnopqrstuvwxyz",
       "xai-abcdefghijklmnopqrstuvwxyzABCDE",
       // Fleet credential patterns from DEV-330 audit.
       `cfat_${"a".repeat(40)}`,

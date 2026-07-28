@@ -57,7 +57,7 @@ function classifyPatternTag(source: string): string {
   if (/~/u.test(source)) {
     return "azure_secret";
   }
-  if (/BSA/u.test(source)) {
+  if (/BSA|brv_/u.test(source)) {
     return "brave_key";
   }
   if (/onetimesecret|1password/u.test(source)) {
@@ -305,6 +305,7 @@ const DEFAULT_REDACT_PATTERNS: string[] = [
   String.raw`(retaindb_[A-Za-z0-9]{10,})`,
   String.raw`(hsk-[A-Za-z0-9]{10,})`,
   String.raw`(mem0_[A-Za-z0-9]{10,})`,
+  String.raw`(brv_[A-Za-z0-9]{10,})`,
   String.raw`(BSA[A-Za-z0-9_-]{10,})`,
   // Secret-sharing links — the URL itself is the credential.
   String.raw`(https?://[a-z0-9.-]*onetimesecret\.com[^\s]*)`,
@@ -336,7 +337,7 @@ const DEFAULT_REDACT_PREFILTER_SOURCES: string[] = [
   // URL userinfo and connection-string password slots (`scheme://user:pass@host`).
   String.raw`:\/\/[^\/\s:@]*:[^\/\s@]+@`,
   // Vendor token prefixes and webhook hosts, ordered like DEFAULT_REDACT_PATTERNS.
-  String.raw`sk-|gh[opsur]_|github_pat_|glpat-|gloas-|xox[baprs]-|xapp-|hooks\.slack\.com|discord|gsk_|AIza|ya29\.|1\/\/0|eyJ|pplx-|fal_|fc-|bb_live_|gAAAA|[sr]k_(?:live|test)_|\bSG\.|npm_|pypi-|do[opr]_v1_|dp\.(?:ct|pt|sa|st|scim|audit)\.|dckr_|bkua_|CCIPAT_|sbp_|dapi[0-9a-f]|dd[pw]_|glsa_|nfp_|CFPAT-|cfat_|cfk_|cfut_|ATTA|lin_oauth_|lin_api_|ATCTT3|ATATT|ATBB|BBDC-|HRKU-|pat-(?:eu|na)1-|apify_api_|FlyV1|fio-u-|tvly-|exa_|syt_|retaindb_|mem0_|BSA|xai-`,
+  String.raw`sk-|gh[opsur]_|github_pat_|glpat-|gloas-|xox[baprs]-|xapp-|hooks\.slack\.com|discord|gsk_|AIza|ya29\.|1\/\/0|eyJ|pplx-|fal_|fc-|bb_live_|gAAAA|[sr]k_(?:live|test)_|\bSG\.|npm_|pypi-|do[opr]_v1_|dp\.(?:ct|pt|sa|st|scim|audit)\.|dckr_|bkua_|CCIPAT_|sbp_|dapi[0-9a-f]|dd[pw]_|glsa_|nfp_|CFPAT-|cfat_|cfk_|cfut_|ATTA|lin_oauth_|lin_api_|ATCTT3|ATATT|ATBB|BBDC-|HRKU-|pat-(?:eu|na)1-|apify_api_|FlyV1|fio-u-|tvly-|exa_|syt_|retaindb_|mem0_|brv_|BSA|xai-`,
   String.raw`onetimesecret\.com|1password\.com`,
   String.raw`[A-Za-z0-9]{3,6}~[A-Za-z0-9._-]{30,}`,
   String.raw`(?:^|[^A-Za-z0-9_])(?:am_|sk_)`,
