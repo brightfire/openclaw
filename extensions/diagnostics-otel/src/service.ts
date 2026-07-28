@@ -2144,6 +2144,8 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
           runId?: string;
           sessionKey?: string;
           sessionId?: string;
+          agentId?: string;
+          agentLabel?: string;
           provider?: string;
           model?: string;
           channel?: string;
@@ -2161,6 +2163,9 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         }
         if (evt.trigger) {
           spanAttrs["openclaw.trigger"] = evt.trigger;
+        }
+        if (evt.agentId || evt.agentLabel) {
+          spanAttrs["openclaw.agent"] = resolveAgentLabelAttr(evt);
         }
         addSessionAttrs(spanAttrs, evt);
       };
