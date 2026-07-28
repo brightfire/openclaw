@@ -1,3 +1,4 @@
+import { resolveSessionAgentIds } from "../../agents/agent-scope.js";
 import { getRuntimeConfig } from "../../config/config.js";
 /**
  * Agent harness lifecycle diagnostics wrapper.
@@ -70,6 +71,11 @@ function agentHarnessDiagnosticBase(
 ) {
   const diagnosticTrace = trace ?? getActiveDiagnosticTraceContext();
   const channel = diagnosticChannel(params);
+  const { sessionAgentId } = resolveSessionAgentIds({
+    sessionKey: params.sessionKey,
+    config: params.config,
+    agentId: params.agentId,
+  });
   return {
     runId: params.runId,
     sessionId: params.sessionId,
@@ -78,6 +84,7 @@ function agentHarnessDiagnosticBase(
     harnessId: harness.id,
     ...(harness.pluginId ? { pluginId: harness.pluginId } : {}),
     ...(params.sessionKey ? { sessionKey: params.sessionKey } : {}),
+    ...(sessionAgentId ? { agentId: sessionAgentId } : {}),
     ...(params.trigger ? { trigger: params.trigger } : {}),
     ...(channel ? { channel } : {}),
     ...(diagnosticTrace ? { trace: freezeDiagnosticTraceContext(diagnosticTrace) } : {}),
@@ -107,10 +114,16 @@ function diagnosticChannel(params: AgentHarnessAttemptParams): string | undefine
 
 function agentRunDiagnosticBase(params: AgentHarnessAttemptParams, trace: DiagnosticTraceContext) {
   const channel = diagnosticChannel(params);
+  const { sessionAgentId } = resolveSessionAgentIds({
+    sessionKey: params.sessionKey,
+    config: params.config,
+    agentId: params.agentId,
+  });
   return {
     runId: params.runId,
     ...(params.sessionKey ? { sessionKey: params.sessionKey } : {}),
     ...(params.sessionId ? { sessionId: params.sessionId } : {}),
+    ...(sessionAgentId ? { agentId: sessionAgentId } : {}),
     provider: params.provider,
     model: params.modelId,
     ...(params.trigger ? { trigger: params.trigger } : {}),

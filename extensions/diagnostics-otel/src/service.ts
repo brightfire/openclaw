@@ -2144,6 +2144,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
           runId?: string;
           sessionKey?: string;
           sessionId?: string;
+          agentId?: string;
           provider?: string;
           model?: string;
           channel?: string;
@@ -2161,6 +2162,9 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         }
         if (evt.trigger) {
           spanAttrs["openclaw.trigger"] = evt.trigger;
+        }
+        if (evt.agentId) {
+          spanAttrs["openclaw.agent"] = evt.agentId;
         }
         addSessionAttrs(spanAttrs, evt);
       };
@@ -2845,6 +2849,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         "openclaw.provider": lowCardinalityAttr(evt.provider, "unknown"),
         "openclaw.model": lowCardinalityAttr(evt.model, "unknown"),
         ...(evt.channel ? { "openclaw.channel": lowCardinalityAttr(evt.channel) } : {}),
+        ...(evt.agentId ? { "openclaw.agent": evt.agentId } : {}),
       });
 
       const recordHarnessRunStarted = (
