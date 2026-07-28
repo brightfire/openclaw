@@ -78,6 +78,8 @@ type DispatchProcessedRecorder = (
   opts?: {
     reason?: string;
     error?: string;
+    userPrompt?: string;
+    finalResponse?: string;
   },
 ) => void;
 
@@ -182,6 +184,8 @@ function finishAcpDispatchAttempt(params: {
   lifecyclePhase?: "end" | "error";
   recordProcessed: DispatchProcessedRecorder;
   markIdle: (reason: string) => void;
+  userPrompt?: string;
+  finalResponse?: string;
 }): AcpDispatchAttemptResult {
   const counts = params.dispatcher.getQueuedCounts();
   params.delivery.applyRoutedCounts(counts);
@@ -204,7 +208,11 @@ function finishAcpDispatchAttempt(params: {
     logVerbose(
       `acp-dispatch: session=${params.sessionKey} outcome=ok latencyMs=${Date.now() - params.startedAt} queueDepth=${acpStats.turns.queueDepth} activeRuntimes=${acpStats.runtimeCache.activeSessions}`,
     );
-    params.recordProcessed("completed", { reason: "acp_dispatch" });
+    params.recordProcessed("completed", {
+      reason: "acp_dispatch",
+      userPrompt: params.userPrompt,
+      finalResponse: params.finalResponse,
+    });
   } else {
     logVerbose(
       `acp-dispatch: session=${params.sessionKey} outcome=error code=${params.outcome.error.code} latencyMs=${Date.now() - params.startedAt} queueDepth=${acpStats.turns.queueDepth} activeRuntimes=${acpStats.runtimeCache.activeSessions}`,
@@ -496,6 +504,8 @@ export async function tryDispatchAcpReply(params: {
     queuedFinal: boolean;
     outcome: AcpDispatchOutcome;
     lifecyclePhase?: "end" | "error";
+    userPrompt?: string;
+    finalResponse?: string;
   }) =>
     finishAcpDispatchAttempt({
       ...options,
@@ -646,6 +656,9 @@ export async function tryDispatchAcpReply(params: {
       queuedFinal,
       outcome: { kind: "ok" },
       lifecyclePhase: "end",
+      userPrompt: turnPromptText,
+      finalResponse:
+        delivery.getAccumulatedFinalText() || delivery.getAccumulatedBlockText() || undefined,
     });
   } catch (err) {
     await projector.flush(true);
