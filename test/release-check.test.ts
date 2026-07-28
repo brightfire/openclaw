@@ -768,11 +768,14 @@ describe("collectMissingPackPaths", () => {
   });
 
   it("requires bundled plugin runtime sidecars that dynamic plugin boundaries resolve at runtime", () => {
-    expect(requiredBundledPluginPackPaths).not.toContain(
+    expect(requiredBundledPluginPackPaths).toContain(
       bundledDistPluginFile("slack", "runtime-api.js"),
     );
     expect(requiredBundledPluginPackPaths).toContain(
       bundledDistPluginFile("telegram", "runtime-api.js"),
+    );
+    expect(requiredBundledPluginPackPaths).not.toContain(
+      bundledDistPluginFile("copilot", "runtime-api.js"),
     );
   });
 });
