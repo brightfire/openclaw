@@ -42,6 +42,27 @@ function classifyPatternTag(source: string): string {
   if (/AIza/u.test(source)) {
     return "google_key";
   }
+  if (/cf(?:at|k|ut)_/u.test(source)) {
+    return "cloudflare_token";
+  }
+  if (/ATTA/u.test(source)) {
+    return "trello_token";
+  }
+  if (/lin_oauth_/u.test(source)) {
+    return "linear_token";
+  }
+  if (/lin_api_/u.test(source)) {
+    return "linear_api_key";
+  }
+  if (/~/u.test(source)) {
+    return "azure_secret";
+  }
+  if (/BSA|brv_/u.test(source)) {
+    return "brave_key";
+  }
+  if (/onetimesecret|1password/u.test(source)) {
+    return "secret_link";
+  }
   return "secret";
 }
 
@@ -255,6 +276,18 @@ const DEFAULT_REDACT_PATTERNS: string[] = [
   String.raw`(glc_eyJ[A-Za-z0-9+/=]{60,160})`,
   String.raw`(nfp_[A-Za-z0-9_]{36})`,
   String.raw`(CFPAT-[A-Za-z0-9_\-]{40,})`,
+  // Cloudflare API tokens (new scannable format: cfat_, cfk_, cfut_ + 40 chars + checksum).
+  String.raw`\b(cfat_[A-Za-z0-9_-]{40,})\b`,
+  String.raw`\b(cfk_[A-Za-z0-9_-]{40,})\b`,
+  String.raw`\b(cfut_[A-Za-z0-9_-]{40,})\b`,
+  // Trello token.
+  String.raw`\b(ATTA[a-f0-9]{64,})\b`,
+  // Linear OAuth token.
+  String.raw`\b(lin_oauth_[a-f0-9]{32,})\b`,
+  // Linear API key.
+  String.raw`\b(lin_api_[A-Za-z0-9]{32,})\b`,
+  // Azure/M365 client secret (tilde-delimited format, e.g. gWn8Q~EjZDo...).
+  String.raw`\b([A-Za-z0-9]{3,6}~[A-Za-z0-9._-]{30,})\b`,
   String.raw`${BASE64_SAFE_TOKEN_BOUNDARY}(ATCTT3xFfG[A-Za-z0-9+/=_-]+=[A-Za-z0-9]{8})`,
   String.raw`${BASE64_SAFE_TOKEN_BOUNDARY}(ATATT[A-Za-z0-9+/=_-]+=[A-Za-z0-9]{8})`,
   String.raw`${BASE64_SAFE_TOKEN_BOUNDARY}(ATBB[A-Za-z0-9_=.-]{16,})`,
@@ -273,6 +306,10 @@ const DEFAULT_REDACT_PATTERNS: string[] = [
   String.raw`(hsk-[A-Za-z0-9]{10,})`,
   String.raw`(mem0_[A-Za-z0-9]{10,})`,
   String.raw`(brv_[A-Za-z0-9]{10,})`,
+  String.raw`(BSA[A-Za-z0-9_-]{10,})`,
+  // Secret-sharing links — the URL itself is the credential.
+  String.raw`(https?://[a-z0-9.-]*onetimesecret\.com[^\s]*)`,
+  String.raw`(https?://[a-z0-9.-]*1password\.com[^\s]*)`,
   String.raw`(xai-[A-Za-z0-9]{30,})`,
   // Additional access-key and token-style prefixes.
   String.raw`${BASE64_SAFE_TOKEN_BOUNDARY}(AKIA[A-Z0-9]{16})`,
@@ -300,7 +337,9 @@ const DEFAULT_REDACT_PREFILTER_SOURCES: string[] = [
   // URL userinfo and connection-string password slots (`scheme://user:pass@host`).
   String.raw`:\/\/[^\/\s:@]*:[^\/\s@]+@`,
   // Vendor token prefixes and webhook hosts, ordered like DEFAULT_REDACT_PATTERNS.
-  String.raw`sk-|gh[opsur]_|github_pat_|glpat-|gloas-|xox[baprs]-|xapp-|hooks\.slack\.com|discord|gsk_|AIza|ya29\.|1\/\/0|eyJ|pplx-|fal_|fc-|bb_live_|gAAAA|[sr]k_(?:live|test)_|\bSG\.|npm_|pypi-|do[opr]_v1_|dp\.(?:ct|pt|sa|st|scim|audit)\.|dckr_|bkua_|CCIPAT_|sbp_|dapi[0-9a-f]|dd[pw]_|glsa_|nfp_|CFPAT-|ATCTT3|ATATT|ATBB|BBDC-|HRKU-|pat-(?:eu|na)1-|apify_api_|FlyV1|fio-u-|tvly-|exa_|syt_|retaindb_|mem0_|brv_|xai-`,
+  String.raw`sk-|gh[opsur]_|github_pat_|glpat-|gloas-|xox[baprs]-|xapp-|hooks\.slack\.com|discord|gsk_|AIza|ya29\.|1\/\/0|eyJ|pplx-|fal_|fc-|bb_live_|gAAAA|[sr]k_(?:live|test)_|\bSG\.|npm_|pypi-|do[opr]_v1_|dp\.(?:ct|pt|sa|st|scim|audit)\.|dckr_|bkua_|CCIPAT_|sbp_|dapi[0-9a-f]|dd[pw]_|glsa_|nfp_|CFPAT-|cfat_|cfk_|cfut_|ATTA|lin_oauth_|lin_api_|ATCTT3|ATATT|ATBB|BBDC-|HRKU-|pat-(?:eu|na)1-|apify_api_|FlyV1|fio-u-|tvly-|exa_|syt_|retaindb_|mem0_|brv_|BSA|xai-`,
+  String.raw`onetimesecret\.com|1password\.com`,
+  String.raw`[A-Za-z0-9]{3,6}~[A-Za-z0-9._-]{30,}`,
   String.raw`(?:^|[^A-Za-z0-9_])(?:am_|sk_)`,
   String.raw`A[KS]IA[A-Z0-9]|AKID|LTAI|hf_|api_org_|r8_`,
   String.raw`\bbot\d{6,}:|\b\d{6,}:[A-Za-z0-9_-]{20,}`,
@@ -491,7 +530,10 @@ function hasEncodedOrInvisibleFormKey(key: string): boolean {
 
 function redactFormEncodedPairs(
   value: string,
-  options?: { maskValues?: "fixed" | "hinted"; onlyEncodedOrInvisibleKeys?: boolean },
+  options?: {
+    maskValues?: "fixed" | "hinted";
+    onlyEncodedOrInvisibleKeys?: boolean;
+  },
   format: "hint" | "redacted" = "hint",
 ): string {
   return value
@@ -512,7 +554,9 @@ function redactFormEncodedPairs(
       const masked =
         format === "redacted"
           ? maskForFormat(token, format, "secret")
-          : maskSecretValue(token, { hinted: options?.maskValues === "hinted" });
+          : maskSecretValue(token, {
+              hinted: options?.maskValues === "hinted",
+            });
       return `${key}=${masked}`;
     })
     .join("&");
@@ -1117,7 +1161,10 @@ export function redactForExport(text: string): string {
   if (normalizeMode(configOptions.mode) === "off") {
     return text;
   }
-  return redactSensitiveText(text, { ...resolveToolPayloadRedaction(), format: "redacted" });
+  return redactSensitiveText(text, {
+    ...resolveToolPayloadRedaction(),
+    format: "redacted",
+  });
 }
 
 function resolveToolPayloadRedaction(
@@ -1282,7 +1329,7 @@ export function redactSensitiveLines(lines: string[], resolved: ResolvedRedactOp
         redactFormBody(redactUrlQueryPairs(line, resolved.format), resolved.format),
       )
     : lines;
-  return redactText(redactedLines.join("\n"), resolved.patterns, { format: resolved.format }).split(
-    "\n",
-  );
+  return redactText(redactedLines.join("\n"), resolved.patterns, {
+    format: resolved.format,
+  }).split("\n");
 }
