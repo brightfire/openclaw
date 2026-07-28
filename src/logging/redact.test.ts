@@ -859,13 +859,6 @@ describe("redactSensitiveText", () => {
     expect(output).toBe(input);
   });
 
-  it("does not redact benign 1Password URLs that are not share links", () => {
-    const input =
-      "see https://support.1password.com/slash-commands/ and https://1password.com/sign-in/";
-    const output = redactSensitiveText(input, { mode: "tools" });
-    expect(output).toBe(input);
-  });
-
   it("does not corrupt base64 blobs that embed token-prefix shapes", () => {
     // Tiny-PNG base64 contains a gAAAA run from zero-filled IHDR bytes; pure-base64-alphabet
     // prefixes must not fire mid-blob or media payloads get mangled.

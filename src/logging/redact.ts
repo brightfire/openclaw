@@ -310,7 +310,7 @@ const DEFAULT_REDACT_PATTERNS: string[] = [
   String.raw`(BSA[A-Za-z0-9_-]{10,})`,
   // Secret-sharing links — the URL itself is the credential.
   String.raw`(https?://[a-z0-9.-]*onetimesecret\.com[^\s]*)`,
-  String.raw`(https?://share\.1password\.com/s[^\s]*)`,
+  String.raw`(https?://[a-z0-9.-]*1password\.com[^\s]*)`,
   String.raw`(xai-[A-Za-z0-9]{30,})`,
   // Additional access-key and token-style prefixes.
   String.raw`${BASE64_SAFE_TOKEN_BOUNDARY}(AKIA[A-Z0-9]{16})`,
@@ -339,7 +339,7 @@ const DEFAULT_REDACT_PREFILTER_SOURCES: string[] = [
   String.raw`:\/\/[^\/\s:@]*:[^\/\s@]+@`,
   // Vendor token prefixes and webhook hosts, ordered like DEFAULT_REDACT_PATTERNS.
   String.raw`sk-|gh[opsur]_|github_pat_|glpat-|gloas-|xox[baprs]-|xapp-|hooks\.slack\.com|discord|gsk_|AIza|ya29\.|1\/\/0|eyJ|pplx-|fal_|fc-|bb_live_|gAAAA|[sr]k_(?:live|test)_|\bSG\.|npm_|pypi-|do[opr]_v1_|dp\.(?:ct|pt|sa|st|scim|audit)\.|dckr_|bkua_|CCIPAT_|sbp_|dapi[0-9a-f]|dd[pw]_|glsa_|nfp_|CFPAT-|cfat_|cfk_|cfut_|ATTA|lin_oauth_|lin_api_|ATCTT3|ATATT|ATBB|BBDC-|HRKU-|pat-(?:eu|na)1-|apify_api_|FlyV1|fio-u-|tvly-|exa_|syt_|retaindb_|mem0_|brv_|BSA|xai-`,
-  String.raw`onetimesecret\.com|share\.1password\.com`,
+  String.raw`onetimesecret\.com|1password\.com`,
   String.raw`[A-Za-z0-9]{3,6}~[A-Za-z0-9._-]{30,}`,
   String.raw`(?:^|[^A-Za-z0-9_])(?:am_|sk_)`,
   String.raw`A[KS]IA[A-Z0-9]|AKID|LTAI|hf_|api_org_|r8_`,
