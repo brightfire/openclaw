@@ -2,6 +2,26 @@
 
 Docs: https://docs.openclaw.ai
 
+## 2026.6.8-22
+
+Brightfire build on upstream 2026.6.8.
+
+### Patches
+
+- **Upstream Test Fixes** — [`7c3b9ffcd5`](https://github.com/brightfire/openclaw/commit/7c3b9ffcd5)
+- **Slack Markdown** — [`4db19e0ed5`](https://github.com/brightfire/openclaw/commit/4db19e0ed5)
+- **XGW Cross-Gateway** — [`711c73af36`](https://github.com/brightfire/openclaw/commit/711c73af36)
+- **Context Window Min Cap** — [`5c10c1d69f`](https://github.com/brightfire/openclaw/commit/5c10c1d69f)
+- **Session Reset Prompt** — [`9dbb036ead`](https://github.com/brightfire/openclaw/commit/9dbb036ead)
+- **Control UI Title** — [`0f886ced90`](https://github.com/brightfire/openclaw/commit/0f886ced90)
+- **Store-Based Session Archiving** — [`b4e7fdf7bb`](https://github.com/brightfire/openclaw/commit/b4e7fdf7bb)
+- **CLI HTTP Health Fallback** — [`82107367f0`](https://github.com/brightfire/openclaw/commit/82107367f0)
+- **skip changelog trimming for Brightfire -bf versions** — [`c41a70f132`](https://github.com/brightfire/openclaw/commit/c41a70f132)
+- **configurable sessionTarget for hook mappings** — [`ef22d62d59`](https://github.com/brightfire/openclaw/commit/ef22d62d59)
+- **chore(plugins): enable diagnostics-otel and slack by default** — [`d017181ce4`](https://github.com/brightfire/openclaw/commit/d017181ce4)
+- **feat(otel): combine otel-agent-identity + skill-used-version into otel-improvements** — [`e7cf2d5e55`](https://github.com/brightfire/openclaw/commit/e7cf2d5e55)
+
+
 ## 2026.6.8
 
 ### Highlights
