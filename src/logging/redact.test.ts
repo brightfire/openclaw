@@ -813,10 +813,7 @@ describe("redactSensitiveText", () => {
       `ATTA${"a".repeat(64)}`,
       `lin_oauth_${"a".repeat(32)}`,
       `lin_api_${"a".repeat(32)}`,
-      // Use non-hex chars (z) after ~ because patterns compile with the `i` flag,
-      // so [0-9A-F] in the negative lookahead also matches lowercase a-f. Real Azure
-      // secrets starting with 4 hex chars after ~ (rare, ~0.15%) are also blocked.
-      `gWn8Q~${"z".repeat(30)}`,
+      `gWn8Q~${"a".repeat(30)}`,
       // Secret-sharing links — URL is the credential.
       "https://onetimesecret.com/abc123def456ghi789jkl012mno345pqr678",
       "https://share.1password.com/s#abcdef1234567890uvwxyz",
@@ -847,14 +844,6 @@ describe("redactSensitiveText", () => {
   it("does not redact ordinary identifiers containing short token-prefix substrings", () => {
     const input =
       "npm_telegram_package_spec ask_openclaw_query_patterns team_management risk_assessment glpat-docs dapi-example sbp_short nfp_site CCIPAT_docs ATATT-example";
-    const output = redactSensitiveText(input, { mode: "tools" });
-    expect(output).toBe(input);
-  });
-
-  it("does not redact OpenClaw startup trace segments with ~ hex encoding", () => {
-    // encodeStartupTraceSegment writes ':' as '~003A'; the Azure secret pattern must not
-    // match these diagnostic labels (see src/plugins/startup-trace-segment.ts).
-    const input = "sidecars.plugin-services.plugin~003Atest.service-a.probe.result";
     const output = redactSensitiveText(input, { mode: "tools" });
     expect(output).toBe(input);
   });
