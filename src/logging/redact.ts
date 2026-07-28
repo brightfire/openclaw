@@ -42,7 +42,7 @@ function classifyPatternTag(source: string): string {
   if (/AIza/u.test(source)) {
     return "google_key";
   }
-  if (/cfat_/u.test(source)) {
+  if (/cf(?:at|k|ut)_/u.test(source)) {
     return "cloudflare_token";
   }
   if (/ATTA/u.test(source)) {
@@ -276,8 +276,10 @@ const DEFAULT_REDACT_PATTERNS: string[] = [
   String.raw`(glc_eyJ[A-Za-z0-9+/=]{60,160})`,
   String.raw`(nfp_[A-Za-z0-9_]{36})`,
   String.raw`(CFPAT-[A-Za-z0-9_\-]{40,})`,
-  // Cloudflare API token (new format). Cloudflare docs: cfat_ + 40 chars + checksum.
+  // Cloudflare API tokens (new scannable format: cfat_, cfk_, cfut_ + 40 chars + checksum).
   String.raw`\b(cfat_[A-Za-z0-9_-]{40,})\b`,
+  String.raw`\b(cfk_[A-Za-z0-9_-]{40,})\b`,
+  String.raw`\b(cfut_[A-Za-z0-9_-]{40,})\b`,
   // Trello token.
   String.raw`\b(ATTA[a-f0-9]{64,})\b`,
   // Linear OAuth token.
@@ -334,7 +336,7 @@ const DEFAULT_REDACT_PREFILTER_SOURCES: string[] = [
   // URL userinfo and connection-string password slots (`scheme://user:pass@host`).
   String.raw`:\/\/[^\/\s:@]*:[^\/\s@]+@`,
   // Vendor token prefixes and webhook hosts, ordered like DEFAULT_REDACT_PATTERNS.
-  String.raw`sk-|gh[opsur]_|github_pat_|glpat-|gloas-|xox[baprs]-|xapp-|hooks\.slack\.com|discord|gsk_|AIza|ya29\.|1\/\/0|eyJ|pplx-|fal_|fc-|bb_live_|gAAAA|[sr]k_(?:live|test)_|\bSG\.|npm_|pypi-|do[opr]_v1_|dp\.(?:ct|pt|sa|st|scim|audit)\.|dckr_|bkua_|CCIPAT_|sbp_|dapi[0-9a-f]|dd[pw]_|glsa_|nfp_|CFPAT-|cfat_|ATTA|lin_oauth_|lin_api_|ATCTT3|ATATT|ATBB|BBDC-|HRKU-|pat-(?:eu|na)1-|apify_api_|FlyV1|fio-u-|tvly-|exa_|syt_|retaindb_|mem0_|BSA|xai-`,
+  String.raw`sk-|gh[opsur]_|github_pat_|glpat-|gloas-|xox[baprs]-|xapp-|hooks\.slack\.com|discord|gsk_|AIza|ya29\.|1\/\/0|eyJ|pplx-|fal_|fc-|bb_live_|gAAAA|[sr]k_(?:live|test)_|\bSG\.|npm_|pypi-|do[opr]_v1_|dp\.(?:ct|pt|sa|st|scim|audit)\.|dckr_|bkua_|CCIPAT_|sbp_|dapi[0-9a-f]|dd[pw]_|glsa_|nfp_|CFPAT-|cfat_|cfk_|cfut_|ATTA|lin_oauth_|lin_api_|ATCTT3|ATATT|ATBB|BBDC-|HRKU-|pat-(?:eu|na)1-|apify_api_|FlyV1|fio-u-|tvly-|exa_|syt_|retaindb_|mem0_|BSA|xai-`,
   String.raw`onetimesecret\.com|1password\.com`,
   String.raw`[A-Za-z0-9]{3,6}~[A-Za-z0-9._-]{30,}`,
   String.raw`(?:^|[^A-Za-z0-9_])(?:am_|sk_)`,

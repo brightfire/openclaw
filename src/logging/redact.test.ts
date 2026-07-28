@@ -807,6 +807,8 @@ describe("redactSensitiveText", () => {
       "xai-abcdefghijklmnopqrstuvwxyzABCDE",
       // Fleet credential patterns from DEV-330 audit.
       `cfat_${"a".repeat(40)}`,
+      `cfk_${"a".repeat(40)}`,
+      `cfut_${"a".repeat(40)}`,
       `ATTA${"a".repeat(64)}`,
       `lin_oauth_${"a".repeat(32)}`,
       `lin_api_${"a".repeat(32)}`,
