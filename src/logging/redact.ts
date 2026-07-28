@@ -287,7 +287,8 @@ const DEFAULT_REDACT_PATTERNS: string[] = [
   // Linear API key.
   String.raw`\b(lin_api_[A-Za-z0-9]{32,})\b`,
   // Azure/M365 client secret (tilde-delimited format, e.g. gWn8Q~EjZDo...).
-  String.raw`\b([A-Za-z0-9]{3,6}~[A-Za-z0-9._-]{30,})\b`,
+  // Negative lookahead excludes OpenClaw startup trace encoding (~XXXX uppercase hex).
+  String.raw`\b([A-Za-z0-9]{3,6}~(?![0-9A-F]{4})[A-Za-z0-9._-]{30,})\b`,
   String.raw`${BASE64_SAFE_TOKEN_BOUNDARY}(ATCTT3xFfG[A-Za-z0-9+/=_-]+=[A-Za-z0-9]{8})`,
   String.raw`${BASE64_SAFE_TOKEN_BOUNDARY}(ATATT[A-Za-z0-9+/=_-]+=[A-Za-z0-9]{8})`,
   String.raw`${BASE64_SAFE_TOKEN_BOUNDARY}(ATBB[A-Za-z0-9_=.-]{16,})`,

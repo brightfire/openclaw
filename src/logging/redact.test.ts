@@ -848,6 +848,14 @@ describe("redactSensitiveText", () => {
     expect(output).toBe(input);
   });
 
+  it("does not redact OpenClaw startup trace segments with ~ hex encoding", () => {
+    // encodeStartupTraceSegment writes ':' as '~003A'; the Azure secret pattern must not
+    // match these diagnostic labels (see src/plugins/startup-trace-segment.ts).
+    const input = "sidecars.plugin-services.plugin~003Atest.service-a.probe.result";
+    const output = redactSensitiveText(input, { mode: "tools" });
+    expect(output).toBe(input);
+  });
+
   it("does not corrupt base64 blobs that embed token-prefix shapes", () => {
     // Tiny-PNG base64 contains a gAAAA run from zero-filled IHDR bytes; pure-base64-alphabet
     // prefixes must not fire mid-blob or media payloads get mangled.
