@@ -1,3 +1,5 @@
+import { resolveSessionAgentIds } from "../../agents/agent-scope.js";
+import { getRuntimeConfig } from "../../config/config.js";
 /**
  * Agent harness lifecycle diagnostics wrapper.
  *
@@ -11,9 +13,11 @@ import {
 import { diagnosticErrorCategory } from "../../infra/diagnostic-error-metadata.js";
 import {
   emitTrustedDiagnosticEvent,
+  emitTrustedDiagnosticEventWithPrivateData,
   type DiagnosticHarnessRunErrorEvent,
   type DiagnosticHarnessRunOutcome,
 } from "../../infra/diagnostic-events.js";
+import { resolveDiagnosticModelContentCapturePolicy } from "../../infra/diagnostic-llm-content.js";
 import {
   createChildDiagnosticTraceContext,
   freezeDiagnosticTraceContext,
@@ -67,6 +71,11 @@ function agentHarnessDiagnosticBase(
 ) {
   const diagnosticTrace = trace ?? getActiveDiagnosticTraceContext();
   const channel = diagnosticChannel(params);
+  const { sessionAgentId } = resolveSessionAgentIds({
+    sessionKey: params.sessionKey,
+    config: params.config,
+    agentId: params.agentId,
+  });
   return {
     runId: params.runId,
     sessionId: params.sessionId,
@@ -75,6 +84,7 @@ function agentHarnessDiagnosticBase(
     harnessId: harness.id,
     ...(harness.pluginId ? { pluginId: harness.pluginId } : {}),
     ...(params.sessionKey ? { sessionKey: params.sessionKey } : {}),
+    ...(sessionAgentId ? { agentId: sessionAgentId } : {}),
     ...(params.trigger ? { trigger: params.trigger } : {}),
     ...(channel ? { channel } : {}),
     ...(diagnosticTrace ? { trace: freezeDiagnosticTraceContext(diagnosticTrace) } : {}),
@@ -104,10 +114,16 @@ function diagnosticChannel(params: AgentHarnessAttemptParams): string | undefine
 
 function agentRunDiagnosticBase(params: AgentHarnessAttemptParams, trace: DiagnosticTraceContext) {
   const channel = diagnosticChannel(params);
+  const { sessionAgentId } = resolveSessionAgentIds({
+    sessionKey: params.sessionKey,
+    config: params.config,
+    agentId: params.agentId,
+  });
   return {
     runId: params.runId,
     ...(params.sessionKey ? { sessionKey: params.sessionKey } : {}),
     ...(params.sessionId ? { sessionId: params.sessionId } : {}),
+    ...(sessionAgentId ? { agentId: sessionAgentId } : {}),
     provider: params.provider,
     model: params.modelId,
     ...(params.trigger ? { trigger: params.trigger } : {}),
@@ -153,10 +169,16 @@ function emitAgentHarnessRunStarted(
   params: AgentHarnessAttemptParams,
   trace?: DiagnosticTraceContext,
 ): void {
-  emitTrustedDiagnosticEvent({
-    type: "harness.run.started",
-    ...agentHarnessDiagnosticBase(harness, params, trace),
-  });
+  const contentPolicy = resolveDiagnosticModelContentCapturePolicy(getRuntimeConfig());
+  const harnessContent: { userPrompt?: string; finalResponse?: string } | undefined =
+    contentPolicy.inputMessages && params.prompt ? { userPrompt: params.prompt } : undefined;
+  emitTrustedDiagnosticEventWithPrivateData(
+    {
+      type: "harness.run.started",
+      ...agentHarnessDiagnosticBase(harness, params, trace),
+    },
+    harnessContent ? { harnessContent } : undefined,
+  );
 }
 
 function emitAgentHarnessRunCompleted(params: {
@@ -167,17 +189,28 @@ function emitAgentHarnessRunCompleted(params: {
   trace?: DiagnosticTraceContext;
 }): void {
   const { harness, attemptParams, result, startedAt, trace } = params;
-  emitTrustedDiagnosticEvent({
-    type: "harness.run.completed",
-    ...agentHarnessDiagnosticBase(harness, attemptParams, trace ?? result.diagnosticTrace),
-    durationMs: Date.now() - startedAt,
-    outcome: agentHarnessRunOutcome(result),
-    ...(result.agentHarnessResultClassification
-      ? { resultClassification: result.agentHarnessResultClassification }
-      : {}),
-    ...(typeof result.yieldDetected === "boolean" ? { yieldDetected: result.yieldDetected } : {}),
-    itemLifecycle: { ...result.itemLifecycle },
-  });
+  const contentPolicy = resolveDiagnosticModelContentCapturePolicy(getRuntimeConfig());
+  const finalResponse =
+    contentPolicy.outputMessages && result.assistantTexts.length > 0
+      ? result.assistantTexts.filter(Boolean).join("\n") || undefined
+      : undefined;
+  const harnessContent: { userPrompt?: string; finalResponse?: string } | undefined = finalResponse
+    ? { finalResponse }
+    : undefined;
+  emitTrustedDiagnosticEventWithPrivateData(
+    {
+      type: "harness.run.completed",
+      ...agentHarnessDiagnosticBase(harness, attemptParams, trace ?? result.diagnosticTrace),
+      durationMs: Date.now() - startedAt,
+      outcome: agentHarnessRunOutcome(result),
+      ...(result.agentHarnessResultClassification
+        ? { resultClassification: result.agentHarnessResultClassification }
+        : {}),
+      ...(typeof result.yieldDetected === "boolean" ? { yieldDetected: result.yieldDetected } : {}),
+      itemLifecycle: { ...result.itemLifecycle },
+    },
+    harnessContent ? { harnessContent } : undefined,
+  );
 }
 
 function emitAgentHarnessRunError(params: {
