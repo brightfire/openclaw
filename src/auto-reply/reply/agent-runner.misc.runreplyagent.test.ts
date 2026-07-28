@@ -490,7 +490,7 @@ describe("runReplyAgent auto-compaction token update", () => {
     expect(scheduleFollowupDrain).toHaveBeenCalledTimes(1);
   });
 
-  it("reports live diagnostic context from promptTokens, not provider usage totals", async () => {
+  it("does not emit model.usage from agent-runner (now emitted from run.ts)", async () => {
     const { usageEvent } = await runBaseReplyWithAgentMeta({
       tmpPrefix: "openclaw-usage-diagnostic-",
       collectDiagnostics: true,
@@ -501,36 +501,13 @@ describe("runReplyAgent auto-compaction token update", () => {
       },
     });
 
-    const usagePayload = expectRecordFields(
-      usageEvent,
-      {
-        type: "model.usage",
-        agentId: "main",
-      },
-      "usage diagnostic event",
-    );
-    expectRecordFields(
-      usagePayload.usage,
-      {
-        input: 75_000,
-        output: 5_000,
-        cacheRead: 25_000,
-        promptTokens: 100_000,
-        total: 105_000,
-      },
-      "usage diagnostic usage",
-    );
-    expectRecordFields(
-      usagePayload.context,
-      {
-        limit: 200_000,
-        used: 44_000,
-      },
-      "usage diagnostic context",
-    );
+    // model.usage is now emitted from run.ts (inside runEmbeddedAgent),
+    // not from agent-runner.ts. Since runEmbeddedAgent is mocked here,
+    // no model.usage event should be emitted from the agent-runner path.
+    expect(usageEvent).toBeUndefined();
   });
 
-  it("falls back to last-call prompt usage for live diagnostic context", async () => {
+  it("does not emit model.usage from agent-runner lastCallUsage fallback (now in run.ts)", async () => {
     const { usageEvent } = await runBaseReplyWithAgentMeta({
       tmpPrefix: "openclaw-usage-diagnostic-last-",
       collectDiagnostics: true,
@@ -546,32 +523,10 @@ describe("runReplyAgent auto-compaction token update", () => {
       },
     });
 
-    const usagePayload = expectRecordFields(
-      usageEvent,
-      {
-        type: "model.usage",
-      },
-      "usage diagnostic event",
-    );
-    expectRecordFields(
-      usagePayload.usage,
-      {
-        input: 75_000,
-        output: 5_000,
-        cacheRead: 25_000,
-        promptTokens: 100_000,
-        total: 105_000,
-      },
-      "usage diagnostic usage",
-    );
-    expectRecordFields(
-      usagePayload.context,
-      {
-        limit: 200_000,
-        used: 81_000,
-      },
-      "usage diagnostic context",
-    );
+    // model.usage is now emitted from run.ts (inside runEmbeddedAgent),
+    // not from agent-runner.ts. Since runEmbeddedAgent is mocked here,
+    // no model.usage event should be emitted from the agent-runner path.
+    expect(usageEvent).toBeUndefined();
   });
 
   it("reads opted-in post-compaction context from the queued workspace instead of process cwd", async () => {

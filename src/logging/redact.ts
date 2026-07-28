@@ -6,6 +6,66 @@ import { replacePatternBounded } from "./redact-bounded.js";
 
 export type RedactSensitiveMode = "off" | "tools";
 export type RedactPattern = string | RegExp;
+const patternTagMap = new WeakMap<RegExp, string>();
+
+function classifyPatternTag(source: string): string {
+  if (source.includes("PRIVATE KEY")) {
+    return "private_key";
+  }
+  if (/Bearer/u.test(source)) {
+    return "bearer";
+  }
+  if (/Authorization.*Basic/u.test(source)) {
+    return "bearer";
+  }
+  if (/Authorization.*Bot/u.test(source)) {
+    return "bearer";
+  }
+  if (/postgres|mysql|mongodb|amqp|redis/u.test(source)) {
+    return "connection_string";
+  }
+  if (/https|wss|ftp|:\/\//u.test(source) && source.includes("@")) {
+    return "connection_string";
+  }
+  if (/sk[-_]/u.test(source) || /sk_(?:live|test)_/u.test(source) || /rk_live_/u.test(source)) {
+    return "api_key";
+  }
+  if (/gh[prsoux]_|github_pat_/u.test(source)) {
+    return "github_token";
+  }
+  if (/xox|hooks.*slack|xapp-/u.test(source)) {
+    return "slack_token";
+  }
+  if (/AKIA|ASIA/u.test(source)) {
+    return "aws_key";
+  }
+  if (/AIza/u.test(source)) {
+    return "google_key";
+  }
+  if (/cf(?:at|k|ut)_/u.test(source)) {
+    return "cloudflare_token";
+  }
+  if (/ATTA/u.test(source)) {
+    return "trello_token";
+  }
+  if (/lin_oauth_/u.test(source)) {
+    return "linear_token";
+  }
+  if (/lin_api_/u.test(source)) {
+    return "linear_api_key";
+  }
+  if (/~/u.test(source)) {
+    return "azure_secret";
+  }
+  if (/BSA|brv_/u.test(source)) {
+    return "brave_key";
+  }
+  if (/onetimesecret|1password/u.test(source)) {
+    return "secret_link";
+  }
+  return "secret";
+}
+
 type LoggingConfig = OpenClawConfig["logging"];
 
 const DEFAULT_REDACT_MODE: RedactSensitiveMode = "tools";
@@ -216,6 +276,18 @@ const DEFAULT_REDACT_PATTERNS: string[] = [
   String.raw`(glc_eyJ[A-Za-z0-9+/=]{60,160})`,
   String.raw`(nfp_[A-Za-z0-9_]{36})`,
   String.raw`(CFPAT-[A-Za-z0-9_\-]{40,})`,
+  // Cloudflare API tokens (new scannable format: cfat_, cfk_, cfut_ + 40 chars + checksum).
+  String.raw`\b(cfat_[A-Za-z0-9_-]{40,})\b`,
+  String.raw`\b(cfk_[A-Za-z0-9_-]{40,})\b`,
+  String.raw`\b(cfut_[A-Za-z0-9_-]{40,})\b`,
+  // Trello token.
+  String.raw`\b(ATTA[a-f0-9]{64,})\b`,
+  // Linear OAuth token.
+  String.raw`\b(lin_oauth_[a-f0-9]{32,})\b`,
+  // Linear API key.
+  String.raw`\b(lin_api_[A-Za-z0-9]{32,})\b`,
+  // Azure/M365 client secret (tilde-delimited format, e.g. gWn8Q~EjZDo...).
+  String.raw`\b([A-Za-z0-9]{3,6}~[A-Za-z0-9._-]{30,})\b`,
   String.raw`${BASE64_SAFE_TOKEN_BOUNDARY}(ATCTT3xFfG[A-Za-z0-9+/=_-]+=[A-Za-z0-9]{8})`,
   String.raw`${BASE64_SAFE_TOKEN_BOUNDARY}(ATATT[A-Za-z0-9+/=_-]+=[A-Za-z0-9]{8})`,
   String.raw`${BASE64_SAFE_TOKEN_BOUNDARY}(ATBB[A-Za-z0-9_=.-]{16,})`,
@@ -234,6 +306,10 @@ const DEFAULT_REDACT_PATTERNS: string[] = [
   String.raw`(hsk-[A-Za-z0-9]{10,})`,
   String.raw`(mem0_[A-Za-z0-9]{10,})`,
   String.raw`(brv_[A-Za-z0-9]{10,})`,
+  String.raw`(BSA[A-Za-z0-9_-]{10,})`,
+  // Secret-sharing links — the URL itself is the credential.
+  String.raw`(https?://[a-z0-9.-]*onetimesecret\.com[^\s]*)`,
+  String.raw`(https?://[a-z0-9.-]*1password\.com[^\s]*)`,
   String.raw`(xai-[A-Za-z0-9]{30,})`,
   // Additional access-key and token-style prefixes.
   String.raw`${BASE64_SAFE_TOKEN_BOUNDARY}(AKIA[A-Z0-9]{16})`,
@@ -261,7 +337,9 @@ const DEFAULT_REDACT_PREFILTER_SOURCES: string[] = [
   // URL userinfo and connection-string password slots (`scheme://user:pass@host`).
   String.raw`:\/\/[^\/\s:@]*:[^\/\s@]+@`,
   // Vendor token prefixes and webhook hosts, ordered like DEFAULT_REDACT_PATTERNS.
-  String.raw`sk-|gh[opsur]_|github_pat_|glpat-|gloas-|xox[baprs]-|xapp-|hooks\.slack\.com|discord|gsk_|AIza|ya29\.|1\/\/0|eyJ|pplx-|fal_|fc-|bb_live_|gAAAA|[sr]k_(?:live|test)_|\bSG\.|npm_|pypi-|do[opr]_v1_|dp\.(?:ct|pt|sa|st|scim|audit)\.|dckr_|bkua_|CCIPAT_|sbp_|dapi[0-9a-f]|dd[pw]_|glsa_|nfp_|CFPAT-|ATCTT3|ATATT|ATBB|BBDC-|HRKU-|pat-(?:eu|na)1-|apify_api_|FlyV1|fio-u-|tvly-|exa_|syt_|retaindb_|mem0_|brv_|xai-`,
+  String.raw`sk-|gh[opsur]_|github_pat_|glpat-|gloas-|xox[baprs]-|xapp-|hooks\.slack\.com|discord|gsk_|AIza|ya29\.|1\/\/0|eyJ|pplx-|fal_|fc-|bb_live_|gAAAA|[sr]k_(?:live|test)_|\bSG\.|npm_|pypi-|do[opr]_v1_|dp\.(?:ct|pt|sa|st|scim|audit)\.|dckr_|bkua_|CCIPAT_|sbp_|dapi[0-9a-f]|dd[pw]_|glsa_|nfp_|CFPAT-|cfat_|cfk_|cfut_|ATTA|lin_oauth_|lin_api_|ATCTT3|ATATT|ATBB|BBDC-|HRKU-|pat-(?:eu|na)1-|apify_api_|FlyV1|fio-u-|tvly-|exa_|syt_|retaindb_|mem0_|brv_|BSA|xai-`,
+  String.raw`onetimesecret\.com|1password\.com`,
+  String.raw`[A-Za-z0-9]{3,6}~[A-Za-z0-9._-]{30,}`,
   String.raw`(?:^|[^A-Za-z0-9_])(?:am_|sk_)`,
   String.raw`A[KS]IA[A-Z0-9]|AKID|LTAI|hf_|api_org_|r8_`,
   String.raw`\bbot\d{6,}:|\b\d{6,}:[A-Za-z0-9_-]{20,}`,
@@ -281,12 +359,14 @@ const DEFAULT_REDACT_PREFILTER_RE = new RegExp(
 export type RedactOptions = {
   mode?: RedactSensitiveMode;
   patterns?: RedactPattern[];
+  format?: "hint" | "redacted";
 };
 
 export type ResolvedRedactOptions = {
   mode: RedactSensitiveMode;
   patterns: RegExp[];
   redactFormBodies: boolean;
+  format: "hint" | "redacted";
 };
 
 function normalizeMode(value?: string): RedactSensitiveMode {
@@ -315,6 +395,10 @@ function parsePattern(raw: RedactPattern): RegExp | null {
   }
   if (pattern && typeof raw === "string" && raw.startsWith(BASE64_SAFE_TOKEN_BOUNDARY)) {
     chunkUnsafePatterns.add(pattern);
+  }
+  if (pattern) {
+    const tagSource = typeof raw === "string" ? raw : raw.source;
+    patternTagMap.set(pattern, classifyPatternTag(tagSource));
   }
   return pattern;
 }
@@ -406,6 +490,22 @@ function maskSecretValue(token: string, options?: { hinted?: boolean }): string 
   return `${options?.hinted ? maskToken(maskable) : "***"}${suffix}`;
 }
 
+function maskForFormat(token: string, format: "hint" | "redacted", tag: string): string {
+  if (format === "redacted") {
+    // Skip tokens that are already a __REDACTED_type__ placeholder, possibly with
+    // trailing delimiters that earlier passes preserved. The suffix check
+    // ensures attacker-crafted values like __REDACTED_fake__real-secret are
+    // not mistaken for already-redacted placeholders.
+    const placeholderMatch = token.match(/^__REDACTED_[a-z_]+__(.*)$/s);
+    if (placeholderMatch && SECRET_VALUE_SUFFIX_RE.test(placeholderMatch[1])) {
+      return token;
+    }
+    const { suffix } = splitSecretValueForMask(token);
+    return `__REDACTED_${tag}__${suffix}`;
+  }
+  return maskSecretValue(token, { hinted: true });
+}
+
 function normalizeSensitiveKeyName(value: string): string {
   const stripped = value.replace(FORM_BODY_KEY_SEPARATOR_RE, "");
   try {
@@ -430,7 +530,11 @@ function hasEncodedOrInvisibleFormKey(key: string): boolean {
 
 function redactFormEncodedPairs(
   value: string,
-  options?: { maskValues?: "fixed" | "hinted"; onlyEncodedOrInvisibleKeys?: boolean },
+  options?: {
+    maskValues?: "fixed" | "hinted";
+    onlyEncodedOrInvisibleKeys?: boolean;
+  },
+  format: "hint" | "redacted" = "hint",
 ): string {
   return value
     .split("&")
@@ -447,7 +551,12 @@ function redactFormEncodedPairs(
         return pair;
       }
       const token = pair.slice(equalsIndex + 1);
-      const masked = maskSecretValue(token, { hinted: options?.maskValues === "hinted" });
+      const masked =
+        format === "redacted"
+          ? maskForFormat(token, format, "secret")
+          : maskSecretValue(token, {
+              hinted: options?.maskValues === "hinted",
+            });
       return `${key}=${masked}`;
     })
     .join("&");
@@ -493,7 +602,7 @@ function markSensitiveFormEncodedPairValues(
   }
 }
 
-function redactUrlQueryPairs(text: string): string {
+function redactUrlQueryPairs(text: string, format: "hint" | "redacted" = "hint"): string {
   if (!text || !text.includes("?")) {
     return text;
   }
@@ -501,7 +610,7 @@ function redactUrlQueryPairs(text: string): string {
     if (!hasEncodedOrInvisibleFormKey(key) || !isSensitiveBodyKey(key)) {
       return match;
     }
-    return `${prefix}${key}=${maskSecretValue(token, { hinted: true })}`;
+    return `${prefix}${key}=${maskForFormat(token, format, "secret")}`;
   });
 }
 
@@ -525,7 +634,7 @@ function markUrlQueryPairRedactions(text: string, bitmap: boolean[]): void {
   }
 }
 
-function redactEncodedFormPairs(text: string): string {
+function redactEncodedFormPairs(text: string, format: "hint" | "redacted" = "hint"): string {
   if (!text || (!text.includes("%") && text.replace(FORM_BODY_KEY_OBFUSCATION_RE, "") === text)) {
     return text;
   }
@@ -533,7 +642,7 @@ function redactEncodedFormPairs(text: string): string {
     if (!hasEncodedOrInvisibleFormKey(key) || !isSensitiveBodyKey(key)) {
       return match;
     }
-    return `${prefix}${key}=${maskSecretValue(token)}`;
+    return `${prefix}${key}=${maskForFormat(token, format, "secret")}`;
   });
 }
 
@@ -561,7 +670,10 @@ function markEncodedFormPairRedactions(text: string, bitmap: boolean[], offset =
   }
 }
 
-function redactFormBodyContextSinglePairs(text: string): string {
+function redactFormBodyContextSinglePairs(
+  text: string,
+  format: "hint" | "redacted" = "hint",
+): string {
   if (!text || !/[=:]/u.test(text)) {
     return text;
   }
@@ -571,7 +683,7 @@ function redactFormBodyContextSinglePairs(text: string): string {
       if (!isSensitiveBodyKey(key)) {
         return match;
       }
-      return `${prefix}${key}=${maskSecretValue(token)}${suffix}`;
+      return `${prefix}${key}=${maskForFormat(token, format, "secret")}${suffix}`;
     },
   );
 }
@@ -604,28 +716,31 @@ function markFormBodyContextSinglePairRedactions(
   }
 }
 
-function redactFormBodyLine(text: string): string {
+function redactFormBodyLine(text: string, format: "hint" | "redacted" = "hint"): string {
   if (!text) {
     return text;
   }
-  const contextRedacted = redactFormBodyContextSinglePairs(redactEncodedFormPairs(text));
+  const contextRedacted = redactFormBodyContextSinglePairs(
+    redactEncodedFormPairs(text, format),
+    format,
+  );
   if (!contextRedacted.includes("&")) {
     return contextRedacted;
   }
   if (FORM_BODY_RE.test(contextRedacted)) {
-    return redactFormEncodedPairs(contextRedacted);
+    return redactFormEncodedPairs(contextRedacted, undefined, format);
   }
   const redacted = contextRedacted.replace(
     FORM_BODY_SUBSTRING_RE,
     (match, prefix: string, body: string) => {
-      const redactedBody = redactFormEncodedPairs(body);
+      const redactedBody = redactFormEncodedPairs(body, undefined, format);
       return redactedBody === body ? match : `${prefix}${redactedBody}`;
     },
   );
-  return redactFormBodyContextSinglePairs(redactEncodedFormPairs(redacted));
+  return redactFormBodyContextSinglePairs(redactEncodedFormPairs(redacted, format), format);
 }
 
-function redactFormBody(text: string): string {
+function redactFormBody(text: string, format: "hint" | "redacted" = "hint"): string {
   if (!text) {
     return text;
   }
@@ -633,11 +748,13 @@ function redactFormBody(text: string): string {
     return text
       .split(FORM_BODY_LINE_BREAK_SPLIT_RE)
       .map((segment) =>
-        FORM_BODY_LINE_BREAK_SEGMENT_RE.test(segment) ? segment : redactFormBodyLine(segment),
+        FORM_BODY_LINE_BREAK_SEGMENT_RE.test(segment)
+          ? segment
+          : redactFormBodyLine(segment, format),
       )
       .join("");
   }
-  return redactFormBodyLine(text);
+  return redactFormBodyLine(text, format);
 }
 
 function markFormBodyLineRedactions(text: string, bitmap: boolean[], offset: number): void {
@@ -680,7 +797,10 @@ function markFormBodyRedactions(text: string, bitmap: boolean[]): void {
   }
 }
 
-function redactPemBlock(block: string): string {
+function redactPemBlock(block: string, format: "hint" | "redacted" = "hint"): string {
+  if (format === "redacted") {
+    return "__REDACTED_private_key__";
+  }
   const lines = block.split(/\r?\n/).filter(Boolean);
   if (lines.length < 2) {
     return "***";
@@ -796,15 +916,24 @@ function redactMatch(
   groups: string[],
   pattern: RegExp,
   context?: { input?: string; offset?: number },
+  format: "hint" | "redacted" = "hint",
 ): string {
   if (match.includes("PRIVATE KEY-----")) {
-    return redactPemBlock(match);
+    return redactPemBlock(match, format);
   }
   const selected = selectSecretCapture(match, groups);
   const token = selected.value;
   // An earlier pass (form-body or quoted-assignment masking) may already have replaced this
-  // value with ***; re-masking would strip its quote wrapper around the placeholder.
-  if (splitSecretValueForMask(token).maskable === "***") {
+  // value with *** or a __REDACTED_type__ tag; re-masking would corrupt the placeholder.
+  if (token === "***") {
+    return match;
+  }
+  const placeholderMatch = token.match(/^__REDACTED_[a-z_]+__(.*)$/s);
+  if (placeholderMatch && SECRET_VALUE_SUFFIX_RE.test(placeholderMatch[1])) {
+    return match;
+  }
+  const preMasked = splitSecretValueForMask(token).maskable;
+  if (preMasked === "***") {
     return match;
   }
   const isShellReferencePattern = shellReferencePreservingPatterns.has(pattern);
@@ -816,6 +945,24 @@ function redactMatch(
     (shouldPreserveShellReferenceMatch(match, token) || isEmptyShellParameterExpansionTail(token))
   ) {
     return match;
+  }
+  if (format === "redacted") {
+    const tag = patternTagMap.get(pattern) ?? "secret";
+    const { suffix } = splitSecretValueForMask(token);
+    if (token === match) {
+      return `__REDACTED_${tag}__${suffix}`;
+    }
+    const tokenIndex = getSecretCaptureStart(
+      pattern,
+      context?.input ?? "",
+      match,
+      context?.offset ?? -1,
+      selected,
+    );
+    if (tokenIndex < 0) {
+      return match;
+    }
+    return `${match.slice(0, tokenIndex)}__REDACTED_${tag}__${suffix}${match.slice(tokenIndex + token.length)}`;
   }
   // Assignment values can legitimately include trailing shell/structural characters
   // (e.g. `${VAR:-default}`); mask the captured token whole so those characters count toward the
@@ -842,12 +989,13 @@ function redactMatch(
 function redactText(
   text: string,
   patterns: RegExp[],
-  options?: { redactFormBodies?: boolean },
+  options?: { redactFormBodies?: boolean; format?: "hint" | "redacted" },
 ): string {
+  const format = options?.format ?? "hint";
   let next = text;
   if (options?.redactFormBodies) {
-    next = redactUrlQueryPairs(next);
-    next = redactFormBody(next);
+    next = redactUrlQueryPairs(next, format);
+    next = redactFormBody(next, format);
   }
   for (const pattern of patterns) {
     const replacer = (...args: unknown[]) => {
@@ -863,7 +1011,7 @@ function redactText(
         .map((value) => (typeof value === "string" ? value : ""));
       const offset = typeof args[offsetIndex] === "number" ? args[offsetIndex] : -1;
       const input = typeof args[inputIndex] === "string" ? args[inputIndex] : "";
-      return redactMatch(match, groups, pattern, { input, offset });
+      return redactMatch(match, groups, pattern, { input, offset }, format);
     };
     next = chunkUnsafePatterns.has(pattern)
       ? next.replace(pattern, replacer)
@@ -939,10 +1087,10 @@ function looksLikeAppSpecificPassword(candidate: string): boolean {
   return candidate.split("-").every((part) => !BENIGN_APP_PASSWORD_WORDS.has(part.toLowerCase()));
 }
 
-function redactAppSpecificPasswords(text: string): string {
+function redactAppSpecificPasswords(text: string, format: "hint" | "redacted" = "hint"): string {
   return replacePatternBounded(text, APP_SPECIFIC_PASSWORD_RE, (match: string, token: string) =>
     looksLikeAppSpecificPassword(token)
-      ? redactMatch(match, [token], APP_SPECIFIC_PASSWORD_RE)
+      ? redactMatch(match, [token], APP_SPECIFIC_PASSWORD_RE, undefined, format)
       : match,
   );
 }
@@ -958,11 +1106,13 @@ function resolveConfigRedaction(): RedactOptions {
 export function resolveRedactOptions(options?: RedactOptions): ResolvedRedactOptions {
   const resolved = options ?? resolveConfigRedaction();
   const mode = normalizeMode(resolved.mode);
+  const format = resolved.format ?? "hint";
   if (mode === "off") {
     return {
       mode,
       patterns: [],
       redactFormBodies: false,
+      format,
     };
   }
   const patterns = resolvePatterns(resolved.patterns);
@@ -970,6 +1120,7 @@ export function resolveRedactOptions(options?: RedactOptions): ResolvedRedactOpt
     mode,
     patterns,
     redactFormBodies: patterns.length > 0 && includesDefaultRedactPatterns(resolved.patterns),
+    format,
   };
 }
 
@@ -988,11 +1139,32 @@ export function redactSensitiveText(text: string, options?: RedactOptions): stri
   if (!resolved.patterns.length) {
     return text;
   }
-  return redactText(text, resolved.patterns, { redactFormBodies: resolved.redactFormBodies });
+  return redactText(text, resolved.patterns, {
+    redactFormBodies: resolved.redactFormBodies,
+    format: resolved.format,
+  });
 }
 
 export function redactToolDetail(detail: string): string {
   return redactToolPayloadText(detail);
+}
+
+// OTel export redaction that respects the operator's `logging.redactSensitive`
+// setting (so `"off"` disables it per the documented contract) while forcing the
+// `__REDACTED_type__` format and merging operator-configured `logging.redactPatterns`
+// with the built-in defaults when redaction is active.
+export function redactForExport(text: string): string {
+  if (!text) {
+    return text;
+  }
+  const configOptions = resolveConfigRedaction();
+  if (normalizeMode(configOptions.mode) === "off") {
+    return text;
+  }
+  return redactSensitiveText(text, {
+    ...resolveToolPayloadRedaction(),
+    format: "redacted",
+  });
 }
 
 function resolveToolPayloadRedaction(
@@ -1038,10 +1210,11 @@ function redactSensitiveFieldValueWithOptions(
   }
   const redacted = redactText(value, resolved.patterns, {
     redactFormBodies: resolved.redactFormBodies,
+    format: resolved.format,
   });
   const shouldRedactAppPassword = redacted !== value || STRUCTURED_APP_PASSWORD_FIELD_RE.test(key);
   if (shouldRedactAppPassword) {
-    const appRedacted = redactAppSpecificPasswords(redacted);
+    const appRedacted = redactAppSpecificPasswords(redacted, resolved.format);
     if (appRedacted !== value) {
       return appRedacted;
     }
@@ -1152,7 +1325,11 @@ export function redactSensitiveLines(lines: string[], resolved: ResolvedRedactOp
     return lines;
   }
   const redactedLines = resolved.redactFormBodies
-    ? lines.map((line) => redactFormBody(redactUrlQueryPairs(line)))
+    ? lines.map((line) =>
+        redactFormBody(redactUrlQueryPairs(line, resolved.format), resolved.format),
+      )
     : lines;
-  return redactText(redactedLines.join("\n"), resolved.patterns).split("\n");
+  return redactText(redactedLines.join("\n"), resolved.patterns, {
+    format: resolved.format,
+  }).split("\n");
 }

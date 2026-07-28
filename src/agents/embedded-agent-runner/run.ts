@@ -25,7 +25,12 @@ import {
   withAgentRunLifecycleGeneration,
 } from "../../infra/agent-events.js";
 import { sleepWithAbort } from "../../infra/backoff.js";
-import { freezeDiagnosticTraceContext } from "../../infra/diagnostic-trace-context.js";
+import { emitTrustedDiagnosticEvent, isDiagnosticsEnabled } from "../../infra/diagnostic-events.js";
+import {
+  freezeDiagnosticTraceContext,
+  createChildDiagnosticTraceContext,
+  type DiagnosticTraceContext,
+} from "../../infra/diagnostic-trace-context.js";
 import { formatErrorMessage } from "../../infra/errors.js";
 import { buildAgentHookContextChannelFields } from "../../plugins/hook-agent-context.js";
 import { getGlobalHookRunner } from "../../plugins/hook-runner-global.js";
@@ -35,12 +40,14 @@ import type { CommandQueueEnqueueOptions } from "../../process/command-queue.typ
 import { createAgentHarnessTaskRuntimeScope } from "../../tasks/agent-harness-task-runtime-scope.js";
 import { resolveUserPath } from "../../utils.js";
 import { isMarkdownCapableMessageChannel } from "../../utils/message-channel.js";
+import { estimateUsageCost, resolveModelCostConfig } from "../../utils/usage-format.js";
 import {
   retireSessionMcpRuntime,
   retireSessionMcpRuntimeForSessionKey,
 } from "../agent-bundle-mcp-tools.js";
 import {
   resolveAgentExecutionContract,
+  resolveAgentConfig,
   resolveAgentDir,
   resolveSessionAgentIds,
   resolveAgentWorkspaceDir,
@@ -113,7 +120,13 @@ import { buildAgentRuntimePlan } from "../runtime-plan/build.js";
 import { ensureRuntimePluginsLoaded } from "../runtime-plugins.js";
 import { resolveSessionSuspensionReason, suspendSession } from "../session-suspension.js";
 import { resolveToolLoopDetectionConfig } from "../tool-loop-detection-config.js";
-import { derivePromptTokens, normalizeUsage, type UsageLike } from "../usage.js";
+import {
+  deriveContextPromptTokens,
+  derivePromptTokens,
+  hasNonzeroUsage,
+  normalizeUsage,
+  type UsageLike,
+} from "../usage.js";
 import { redactRunIdentifier, resolveRunWorkspaceDir } from "../workspace-run.js";
 import { runPostCompactionSideEffects } from "./compaction-hooks.js";
 import { buildEmbeddedCompactionRuntimeContext } from "./compaction-runtime-context.js";
@@ -1622,6 +1635,79 @@ async function runEmbeddedAgentInternal(
         let accumulatedReplayState = createEmbeddedRunReplayState();
         // Hoisted so the retry-limit error path can use the most recent API total.
         let lastTurnTotal: number | undefined;
+        // Guard: model.usage must fire exactly once per run, on the terminal
+        // attempt. Retried attempts (continue paths) must not emit.
+        let usageEmitted = false;
+        let lastAttemptDiagnosticTrace: DiagnosticTraceContext | undefined;
+        // Standalone emission helper so retry-limit return paths (which exit
+        // before the normal agentMeta/closure is built) can still emit
+        // model.usage with the error-path agentMeta from buildErrorAgentMeta.
+        const emitModelUsageDiagnostic = (
+          agentMeta: EmbeddedAgentMeta,
+          diagnosticTrace?: DiagnosticTraceContext,
+        ) => {
+          if (!isDiagnosticsEnabled(params.config) || !hasNonzeroUsage(agentMeta.usage)) {
+            return;
+          }
+          const usage = agentMeta.usage;
+          const input = usage.input ?? 0;
+          const output = usage.output ?? 0;
+          const cacheRead = usage.cacheRead ?? 0;
+          const cacheWrite = usage.cacheWrite ?? 0;
+          const usagePromptTokens = input + cacheRead + cacheWrite;
+          const totalTokens = usage.total ?? usagePromptTokens + output;
+          const hasBillableUsageBuckets =
+            usage.input !== undefined ||
+            usage.output !== undefined ||
+            usage.cacheRead !== undefined ||
+            usage.cacheWrite !== undefined;
+          const contextUsedTokens = deriveContextPromptTokens({
+            lastCallUsage: agentMeta.lastCallUsage,
+            promptTokens: agentMeta.promptTokens,
+            usage,
+          });
+          const costConfig = resolveModelCostConfig({
+            provider: agentMeta.provider,
+            model: agentMeta.model,
+            config: params.config,
+          });
+          const costUsd = hasBillableUsageBuckets
+            ? estimateUsageCost({ usage, cost: costConfig })
+            : undefined;
+          emitTrustedDiagnosticEvent({
+            type: "model.usage",
+            ...(diagnosticTrace
+              ? {
+                  trace: freezeDiagnosticTraceContext(
+                    createChildDiagnosticTraceContext(diagnosticTrace),
+                  ),
+                }
+              : {}),
+            sessionKey: resolvedSessionKey,
+            sessionId: activeSessionId ?? params.sessionId,
+            channel: channelHint,
+            agentId: sessionAgentId,
+            agentLabel: resolveAgentConfig(params.config ?? {}, sessionAgentId)?.name,
+            provider: agentMeta.provider,
+            model: agentMeta.model,
+            usage: {
+              input,
+              output,
+              cacheRead,
+              cacheWrite,
+              promptTokens: usagePromptTokens,
+              total: totalTokens,
+            },
+            lastCallUsage: agentMeta.lastCallUsage,
+            context: {
+              limit: ctxInfo.tokens,
+              ...(contextUsedTokens !== undefined ? { used: contextUsedTokens } : {}),
+            },
+            costUsd,
+            durationMs: Date.now() - started,
+          });
+          usageEmitted = true;
+        };
         while (true) {
           if (runLoopIterations >= MAX_RUN_LOOP_ITERATIONS) {
             const message =
@@ -1637,6 +1723,17 @@ async function runEmbeddedAgentInternal(
               fallbackConfigured,
               failoverReason: lastRetryFailoverReason,
             });
+            const retryLimitAgentMeta = buildErrorAgentMeta({
+              sessionId: activeSessionId,
+              sessionFile: activeSessionFile,
+              provider,
+              model: model.id,
+              contextTokens: ctxInfo.tokens,
+              usageAccumulator,
+              lastRunPromptUsage,
+              lastTurnTotal,
+            });
+            emitModelUsageDiagnostic(retryLimitAgentMeta, lastAttemptDiagnosticTrace);
             return handleRetryLimitExhaustion({
               message,
               decision: retryLimitDecision,
@@ -1644,16 +1741,7 @@ async function runEmbeddedAgentInternal(
               model: modelId,
               profileId: lastProfileId,
               durationMs: Date.now() - started,
-              agentMeta: buildErrorAgentMeta({
-                sessionId: activeSessionId,
-                sessionFile: activeSessionFile,
-                provider,
-                model: model.id,
-                contextTokens: ctxInfo.tokens,
-                usageAccumulator,
-                lastRunPromptUsage,
-                lastTurnTotal,
-              }),
+              agentMeta: retryLimitAgentMeta,
               replayInvalid: accumulatedReplayState.replayInvalid ? true : undefined,
               livenessState: "blocked",
             });
@@ -1896,6 +1984,7 @@ async function runEmbeddedAgentInternal(
             throw postCompactionAbortError;
           }
           const attempt = normalizeEmbeddedRunAttemptResult(rawAttempt);
+          lastAttemptDiagnosticTrace = attempt.diagnosticTrace;
 
           const {
             aborted,
@@ -1967,6 +2056,17 @@ async function runEmbeddedAgentInternal(
               fallbackConfigured,
               failoverReason: lastRetryFailoverReason,
             });
+            const breakerAgentMeta = buildErrorAgentMeta({
+              sessionId: activeSessionId,
+              sessionFile: activeSessionFile,
+              provider,
+              model: model.id,
+              contextTokens: ctxInfo.tokens,
+              usageAccumulator,
+              lastRunPromptUsage,
+              lastTurnTotal,
+            });
+            emitModelUsageDiagnostic(breakerAgentMeta, attempt.diagnosticTrace);
             return handleRetryLimitExhaustion({
               message: breakerMessage,
               decision: breakerDecision,
@@ -1974,16 +2074,7 @@ async function runEmbeddedAgentInternal(
               model: modelId,
               profileId: lastProfileId,
               durationMs: Date.now() - started,
-              agentMeta: buildErrorAgentMeta({
-                sessionId: activeSessionId,
-                sessionFile: activeSessionFile,
-                provider,
-                model: model.id,
-                contextTokens: ctxInfo.tokens,
-                usageAccumulator,
-                lastRunPromptUsage,
-                lastTurnTotal,
-              }),
+              agentMeta: breakerAgentMeta,
               replayInvalid: accumulatedReplayState.replayInvalid ? true : undefined,
               livenessState: "blocked",
             });
@@ -2534,6 +2625,18 @@ async function runEmbeddedAgentInternal(
               replayInvalid: resolveReplayInvalidForAttempt(),
               livenessState: "blocked",
             });
+            const overflowAgentMeta = buildErrorAgentMeta({
+              sessionId: sessionIdUsed,
+              sessionFile: activeSessionFile,
+              provider,
+              model: model.id,
+              contextTokens: ctxInfo.tokens,
+              usageAccumulator,
+              lastRunPromptUsage,
+              lastAssistant: sessionLastAssistant,
+              lastTurnTotal,
+            });
+            emitModelUsageDiagnostic(overflowAgentMeta, attempt.diagnosticTrace);
             return {
               payloads: [
                 {
@@ -2543,17 +2646,7 @@ async function runEmbeddedAgentInternal(
               ],
               meta: {
                 durationMs: Date.now() - started,
-                agentMeta: buildErrorAgentMeta({
-                  sessionId: sessionIdUsed,
-                  sessionFile: activeSessionFile,
-                  provider,
-                  model: model.id,
-                  contextTokens: ctxInfo.tokens,
-                  usageAccumulator,
-                  lastRunPromptUsage,
-                  lastAssistant: sessionLastAssistant,
-                  lastTurnTotal,
-                }),
+                agentMeta: overflowAgentMeta,
                 systemPromptReport: attempt.systemPromptReport,
                 finalAssistantVisibleText: overflowRecoveryText,
                 finalAssistantRawText: overflowRecoveryText,
@@ -2572,21 +2665,23 @@ async function runEmbeddedAgentInternal(
               replayInvalid,
               livenessState: "blocked",
             });
+            const hookErrorAgentMeta = buildErrorAgentMeta({
+              sessionId: sessionIdUsed,
+              sessionFile: activeSessionFile,
+              provider,
+              model: model.id,
+              contextTokens: ctxInfo.tokens,
+              usageAccumulator,
+              lastRunPromptUsage,
+              lastAssistant: sessionLastAssistant,
+              lastTurnTotal,
+            });
+            emitModelUsageDiagnostic(hookErrorAgentMeta, attempt.diagnosticTrace);
             return {
               payloads: [{ text: errorText, isError: true }],
               meta: {
                 durationMs: Date.now() - started,
-                agentMeta: buildErrorAgentMeta({
-                  sessionId: sessionIdUsed,
-                  sessionFile: activeSessionFile,
-                  provider,
-                  model: model.id,
-                  contextTokens: ctxInfo.tokens,
-                  usageAccumulator,
-                  lastRunPromptUsage,
-                  lastAssistant: sessionLastAssistant,
-                  lastTurnTotal,
-                }),
+                agentMeta: hookErrorAgentMeta,
                 systemPromptReport: attempt.systemPromptReport,
                 finalAssistantVisibleText: errorText,
                 finalAssistantRawText: errorText,
@@ -2677,6 +2772,18 @@ async function runEmbeddedAgentInternal(
                 replayInvalid: resolveReplayInvalidForAttempt(),
                 livenessState: "blocked",
               });
+              const roleOrderingAgentMeta = buildErrorAgentMeta({
+                sessionId: sessionIdUsed,
+                sessionFile: activeSessionFile,
+                provider,
+                model: model.id,
+                contextTokens: ctxInfo.tokens,
+                usageAccumulator,
+                lastRunPromptUsage,
+                lastAssistant: sessionLastAssistant,
+                lastTurnTotal,
+              });
+              emitModelUsageDiagnostic(roleOrderingAgentMeta, attempt.diagnosticTrace);
               return {
                 payloads: [
                   {
@@ -2688,17 +2795,7 @@ async function runEmbeddedAgentInternal(
                 ],
                 meta: {
                   durationMs: Date.now() - started,
-                  agentMeta: buildErrorAgentMeta({
-                    sessionId: sessionIdUsed,
-                    sessionFile: activeSessionFile,
-                    provider,
-                    model: model.id,
-                    contextTokens: ctxInfo.tokens,
-                    usageAccumulator,
-                    lastRunPromptUsage,
-                    lastAssistant: sessionLastAssistant,
-                    lastTurnTotal,
-                  }),
+                  agentMeta: roleOrderingAgentMeta,
                   systemPromptReport: attempt.systemPromptReport,
                   finalPromptText: attempt.finalPromptText,
                   replayInvalid: resolveReplayInvalidForAttempt(),
@@ -2718,6 +2815,18 @@ async function runEmbeddedAgentInternal(
                 replayInvalid: resolveReplayInvalidForAttempt(),
                 livenessState: "blocked",
               });
+              const imageSizeAgentMeta = buildErrorAgentMeta({
+                sessionId: sessionIdUsed,
+                sessionFile: activeSessionFile,
+                provider,
+                model: model.id,
+                contextTokens: ctxInfo.tokens,
+                usageAccumulator,
+                lastRunPromptUsage,
+                lastAssistant: sessionLastAssistant,
+                lastTurnTotal,
+              });
+              emitModelUsageDiagnostic(imageSizeAgentMeta, attempt.diagnosticTrace);
               return {
                 payloads: [
                   {
@@ -2729,17 +2838,7 @@ async function runEmbeddedAgentInternal(
                 ],
                 meta: {
                   durationMs: Date.now() - started,
-                  agentMeta: buildErrorAgentMeta({
-                    sessionId: sessionIdUsed,
-                    sessionFile: activeSessionFile,
-                    provider,
-                    model: model.id,
-                    contextTokens: ctxInfo.tokens,
-                    usageAccumulator,
-                    lastRunPromptUsage,
-                    lastAssistant: sessionLastAssistant,
-                    lastTurnTotal,
-                  }),
+                  agentMeta: imageSizeAgentMeta,
                   systemPromptReport: attempt.systemPromptReport,
                   finalPromptText: attempt.finalPromptText,
                   replayInvalid: resolveReplayInvalidForAttempt(),
@@ -3126,6 +3225,19 @@ async function runEmbeddedAgentInternal(
             compactionCount: autoCompactionCount > 0 ? autoCompactionCount : undefined,
             compactionTokensAfter: lastCompactionTokensAfter,
           };
+
+          // Emit model.usage exactly once, on the terminal attempt, while
+          // the openclaw.run OTel span is still active so Langfuse can
+          // associate it with the correct trace. Delegates to the hoisted
+          // emitModelUsageDiagnostic helper; the guard prevents
+          // double-emission when an attempt succeeds then is retried.
+          const emitTerminalModelUsage = () => {
+            if (usageEmitted) {
+              return;
+            }
+            emitModelUsageDiagnostic(agentMeta, attempt.diagnosticTrace);
+          };
+
           const finalAssistantVisibleText = resolveFinalAssistantVisibleText(sessionLastAssistant);
           const finalAssistantRawText = resolveFinalAssistantRawText(sessionLastAssistant);
 
@@ -3250,6 +3362,7 @@ async function runEmbeddedAgentInternal(
               timeoutPhase,
               providerStarted,
             });
+            emitTerminalModelUsage();
             return {
               payloads: [
                 ...(hasPartialAssistantTextAfterPromptTimeout ? [] : payloadsWithToolMedia || []),
@@ -3500,6 +3613,7 @@ async function runEmbeddedAgentInternal(
               replayInvalid,
               livenessState,
             });
+            emitTerminalModelUsage();
             return {
               payloads: [
                 {
@@ -3556,6 +3670,7 @@ async function runEmbeddedAgentInternal(
                 modelId,
               });
             }
+            emitTerminalModelUsage();
             return {
               payloads: [
                 {
@@ -3679,6 +3794,7 @@ async function runEmbeddedAgentInternal(
               });
             }
 
+            emitTerminalModelUsage();
             return {
               payloads: [
                 {
@@ -3779,6 +3895,7 @@ async function runEmbeddedAgentInternal(
             stopReason,
             yielded: attempt.yieldDetected === true,
           });
+          emitTerminalModelUsage();
           return {
             payloads: terminalPayloads?.length ? terminalPayloads : undefined,
             ...(attempt.diagnosticTrace
