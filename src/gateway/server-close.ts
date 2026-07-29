@@ -17,6 +17,7 @@ import {
   type ChatAbortControllerEntry,
   type RestartRecoveryCandidate,
 } from "./chat-abort.js";
+import { shutdownXgw } from "./xgw/inbound.js";
 import {
   collectGatewayProcessMemoryUsageMb,
   measureGatewayRestartTrace,
@@ -522,6 +523,11 @@ async function triggerGatewayLifecycleHookWithTimeout(params: {
       }),
     ]);
     if (result === "timeout") {
+      try {
+        shutdownXgw();
+      } catch {
+        /* ignore */
+      }
       shutdownLog.warn(
         `${params.hookName} hook timed out after ${params.timeoutMs}ms; continuing shutdown`,
       );

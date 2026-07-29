@@ -246,6 +246,7 @@ async function startAgentRun(params: {
   sessionKey: string;
   deliveryTimeoutMs?: number;
   allowActiveRunQueueDelivery?: boolean;
+  timeoutSeconds?: number;
 }): Promise<
   | {
       ok: true;
@@ -253,6 +254,8 @@ async function startAgentRun(params: {
       activeRunQueue?: boolean;
       a2aSessionKey?: string;
       a2aDisplayKey?: string;
+      status?: string;
+      reply?: string | null;
     }
   | { ok: false; result: ReturnType<typeof jsonResult> }
 > {
@@ -697,11 +700,40 @@ export function createSessionsSendTool(opts?: {
         sendParams,
         sessionKey: displayKey,
         deliveryTimeoutMs: announceTimeoutMs,
+        timeoutSeconds,
       });
       if (!start.ok) {
         return start.result;
       }
       runId = start.runId;
+
+      // Cross-gateway flows surface the remote agent's response inline on
+      // the start call (status "ok" with a reply, or "accepted" when the
+      // remote is still working). Local flows always get an initial
+      // "accepted" ack from the gateway and must continue to the wait/read
+      // step to recover the actual reply, so these short-circuits are gated
+      // on the cross-gateway (`@gateway/...`) session prefix.
+      const isXgw = typeof resolvedKey === "string" && resolvedKey.startsWith("@");
+      if (isXgw && start.status === "ok" && typeof start.reply === "string") {
+        startA2AFlow(start.reply);
+        return jsonResult({
+          runId,
+          status: "ok",
+          reply: start.reply,
+          sessionKey: displayKey,
+          delivery,
+        });
+      }
+      if (isXgw && start.status === "accepted") {
+        startA2AFlow(start.reply ?? undefined, runId);
+        return jsonResult({
+          runId,
+          status: "accepted",
+          sessionKey: displayKey,
+          delivery,
+        });
+      }
+
       const result = await waitForAgentRunAndReadUpdatedAssistantReply({
         runId,
         sessionKey: resolvedKey,

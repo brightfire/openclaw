@@ -90,6 +90,7 @@ let httpAuthUtilsModulePromise: Promise<typeof import("./http-auth-utils.js")> |
 let pluginRouteRuntimeScopesModulePromise:
   | Promise<typeof import("./server/plugin-route-runtime-scopes.js")>
   | undefined;
+let xgwHttpModulePromise: Promise<typeof import("./xgw/inbound.js")> | undefined;
 
 function getIdentityAvatarModule() {
   identityAvatarModulePromise ??= import("../agents/identity-avatar.js");
@@ -144,6 +145,11 @@ function getToolsInvokeHttpModule() {
 function getPluginNodeCapabilityAuthModule() {
   pluginNodeCapabilityAuthModulePromise ??= import("./server/plugin-node-capability-auth.js");
   return pluginNodeCapabilityAuthModulePromise;
+}
+
+function getXgwHttpModule() {
+  xgwHttpModulePromise ??= import("./xgw/inbound.js");
+  return xgwHttpModulePromise;
 }
 
 function getHttpAuthUtilsModule() {
@@ -223,6 +229,10 @@ function isToolsInvokePath(pathname: string): boolean {
 
 function isManagedOutgoingImagePath(pathname: string): boolean {
   return pathname.startsWith("/api/chat/media/outgoing/");
+}
+
+function isXgwPath(pathname: string): boolean {
+  return pathname === "/xgateway" || pathname === "/xgateway/callback";
 }
 
 function isSessionKillPath(pathname: string): boolean {
@@ -638,6 +648,21 @@ export function createGatewayHttpServer(opts: {
               allowRealIpFallback,
               rateLimiter,
             }),
+        });
+      }
+      if (isXgwPath(scopedRequestPath)) {
+        requestStages.push({
+          name: "xgw",
+          run: async () => {
+            const xgw = await getXgwHttpModule();
+            if (scopedRequestPath === "/xgateway") {
+              return xgw.handleXgwHook(req, res);
+            }
+            if (scopedRequestPath === "/xgateway/callback") {
+              return xgw.handleXgwCallback(req, res);
+            }
+            return false;
+          },
         });
       }
       if (isSessionKillPath(scopedRequestPath)) {
