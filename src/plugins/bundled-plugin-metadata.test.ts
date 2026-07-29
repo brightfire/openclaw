@@ -37,7 +37,6 @@ const EXPECTED_BUNDLED_STARTUP_PLUGIN_IDS = [
   "browser",
   "canvas",
   "device-pair",
-  "diagnostics-otel",
   "diagnostics-prometheus",
   "diffs",
   "diffs-language-pack",
