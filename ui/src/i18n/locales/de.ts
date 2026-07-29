@@ -455,6 +455,13 @@ export const de: TranslationMap = {
     dreams: "Speicherkonsolidierung im Schlaf.",
   },
   skillWorkshop: {
+    viewSwitcher: {
+      label: "Workshop view",
+      board: "Board",
+      boardTitle: "Board view",
+      today: "Today",
+      todayTitle: "Today view",
+    },
     header: {
       useCurrentChat: "Use current chat",
       useCurrentChatAria: "Use current chat for revision requests",

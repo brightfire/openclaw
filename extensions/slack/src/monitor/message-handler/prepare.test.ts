@@ -1109,14 +1109,18 @@ Second paragraph should still reach the agent after Slack's preview cutoff.`;
   });
 
   it("records skipped no-mention room images as pending history media", async () => {
-    const originalFetch = globalThis.fetch;
-    const mockFetch = vi.fn(async () => {
-      return new Response(Buffer.from("image data"), {
-        status: 200,
-        headers: { "content-type": "image/png" },
-      });
-    });
-    globalThis.fetch = mockFetch as typeof fetch;
+    // Spy on resolveSlackMedia to bypass the real download pipeline (which uses
+    // short timeouts that are sensitive to CPU contention under high parallelism).
+    const mediaMod = await import("../media.js");
+    const resolveSlackMediaSpy = vi
+      .spyOn(mediaMod, "resolveSlackMedia")
+      .mockResolvedValue([
+        {
+          path: "/fake/diagram.png",
+          contentType: "image/png",
+          placeholder: "[Slack file: diagram.png (fileId: F1)]",
+        },
+      ]);
 
     try {
       const slackCtx = createInboundSlackCtx({
@@ -1157,7 +1161,7 @@ Second paragraph should still reach the agent after Slack's preview cutoff.`;
       });
       expect(entries[0]?.media?.[0]?.path).toEqual(expect.any(String));
     } finally {
-      globalThis.fetch = originalFetch;
+      resolveSlackMediaSpy.mockRestore();
     }
   });
 
