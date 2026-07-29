@@ -338,16 +338,26 @@ describe("agentCommand compaction transcript rotation", () => {
 
     const storeAfterRotation = loadSessionStore(storePath, { skipCache: true });
     const entriesAfterRotation = Object.entries(storeAfterRotation);
-    expect(entriesAfterRotation).toHaveLength(1);
-    const [sessionKey, rotatedEntry] = entriesAfterRotation[0] ?? [];
-    expect(sessionKey).toBe("agent:main:explicit:old-session");
-    expect(rotatedEntry).toMatchObject({
+    // 2 entries: the live rotated session + an archived entry for the old session.
+    expect(entriesAfterRotation).toHaveLength(2);
+    const liveEntry = storeAfterRotation["agent:main:explicit:old-session"];
+    expect(liveEntry).toMatchObject({
       sessionId: "rotated-session",
       sessionFile: rotatedSessionFile,
       usageFamilyKey: "agent:main:explicit:old-session",
       usageFamilySessionIds: ["old-session", "rotated-session"],
       compactionCount: 1,
     });
+    // The archived entry preserves the old session's metadata.
+    const archivedKey = "agent:main:explicit:old-session:archived:old-session";
+    const archivedEntry = storeAfterRotation[archivedKey];
+    expect(archivedEntry).toBeDefined();
+    expect(archivedEntry).toMatchObject({
+      sessionId: "old-session",
+      archived: true,
+      archivedReason: "reset",
+    });
+    expect(archivedEntry?.archivedAt).toBeTypeOf("number");
     await expect(readSessionMessages(rotatedSessionFile)).resolves.toEqual([
       expect.objectContaining({ role: "assistant" }),
     ]);

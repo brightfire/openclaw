@@ -14,6 +14,7 @@ import type { ChannelRouteRef } from "../../plugin-sdk/channel-route.js";
 import type { Skill } from "../../skills/loading/skill-contract.js";
 import type { DeliveryContext } from "../../utils/delivery-context.types.js";
 import type { TtsAutoMode } from "../types.tts.js";
+import type { SessionArchiveReason } from "./artifacts.js";
 import { rewriteSessionFileForNewSessionId } from "./session-file-rotation.js";
 
 export type SessionScope = "per-sender" | "global";
@@ -417,6 +418,12 @@ export type SessionEntry = {
    */
   pluginDebugEntries?: SessionPluginDebugEntry[];
   acp?: SessionAcpMeta;
+  /** True when this entry represents an archived (reset/deleted/killed) session. */
+  archived?: boolean;
+  /** Epoch-ms timestamp when the session was archived. */
+  archivedAt?: number;
+  /** Reason the session was archived. */
+  archivedReason?: SessionArchiveReason;
 };
 
 export function isTerminalSessionStatus(

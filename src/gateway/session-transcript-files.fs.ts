@@ -6,6 +6,7 @@ import path from "node:path";
 import { uniqueStrings } from "@openclaw/normalization-core/string-normalization";
 import {
   formatSessionArchiveTimestamp,
+  isSessionArchiveArtifactName,
   parseSessionArchiveTimestamp,
   type SessionArchiveReason,
 } from "../config/sessions/artifacts.js";
@@ -199,6 +200,92 @@ export function resolveSessionTranscriptCandidates(
   pushCandidate(() => resolveSessionTranscriptPathInDir(sessionId, legacyDir));
 
   return uniqueStrings(candidates);
+}
+
+/**
+ * Find archived transcript files for a given session ID by scanning the sessions directory.
+ * Returns paths sorted by archive timestamp descending (most recent first).
+ * Matches files with `.reset.` or `.deleted.` archive suffixes.
+ *
+ * Matches both the bare `<sessionId>.jsonl.<reason>.<ts>` shape and the
+ * topic-qualified `<sessionId>-topic-<N>.jsonl.<reason>.<ts>` shape, since
+ * topic conversations archive their own `sessionFile` (see
+ * `extractGeneratedTranscriptSessionId` for the supported shapes).
+ */
+export function resolveArchivedTranscriptPaths(opts: {
+  sessionId: string;
+  sessionsDir: string | undefined;
+  agentId?: string;
+}): string[] {
+  const { sessionId, sessionsDir } = opts;
+  if (!sessionsDir || !sessionId) {
+    return [];
+  }
+  let entries: string[];
+  try {
+    entries = fs.readdirSync(sessionsDir);
+  } catch {
+    return [];
+  }
+
+  const barePrefix = `${sessionId}.jsonl.`;
+  const topicPrefix = `${sessionId}-topic-`;
+  const results: Array<{ filePath: string; timestamp: number }> = [];
+
+  for (const entry of entries) {
+    if (!matchesSessionArchiveBase(entry, barePrefix, topicPrefix)) {
+      continue;
+    }
+    if (!isSessionArchiveArtifactName(entry)) {
+      continue;
+    }
+    // Extract timestamp for sort order (most recent first).
+    let timestamp = 0;
+    for (const reason of ["reset", "deleted"] as const) {
+      const ts = parseSessionArchiveTimestamp(entry, reason);
+      if (ts !== null) {
+        timestamp = ts;
+        break;
+      }
+    }
+    results.push({ filePath: path.join(sessionsDir, entry), timestamp });
+  }
+
+  // Sort descending: most recent archive first.
+  results.sort((a, b) => b.timestamp - a.timestamp);
+  return results.map((r) => r.filePath);
+}
+
+/**
+ * Returns true when `entry` is an archived transcript belonging to the session
+ * whose bare and topic-qualified prefixes are provided. Accepts both:
+ *   - `<sessionId>.jsonl.<reason>.<ts>` (bare)
+ *   - `<sessionId>-topic-<N>.jsonl.<reason>.<ts>` (topic-qualified)
+ *
+ * Topic-qualified matching requires `.jsonl.` to follow the topic suffix so
+ * that we never match a different sessionId that merely starts with
+ * `${sessionId}-topic-` as a substring of its own id.
+ */
+function matchesSessionArchiveBase(
+  entry: string,
+  barePrefix: string,
+  topicPrefix: string,
+): boolean {
+  if (entry.startsWith(barePrefix)) {
+    return true;
+  }
+  if (!entry.startsWith(topicPrefix)) {
+    return false;
+  }
+  // After the topic prefix, the next segment must be `<digits>.jsonl.` so we
+  // only match real topic-qualified transcript archives.
+  const rest = entry.slice(topicPrefix.length);
+  const jsonlIdx = rest.indexOf(".jsonl.");
+  if (jsonlIdx <= 0) {
+    return false;
+  }
+  const topicSegment = rest.slice(0, jsonlIdx);
+  return /^[A-Za-z0-9_-]+$/.test(topicSegment);
 }
 
 async function resetArchiveHeaderMatchesSessionId(

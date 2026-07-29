@@ -59,6 +59,7 @@ import {
   type SessionEntry,
   updateSessionStore,
 } from "../../config/sessions.js";
+import { buildArchiveStoreEntry } from "../../config/sessions/archive-entry.js";
 import { resolveAgentMainSessionKey } from "../../config/sessions/main-session.js";
 import { CURRENT_SESSION_VERSION } from "../../config/sessions/version.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
@@ -2363,8 +2364,16 @@ export const sessionsHandlers: GatewayRequestHandlers = {
         store,
         agentId: requestedAgentId,
       });
-      const hadEntry = Boolean(store[primaryKey]);
-      if (hadEntry) {
+      const currentEntry = store[primaryKey];
+      const hadEntry = Boolean(currentEntry);
+      if (hadEntry && currentEntry) {
+        // Archive the entry before deletion so sessions_history can find it.
+        const { archiveKey, archiveEntry } = buildArchiveStoreEntry(
+          primaryKey,
+          currentEntry,
+          "deleted",
+        );
+        store[archiveKey] = archiveEntry;
         delete store[primaryKey];
       }
       return hadEntry;

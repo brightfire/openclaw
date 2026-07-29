@@ -15,6 +15,7 @@ import {
 import type { DeliveryContext } from "../../utils/delivery-context.types.js";
 import { getFileStatSnapshot } from "../cache-utils.js";
 import { getRuntimeConfig } from "../io.js";
+import { buildArchiveStoreEntry } from "./archive-entry.js";
 import { enforceSessionDiskBudget, type SessionDiskBudgetSweepResult } from "./disk-budget.js";
 import { deriveSessionMetaPatch } from "./metadata.js";
 import { resolveStorePath } from "./paths.js";
@@ -818,7 +819,86 @@ export async function updateSessionStore<T>(
 ): Promise<T> {
   return await runExclusiveSessionStoreWrite(storePath, async () => {
     const store = loadMutableSessionStoreForWriter(storePath);
+
+    // Snapshot entries with sessionIds before the mutator runs so we can
+    // detect sessionId changes and archive the old entry automatically.
+    // Skip archive keys themselves (they contain `:archived:`).
+    const previousEntries = new Map<string, SessionEntry>();
+    for (const [key, entry] of Object.entries(store)) {
+      if (entry?.sessionId && !key.includes(":archived:")) {
+        previousEntries.set(key, { ...entry });
+      }
+    }
+
     const result = await mutator(store);
+
+    // Detect ghost promotions: a sessionId X is "ghost-promoted" into a
+    // canonical key when a legacy alias (e.g. "agent:ops:MAIN") and the
+    // canonical key ("agent:ops:work") simultaneously carry X — typically
+    // produced by `migrateAndPruneGatewaySessionStoreKey` mid-transition.
+    // When the mutator prunes the alias AND rotates the canonical key in the
+    // same transaction, the canonical key never owned X as real history;
+    // archiving it would surface a duplicate ghost rather than a real prior
+    // session.
+    //
+    // To distinguish ghost promotion from a legitimate rollover that happens
+    // to coincide with unrelated alias cleanup, we require BOTH conditions
+    // per sessionId: (1) the sessionId appeared in `previousEntries` under at
+    // least TWO distinct keys, and (2) at least one of those keys was pruned
+    // by the mutator. In real lazy rollover, the predecessor sessionId
+    // belongs only to the rotating canonical key — no other key carried it —
+    // so this set stays empty and archive fires normally.
+    const previousKeysBySessionId = new Map<string, Set<string>>();
+    for (const [key, oldEntry] of previousEntries) {
+      if (!oldEntry.sessionId) {
+        continue;
+      }
+      let keys = previousKeysBySessionId.get(oldEntry.sessionId);
+      if (!keys) {
+        keys = new Set<string>();
+        previousKeysBySessionId.set(oldEntry.sessionId, keys);
+      }
+      keys.add(key);
+    }
+    const ghostPromotedSessionIds = new Set<string>();
+    for (const [sessionId, keys] of previousKeysBySessionId) {
+      if (keys.size < 2) {
+        continue;
+      }
+      let prunedAny = false;
+      for (const key of keys) {
+        if (!store[key]) {
+          prunedAny = true;
+          break;
+        }
+      }
+      if (prunedAny) {
+        ghostPromotedSessionIds.add(sessionId);
+      }
+    }
+
+    // Detect sessionId changes and create archive entries for old sessions.
+    for (const [key, oldEntry] of previousEntries) {
+      const newEntry = store[key];
+      if (newEntry?.sessionId && newEntry.sessionId !== oldEntry.sessionId) {
+        // Skip archiving when the old sessionId was ghost-promoted (shared by
+        // a now-pruned legacy alias and the canonical key). Those entries
+        // were never authoritative history and should not surface as
+        // archived sessions.
+        if (ghostPromotedSessionIds.has(oldEntry.sessionId)) {
+          continue;
+        }
+        // Determine the archive reason:
+        // - "deleted": the entry is being marked as archived (explicit deletion)
+        // - "reset": the entry still exists with a new sessionId and is not
+        //   archived (e.g. daily auto-reset or session rollover)
+        const reason = newEntry.archived ? "deleted" : "reset";
+        const { archiveKey, archiveEntry } = buildArchiveStoreEntry(key, oldEntry, reason);
+        if (!store[archiveKey]) {
+          store[archiveKey] = archiveEntry;
+        }
+      }
+    }
     if (opts?.skipSaveWhenResult?.(result)) {
       restoreUnchangedSessionStoreCache(storePath, store);
       return result;
@@ -961,6 +1041,12 @@ async function persistResolvedSessionEntry(params: {
   return entryUnchanged || params.returnDetached ? cloneSessionEntry(next) : next;
 }
 
+/**
+ * Patch metadata on an existing session entry without participating in
+ * archive snapshotting. This bypasses the sessionId-change detection in
+ * `updateSessionStore` — which is fine because callers only patch
+ * metadata fields (label, model, thinkingLevel, etc.), never sessionIds.
+ */
 export async function updateSessionStoreEntry(params: {
   storePath: string;
   sessionKey: string;

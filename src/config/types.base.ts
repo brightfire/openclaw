@@ -266,6 +266,8 @@ export type SessionMaintenanceConfig = {
    * Set `false` to disable reset-archive cleanup. Default: same as `pruneAfter` (30d).
    */
   resetArchiveRetention?: string | number | false;
+  /** Retention in days for archived session store entries. Default: 30. */
+  sessionHistoryRetentionDays?: number;
   /**
    * Optional per-agent sessions-directory disk budget (e.g. "500mb").
    * When exceeded, warn (mode=warn) or enforce oldest-first cleanup (mode=enforce).

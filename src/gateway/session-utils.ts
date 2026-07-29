@@ -128,10 +128,12 @@ export {
   readSessionTitleFieldsFromTranscript,
   readSessionTitleFieldsFromTranscriptAsync,
   readSessionPreviewItemsFromTranscript,
+  readSessionMessages,
   readSessionMessagesAsync,
   readSessionMessagesWithSourceAsync,
   resolveSessionHistoryTranscriptPathAsync,
   visitSessionMessagesAsync,
+  resolveArchivedTranscriptPaths,
   resolveSessionTranscriptCandidates,
 } from "./session-utils.fs.js";
 export type { ReadSessionMessagesAsyncOptions } from "./session-utils.fs.js";
@@ -1002,6 +1004,33 @@ export function resolveDeletedAgentIdFromSessionKey(
 export function loadSessionEntry(sessionKey: string, opts?: { agentId?: string; clone?: boolean }) {
   const cfg = getRuntimeConfig();
   const key = normalizeOptionalString(sessionKey) ?? "";
+
+  // Archived entries use composite keys (e.g. "<key>:archived:<sessionId>").
+  // Resolve them by direct store lookup instead of going through the
+  // canonical-key resolution which doesn't know about archived suffixes.
+  if (key.includes(":archived:")) {
+    const archiveMarker = ":archived:";
+    const idx = key.indexOf(archiveMarker);
+    const baseKey = idx > 0 ? key.slice(0, idx) : key;
+    const target = resolveGatewaySessionStoreTargetWithStore({
+      cfg,
+      key: baseKey,
+      ...(opts?.clone === false ? { clone: false } : {}),
+      ...(opts?.agentId ? { agentId: opts.agentId } : {}),
+    });
+    const entry = target.store[key];
+    if (entry) {
+      return {
+        cfg,
+        storePath: target.storePath,
+        store: target.store,
+        entry,
+        canonicalKey: key,
+        legacyKey: undefined,
+      };
+    }
+  }
+
   const target = resolveGatewaySessionStoreTargetWithStore({
     cfg,
     key,
@@ -2553,14 +2582,22 @@ function filterSessionEntries(params: {
   const label = normalizeOptionalString(opts.label) ?? "";
   const agentId = typeof opts.agentId === "string" ? normalizeAgentId(opts.agentId) : "";
   const search = normalizeLowercaseStringOrEmpty(opts.search);
+  const keyFilter = normalizeOptionalString(opts.key) ?? "";
   const activeMinutes =
     typeof opts.activeMinutes === "number" && Number.isFinite(opts.activeMinutes)
       ? Math.max(1, Math.floor(opts.activeMinutes))
       : undefined;
 
   let entries = Object.entries(store)
-    .filter(([key]) => {
+    .filter(([key, entry]) => {
+      // Skip archived entries — they only appear in the dedicated archived section.
+      if (entry?.archived === true) {
+        return false;
+      }
       if (isCronRunSessionKey(key)) {
+        return false;
+      }
+      if (keyFilter && key !== keyFilter) {
         return false;
       }
       if (!includeGlobal && key === "global") {
@@ -2899,15 +2936,69 @@ export async function listSessionsFromStoreAsync(params: {
     }
   }
 
+  // ── Archived sessions (gated behind includeArchived: true) ────────────
+  // Archived entries are stored in the session store with `archived: true`.
+  // No file scanning is needed — all metadata comes from the store directly.
+  if (opts.includeArchived === true) {
+    const archivedFrom = typeof opts.archivedFrom === "number" ? opts.archivedFrom : undefined;
+    const archivedTo = typeof opts.archivedTo === "number" ? opts.archivedTo : undefined;
+    const archivedKeyFilter = normalizeOptionalString(opts.key) ?? "";
+
+    for (const [storeKey, entry] of Object.entries(store)) {
+      if (!entry?.archived || !entry.archivedAt) {
+        continue;
+      }
+      // Apply epoch-ms time range filters against archivedAt
+      if (archivedFrom !== undefined && entry.archivedAt < archivedFrom) {
+        continue;
+      }
+      if (archivedTo !== undefined && entry.archivedAt > archivedTo) {
+        continue;
+      }
+
+      // Derive the original session key by stripping the ":archived:<sessionId>" suffix
+      const archiveSuffix = ":archived:";
+      const archiveIndex = storeKey.lastIndexOf(archiveSuffix);
+      const originalKey = archiveIndex > 0 ? storeKey.slice(0, archiveIndex) : storeKey;
+      // When a `key` filter is set, only emit archived twins whose original
+      // (pre-suffix) key matches. This pairs with the primary-entry filter
+      // above so callers can ask for one session's full lineage at once.
+      if (archivedKeyFilter && originalKey !== archivedKeyFilter) {
+        continue;
+      }
+
+      const archivedRow: GatewaySessionRow = {
+        key: originalKey,
+        kind: classifySessionKey(originalKey, entry),
+        label: entry.label,
+        displayName: entry.displayName,
+        channel: entry.channel ?? entry.lastChannel ?? undefined,
+        updatedAt: entry.archivedAt,
+        sessionId: entry.sessionId,
+        deliveryContext: entry.deliveryContext,
+        model: entry.model,
+        modelProvider: entry.modelProvider,
+        archived: true,
+        archiveReason: entry.archivedReason ?? "reset",
+        archiveTimestamp: entry.archivedAt,
+      };
+      sessions.push(archivedRow);
+    }
+  }
+
   return {
     ts: now,
     path: storePath,
     count: sessions.length,
-    totalCount,
+    // When includeArchived is true, archived entries are appended in full
+    // (no pagination) so totalCount reflects the combined list and hasMore
+    // is always false. For non-archived queries, totalCount and hasMore
+    // reflect the paginated active-entry selection only.
+    totalCount: opts.includeArchived === true ? sessions.length : totalCount,
     limitApplied,
     offset: offset > 0 ? offset : undefined,
     nextOffset,
-    hasMore,
+    hasMore: opts.includeArchived === true ? false : hasMore,
     defaults: getSessionDefaults(cfg, params.modelCatalog, { allowPluginNormalization: false }),
     sessions,
   };
