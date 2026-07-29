@@ -47,6 +47,7 @@ import {
   mergeCronRunDiagnostics,
 } from "../run-diagnostics.js";
 import { resolveCronAbortReasonText } from "../service/execution-errors.js";
+import { resolveCronDeliverySessionKey } from "../session-target.js";
 import type {
   CronAgentExecutionPhaseUpdate,
   CronAgentExecutionStarted,
@@ -412,7 +413,10 @@ async function resolveCronDeliveryContext(params: {
     to: deliveryPlan.to,
     threadId: deliveryPlan.threadId,
     accountId: deliveryPlan.accountId,
-    sessionKey: params.job.sessionKey,
+    // Persistent hook jobs carry their session in sessionTarget ("session:<key>")
+    // with job.sessionKey unset; derive it the same way delivery-preview does so
+    // implicit/"last" replies route to the hook session, not main's last channel.
+    sessionKey: resolveCronDeliverySessionKey(params.job),
   });
   return {
     deliveryPlan,

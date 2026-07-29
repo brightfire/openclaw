@@ -1807,6 +1807,8 @@ export const FIELD_HELP: Record<string, string> = {
     "Optional thinking-effort override for mapping-triggered runs to tune latency versus reasoning depth. Keep low or minimal for high-volume hooks unless deeper reasoning is clearly required.",
   "hooks.mappings[].timeoutSeconds":
     "Maximum runtime allowed for mapping action execution before timeout handling applies. Use tighter limits for high-volume webhook sources to prevent queue pileups.",
+  "hooks.mappings[].sessionTarget":
+    "Session lifecycle for hook agent runs. \"isolated\" (default) creates a fresh session per invocation. \"persistent\" reuses the existing session when the same sessionKey matches a prior run, preserving conversation context across webhook events.",
   "hooks.mappings[].transform":
     "Transform configuration block defining module/export preprocessing before mapping action handling. Use transforms only from reviewed code paths and keep behavior deterministic for repeatable automation.",
   "hooks.mappings[].transform.module":

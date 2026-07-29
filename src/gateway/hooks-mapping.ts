@@ -29,6 +29,7 @@ export type HookMappingResolved = {
   model?: string;
   thinking?: string;
   timeoutSeconds?: number;
+  sessionTarget?: "isolated" | "persistent";
   transform?: HookMappingTransformResolved;
 };
 
@@ -58,6 +59,7 @@ type HookAction =
       wakeMode: "now" | "next-heartbeat";
       sessionKey?: string;
       sessionKeySource?: "static" | "templated";
+      sessionTarget?: "isolated" | "persistent";
       deliver?: boolean;
       allowUnsafeExternalContent?: boolean;
       channel?: HookMessageChannel;
@@ -101,6 +103,7 @@ type HookTransformResult = Partial<{
   name: string;
   sessionKey: string;
   sessionKeySource: HookSessionKeyTemplateSource;
+  sessionTarget: "isolated" | "persistent";
   deliver: boolean;
   allowUnsafeExternalContent: boolean;
   channel: HookMessageChannel;
@@ -229,6 +232,7 @@ function normalizeHookMapping(
     model: mapping.model,
     thinking: mapping.thinking,
     timeoutSeconds: mapping.timeoutSeconds,
+    sessionTarget: mapping.sessionTarget,
     transform,
   };
 }
@@ -274,6 +278,7 @@ function buildActionFromMapping(
       wakeMode: mapping.wakeMode ?? "now",
       sessionKey: renderOptional(mapping.sessionKey, ctx),
       sessionKeySource: getSessionKeyTemplateSource(mapping.sessionKey),
+      sessionTarget: mapping.sessionTarget,
       deliver: mapping.deliver,
       allowUnsafeExternalContent: mapping.allowUnsafeExternalContent,
       channel: mapping.channel,
@@ -313,6 +318,10 @@ function mergeAction(
     agentId: override.agentId ?? baseAgent?.agentId,
     sessionKey: override.sessionKey ?? baseAgent?.sessionKey,
     sessionKeySource: resolveMergedSessionKeySource(baseAgent, override),
+    sessionTarget:
+      override.sessionTarget === "isolated" || override.sessionTarget === "persistent"
+        ? override.sessionTarget
+        : baseAgent?.sessionTarget,
     deliver: typeof override.deliver === "boolean" ? override.deliver : baseAgent?.deliver,
     allowUnsafeExternalContent:
       typeof override.allowUnsafeExternalContent === "boolean"
@@ -335,6 +344,16 @@ function validateAction(action: HookAction): HookMappingResult {
   }
   if (!action.message?.trim()) {
     return { ok: false, error: "hook mapping requires message" };
+  }
+  if (action.sessionTarget === "persistent" && !action.sessionKey?.trim()) {
+    // Catches transform overrides that promote a mapping to persistent without
+    // supplying a sessionKey. Pure config-side mappings are also rejected
+    // earlier by the Zod schema refine on HookMappingSchema; this guard covers
+    // the runtime merge path.
+    return {
+      ok: false,
+      error: 'hook mapping with sessionTarget "persistent" requires sessionKey',
+    };
   }
   return { ok: true, action };
 }

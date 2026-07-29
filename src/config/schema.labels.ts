@@ -909,6 +909,7 @@ export const FIELD_LABELS: Record<string, string> = {
   "hooks.mappings[].to": "Hook Mapping Delivery Destination",
   "hooks.mappings[].model": "Hook Mapping Model Override",
   "hooks.mappings[].thinking": "Hook Mapping Thinking Override",
+  "hooks.mappings[].sessionTarget": "Hook Mapping Session Target",
   "hooks.mappings[].timeoutSeconds": "Hook Mapping Timeout (sec)",
   "hooks.mappings[].transform": "Hook Mapping Transform",
   "hooks.mappings[].transform.module": "Hook Transform Module",

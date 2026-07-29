@@ -319,6 +319,7 @@ export function createHooksRequestHandler(
           model: normalized.value.model ?? null,
           thinking: normalized.value.thinking ?? null,
           timeoutSeconds: normalized.value.timeoutSeconds ?? null,
+          sessionTarget: normalized.value.sessionTarget ?? null,
         },
       });
       const cachedRunId = resolveCachedHookRunId(replayKey, now);
@@ -420,6 +421,7 @@ export function createHooksRequestHandler(
               model: mapped.action.model ?? null,
               thinking: mapped.action.thinking ?? null,
               timeoutSeconds: mapped.action.timeoutSeconds ?? null,
+              sessionTarget: mapped.action.sessionTarget ?? null,
             },
           });
           const cachedRunId = resolveCachedHookRunId(replayKey, now);
@@ -441,6 +443,7 @@ export function createHooksRequestHandler(
             model: mapped.action.model,
             thinking: mapped.action.thinking,
             timeoutSeconds: mapped.action.timeoutSeconds,
+            sessionTarget: mapped.action.sessionTarget,
             allowUnsafeExternalContent: mapped.action.allowUnsafeExternalContent,
             externalContentSource: resolveMappedHookExternalContentSource({
               subPath,

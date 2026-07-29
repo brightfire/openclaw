@@ -225,6 +225,7 @@ type HookAgentPayload = {
   idempotencyKey?: string;
   wakeMode: "now" | "next-heartbeat";
   sessionKey?: string;
+  sessionTarget?: "isolated" | "persistent";
   deliver: boolean;
   channel: HookMessageChannel;
   to?: string;
@@ -459,6 +460,33 @@ export function normalizeAgentPayload(payload: Record<string, unknown>):
     typeof timeoutRaw === "number" && Number.isFinite(timeoutRaw) && timeoutRaw > 0
       ? Math.floor(timeoutRaw)
       : undefined;
+  const sessionTargetRaw = payload.sessionTarget;
+  let sessionTarget: "persistent" | "isolated" | undefined;
+  if (sessionTargetRaw === undefined) {
+    sessionTarget = undefined;
+  } else if (sessionTargetRaw === "persistent" || sessionTargetRaw === "isolated") {
+    sessionTarget = sessionTargetRaw;
+  } else {
+    // Reject typos and cron-style values like "session:<key>" so webhook
+    // clients get a clear error instead of silently falling back to an
+    // isolated cron job. Mapping config already rejects invalid values via
+    // the Zod schema; the request path mirrors that contract.
+    return {
+      ok: false,
+      error: 'sessionTarget must be "persistent" or "isolated"',
+    };
+  }
+  if (sessionTarget === "persistent" && !sessionKey) {
+    // Persistent hooks reuse the same cron session across invocations, which
+    // only works when the caller supplies a stable sessionKey. Otherwise the
+    // generated hook:<uuid> fallback would mint a fresh session per call and
+    // silently behave like isolated. defaultSessionKey is intentionally not
+    // accepted here; pairing is a per-request contract.
+    return {
+      ok: false,
+      error: 'sessionTarget "persistent" requires a sessionKey',
+    };
+  }
   return {
     ok: true,
     value: {
@@ -468,6 +496,7 @@ export function normalizeAgentPayload(payload: Record<string, unknown>):
       idempotencyKey,
       wakeMode,
       sessionKey,
+      sessionTarget,
       deliver,
       channel,
       to,

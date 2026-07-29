@@ -338,7 +338,9 @@ Query-string tokens are rejected.
       -d '{"message":"Summarize inbox","name":"Email","model":"openai/gpt-5.4"}'
     ```
 
-    Fields: `message` (required), `name`, `agentId`, `wakeMode`, `deliver`, `channel`, `to`, `model`, `fallbacks`, `thinking`, `timeoutSeconds`.
+    Fields: `message` (required), `name`, `agentId`, `sessionKey`, `sessionTarget`, `wakeMode`, `deliver`, `channel`, `to`, `model`, `fallbacks`, `thinking`, `timeoutSeconds`.
+
+    `sessionTarget` selects the cron session reuse policy for this hook run. `"isolated"` (default) gives every invocation a fresh session and matches existing behavior. `"persistent"` translates to the cron-native `session:<sessionKey>` target, so successive invocations reusing the same `sessionKey` continue the same conversation. `"persistent"` requires `sessionKey` on the same surface that sets it — the request payload (requires `hooks.allowRequestSessionKey=true`) for `/hooks/agent`, or a static/templated `sessionKey` on the mapping for `/hooks/<name>`. `defaultSessionKey` does **not** satisfy the pairing because it does not bind a specific stream of invocations. Constrain explicit values with `hooks.allowedSessionKeyPrefixes`. Invalid combinations are rejected with HTTP 400; mapping config rejects them at load time via Zod.
 
   </Accordion>
   <Accordion title="Mapped hooks (POST /hooks/<name>)">
