@@ -334,14 +334,14 @@ function redactOtelAttributes(attributes: Record<string, string | number | boole
 }
 
 /**
- * SpanProcessor that copies openclaw.agent → langfuse.trace.metadata.agent,
+ * SpanProcessor that copies openclaw.agent.id → langfuse.trace.metadata.agent,
  * service.instance.id → langfuse.trace.metadata.bot, and
  * openclaw.sessionId → langfuse.session.id on every span.
  * Reads from the span's own attributes and resource, same way for both.
  */
 class LangfuseMetadataSpanProcessor implements SpanProcessor {
   onStart(span: Span, _parentContext: Context): void {
-    const agent = span.attributes["openclaw.agent"];
+    const agent = span.attributes["openclaw.agent.id"];
     if (typeof agent === "string" && agent) {
       span.setAttribute("langfuse.trace.metadata.agent", agent);
     }
@@ -410,7 +410,7 @@ function lowCardinalityQueueLaneAttr(value: string | undefined, fallback = "unkn
   return LOW_CARDINALITY_VALUE_RE.test(lane) ? lane : fallback;
 }
 
-// Resolves the openclaw.agent span attribute from agentLabel (preferred) or by
+// Resolves the openclaw.agent.id span attribute from agentLabel (preferred) or by
 // stripping the "agent:" session-key prefix from agentId as fallback.
 function resolveAgentLabelAttr(evt: { agentId?: string; agentLabel?: string }): string {
   if (evt.agentLabel) {
@@ -1794,7 +1794,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         span: ReturnType<typeof tracer.startSpan>,
       ): Record<string, string> => {
         const result: Record<string, string> = {};
-        const agent = attributes["openclaw.agent"];
+        const agent = attributes["openclaw.agent.id"];
         if (typeof agent === "string" && agent) {
           result["langfuse.trace.metadata.agent"] = agent;
         }
@@ -2164,7 +2164,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
           spanAttrs["openclaw.trigger"] = evt.trigger;
         }
         if (evt.agentId) {
-          spanAttrs["openclaw.agent"] = evt.agentId;
+          spanAttrs["openclaw.agent.id"] = evt.agentId;
         }
         addSessionAttrs(spanAttrs, evt);
       };
@@ -2190,7 +2190,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
       ) => {
         const attrs = {
           "openclaw.channel": evt.channel ?? "unknown",
-          "openclaw.agent": resolveAgentLabelAttr(evt),
+          "openclaw.agent.id": resolveAgentLabelAttr(evt),
           "openclaw.provider": evt.provider ?? "unknown",
           "openclaw.model": evt.model ?? "unknown",
         };
@@ -2582,7 +2582,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         evt: Extract<DiagnosticEventPayload, { type: "session.turn.created" }>,
       ) => {
         sessionTurnCreatedCounter.add(1, {
-          "openclaw.agent": resolveAgentLabelAttr(evt),
+          "openclaw.agent.id": resolveAgentLabelAttr(evt),
           "openclaw.channel": lowCardinalityAttr(evt.channel, "unknown"),
           "openclaw.trigger": evt.trigger,
         });
@@ -2849,7 +2849,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         "openclaw.provider": lowCardinalityAttr(evt.provider, "unknown"),
         "openclaw.model": lowCardinalityAttr(evt.model, "unknown"),
         ...(evt.channel ? { "openclaw.channel": lowCardinalityAttr(evt.channel) } : {}),
-        ...(evt.agentId ? { "openclaw.agent": evt.agentId } : {}),
+        ...(evt.agentId ? { "openclaw.agent.id": evt.agentId } : {}),
       });
 
       const recordHarnessRunStarted = (
@@ -3112,7 +3112,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
           spanAttrs["openclaw.transport"] = evt.transport;
         }
         if (evt.agentId) {
-          spanAttrs["openclaw.agent"] = resolveAgentLabelAttr(evt);
+          spanAttrs["openclaw.agent.id"] = resolveAgentLabelAttr(evt);
         }
         trackTrustedSpan(
           evt,
@@ -3153,7 +3153,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
           spanAttrs["openclaw.transport"] = evt.transport;
         }
         if (evt.agentId) {
-          spanAttrs["openclaw.agent"] = resolveAgentLabelAttr(evt);
+          spanAttrs["openclaw.agent.id"] = resolveAgentLabelAttr(evt);
         }
         assignModelCallSizeTimingAttrs(spanAttrs, evt);
         assignOtelModelContentAttributes(spanAttrs, modelContent, contentCapturePolicy);
@@ -3209,7 +3209,7 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
           spanAttrs["openclaw.transport"] = evt.transport;
         }
         if (evt.agentId) {
-          spanAttrs["openclaw.agent"] = resolveAgentLabelAttr(evt);
+          spanAttrs["openclaw.agent.id"] = resolveAgentLabelAttr(evt);
         }
         assignModelCallSizeTimingAttrs(spanAttrs, evt);
         assignOtelModelContentAttributes(spanAttrs, modelContent, contentCapturePolicy);
@@ -3254,7 +3254,9 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         "openclaw.skill.name": lowCardinalityAttr(evt.skillName, "skill"),
         "openclaw.skill.source": lowCardinalityAttr(evt.skillSource),
         "openclaw.skill.activation": lowCardinalityAttr(evt.activation),
-        ...(evt.agentId || evt.agentLabel ? { "openclaw.agent": resolveAgentLabelAttr(evt) } : {}),
+        ...(evt.agentId || evt.agentLabel
+          ? { "openclaw.agent.id": resolveAgentLabelAttr(evt) }
+          : {}),
         ...(evt.toolName ? { "openclaw.toolName": lowCardinalityAttr(evt.toolName, "tool") } : {}),
       });
 
