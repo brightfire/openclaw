@@ -22,6 +22,7 @@ export type DiagnosticUsageEvent = DiagnosticBaseEvent & {
   sessionId?: string;
   channel?: string;
   agentId?: string;
+  agentLabel?: string;
   provider?: string;
   model?: string;
   usage: {
@@ -263,6 +264,7 @@ export type DiagnosticSessionTurnCreatedEvent = DiagnosticBaseEvent & {
   sessionKey?: string;
   sessionId?: string;
   agentId?: string;
+  agentLabel?: string;
   channel?: string;
   trigger: "user" | "heartbeat";
 };
@@ -418,9 +420,18 @@ export type DiagnosticSkillUsedEvent = DiagnosticBaseEvent & {
   sessionKey?: string;
   sessionId?: string;
   agentId?: string;
+  agentLabel?: string;
   skillName: string;
   skillSource: DiagnosticSkillTelemetrySource;
   activation: DiagnosticSkillActivation;
+  /** sha256 fingerprint from the <available_skills> <version> tag for the loaded skill. */
+  skillVersion?: string;
+  /**
+   * Command name for command-activated skills (always safe to emit).
+   * For read-activated skills, trigger is passed via DiagnosticEventPrivateData.skillContent
+   * instead to prevent user message content from riding the public event payload.
+   */
+  trigger?: string;
   toolName?: string;
   toolCallId?: string;
 };
@@ -450,6 +461,7 @@ type DiagnosticRunBaseEvent = DiagnosticBaseEvent & {
   runId: string;
   sessionKey?: string;
   sessionId?: string;
+  agentId?: string;
   provider?: string;
   model?: string;
   trigger?: string;
@@ -476,6 +488,7 @@ type DiagnosticHarnessRunBaseEvent = DiagnosticBaseEvent & {
   runId: string;
   sessionKey?: string;
   sessionId?: string;
+  agentId?: string;
   provider?: string;
   model?: string;
   trigger?: string;
@@ -515,6 +528,7 @@ type DiagnosticModelCallBaseEvent = DiagnosticBaseEvent & {
   callId: string;
   sessionKey?: string;
   sessionId?: string;
+  agentId?: string;
   provider: string;
   model: string;
   api?: string;
@@ -720,9 +734,19 @@ export type DiagnosticToolCallContent = Readonly<{
   toolOutput?: unknown;
 }>;
 
+export type DiagnosticSkillCallContent = Readonly<{
+  /** Read-activation trigger text (first 4000 chars of preceding user message). */
+  trigger?: string;
+}>;
+
 export type DiagnosticEventPrivateData = Readonly<{
   modelContent?: DiagnosticModelCallContent;
   toolContent?: DiagnosticToolCallContent;
+  skillContent?: DiagnosticSkillCallContent;
+  // Content gated by captureContent policy; routed privately so it never reaches untrusted onDiagnosticEvent listeners.
+  messageContent?: { userPrompt?: string; finalResponse?: string };
+  // Same gating as messageContent but for harness.run started/completed events.
+  harnessContent?: { userPrompt?: string; finalResponse?: string };
 }>;
 
 type DiagnosticEventListener = (
@@ -1122,6 +1146,14 @@ export function emitDiagnosticEventWithTrustedTraceContext(event: DiagnosticEven
 /** Emits an untrusted diagnostic event tagged as internal dispatcher provenance. */
 export function emitInternalDiagnosticEvent(event: DiagnosticEventInput) {
   emitDiagnosticEventWithTrust(event, false, { internal: true });
+}
+
+/** Emits an untrusted internal diagnostic event with private data only for trusted listeners. */
+export function emitInternalDiagnosticEventWithPrivateData(
+  event: DiagnosticEventInput,
+  privateData?: DiagnosticEventPrivateData,
+): void {
+  emitDiagnosticEventWithTrust(event, false, { internal: true, privateData });
 }
 
 /** Returns the latest diagnostic event sequence number assigned in this process. */

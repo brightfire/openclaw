@@ -1128,6 +1128,7 @@ export async function runEmbeddedAttempt(
       runId: params.runId,
       ...(params.sessionKey && { sessionKey: params.sessionKey }),
       ...(params.sessionId && { sessionId: params.sessionId }),
+      ...(sessionAgentId && { agentId: sessionAgentId }),
       provider: params.provider,
       model: params.modelId,
       trigger: params.trigger,
@@ -1307,6 +1308,7 @@ export async function runEmbeddedAttempt(
             recordToolPrepStage: (name) => corePluginToolStages.mark(name),
             onToolOutcome: params.onToolOutcome,
             skillsSnapshot: skillsSnapshotForRun,
+            lastUserMessageExcerpt: (params.transcriptPrompt ?? params.prompt).slice(0, 4000),
             onYield: (message) => {
               yieldDetected = true;
               yieldMessage = message;
@@ -3010,6 +3012,7 @@ export async function runEmbeddedAttempt(
           runId: params.runId,
           ...(params.sessionKey && { sessionKey: params.sessionKey }),
           ...(params.sessionId && { sessionId: params.sessionId }),
+          ...(sessionAgentId && { agentId: sessionAgentId }),
           provider: params.provider,
           model: params.modelId,
           api: params.model.api,

@@ -1,3 +1,8 @@
+import {
+  getActiveDiagnosticTraceContext,
+  runWithDiagnosticTraceContext,
+  type DiagnosticTraceContext,
+} from "../infra/diagnostic-trace-context.js";
 // Command queue serializes and limits process execution for shared command lanes.
 import {
   diagnosticLogger as diag,
@@ -70,6 +75,8 @@ type QueueEntry = {
   taskTimeoutMs?: number;
   taskTimeoutProgressAtMs?: () => number | undefined;
   onWait?: (waitMs: number, queuedAhead: number) => void;
+  /** Captured at enqueue time so deferred tasks restore the enqueuer's async context. */
+  traceContext?: DiagnosticTraceContext;
 };
 
 type LaneState = {
@@ -271,7 +278,14 @@ function enqueueLaneEntry(state: LaneState, entry: QueueEntry): void {
 }
 
 async function runQueueEntryTask(lane: string, entry: QueueEntry): Promise<unknown> {
-  const taskPromise = Promise.resolve().then(entry.task);
+  // Restore the diagnostic trace context captured at enqueue time. When the
+  // lane is busy, pump() runs the task in the previous task's async context,
+  // losing the enqueuer's trace context — no run/harness/model spans appear,
+  // just orphaned tool traces. Wrapping with run() re-establishes the scope.
+  const runTask = entry.traceContext
+    ? () => runWithDiagnosticTraceContext(entry.traceContext!, entry.task)
+    : entry.task;
+  const taskPromise = Promise.resolve().then(runTask);
   const taskTimeoutMs = normalizeTaskTimeoutMs(entry.taskTimeoutMs);
   if (taskTimeoutMs === undefined) {
     return await taskPromise;
@@ -432,6 +446,10 @@ export function enqueueCommandInLane<T>(
   const cleaned = normalizeLane(lane);
   const warnAfterMs = opts?.warnAfterMs ?? 2_000;
   const state = getLaneState(cleaned);
+  // Capture the active diagnostic trace context so deferred tasks restore it.
+  // When the lane is empty, the task runs immediately in the correct context;
+  // when the lane is busy, pump() runs it later in a different async chain.
+  const traceContext = getActiveDiagnosticTraceContext();
   return new Promise<T>((resolve, reject) => {
     enqueueLaneEntry(state, {
       task: () => task(),
@@ -446,6 +464,7 @@ export function enqueueCommandInLane<T>(
       taskTimeoutMs: normalizeTaskTimeoutMs(opts?.taskTimeoutMs),
       taskTimeoutProgressAtMs: opts?.taskTimeoutProgressAtMs,
       onWait: opts?.onWait,
+      ...(traceContext ? { traceContext } : {}),
     });
     logLaneEnqueue(cleaned, getLaneDepth(state));
     drainLane(cleaned);

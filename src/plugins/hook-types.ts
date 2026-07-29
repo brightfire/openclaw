@@ -491,6 +491,8 @@ export type PluginHookReplyDispatchContext = {
     opts?: {
       reason?: string;
       error?: string;
+      userPrompt?: string;
+      finalResponse?: string;
     },
   ) => void;
   markIdle: (reason: string) => void;

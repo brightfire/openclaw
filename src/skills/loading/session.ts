@@ -9,7 +9,8 @@ import { createSyntheticSourceInfo, type SourceInfo } from "../../agents/session
 import { parseFrontmatter } from "../../agents/utils/frontmatter.js";
 import { canonicalizePath } from "../../agents/utils/paths.js";
 import { formatSkillsForPrompt as formatSkillContractForPrompt } from "./skill-contract.js";
-import { computeSkillPromptVersion } from "./skill-version.js";
+import { computeSkillFileVersion, computeSkillPromptVersion } from "./skill-version.js";
+import { SKILL_VERSION_MAX_DEPTH } from "./watch-ignored.js";
 
 /** Max name length per spec */
 const MAX_NAME_LENGTH = 64;
@@ -188,6 +189,12 @@ function loadSkillsFromDirInternal(
   includeRootFiles: boolean,
   ignoreMatcher?: IgnoreMatcher,
   rootDir?: string,
+  // Remaining depth budget for computeSkillPromptVersion. Decremented on each recursive
+  // call so the hash surface stays aligned with the skills watcher, which caps observation
+  // at GROUPED_SKILLS_WATCH_DEPTH (= SKILL_VERSION_MAX_DEPTH) levels from the skills root.
+  // A grouped skill 2 levels below the root receives remainingDepth=4, matching what the
+  // watcher can observe inside that skill directory.
+  remainingDepth = SKILL_VERSION_MAX_DEPTH,
 ): LoadSkillsResult {
   const skills: Skill[] = [];
   const diagnostics: ResourceDiagnostic[] = [];
@@ -224,7 +231,7 @@ function loadSkillsFromDirInternal(
         continue;
       }
 
-      const result = loadSkillFromFile(fullPath, source);
+      const result = loadSkillFromFile(fullPath, source, remainingDepth);
       if (result.skill) {
         skills.push(result.skill);
       }
@@ -265,7 +272,14 @@ function loadSkillsFromDirInternal(
       }
 
       if (isDirectory) {
-        const subResult = loadSkillsFromDirInternal(fullPath, source, false, ig, root);
+        const subResult = loadSkillsFromDirInternal(
+          fullPath,
+          source,
+          false,
+          ig,
+          root,
+          remainingDepth - 1,
+        );
         skills.push(...subResult.skills);
         diagnostics.push(...subResult.diagnostics);
         continue;
@@ -275,7 +289,7 @@ function loadSkillsFromDirInternal(
         continue;
       }
 
-      const result = loadSkillFromFile(fullPath, source);
+      const result = loadSkillFromFile(fullPath, source, remainingDepth);
       if (result.skill) {
         skills.push(result.skill);
       }
@@ -289,6 +303,7 @@ function loadSkillsFromDirInternal(
 function loadSkillFromFile(
   filePath: string,
   source: string,
+  maxDepth = SKILL_VERSION_MAX_DEPTH,
 ): { skill: Skill | null; diagnostics: ResourceDiagnostic[] } {
   const diagnostics: ResourceDiagnostic[] = [];
 
@@ -324,7 +339,12 @@ function loadSkillFromFile(
         description: frontmatter.description,
         filePath,
         baseDir: skillDir,
-        promptVersion: computeSkillPromptVersion(rawContent),
+        // SKILL.md roots hash the whole skill directory; standalone .md files hash
+        // only themselves — hashing dirname would sweep up every sibling file.
+        promptVersion:
+          basename(filePath) === "SKILL.md"
+            ? computeSkillPromptVersion(skillDir, maxDepth)
+            : computeSkillFileVersion(filePath),
         source,
         sourceInfo: createSkillSourceInfo(filePath, skillDir, source),
         disableModelInvocation: frontmatter["disable-model-invocation"] === true,
