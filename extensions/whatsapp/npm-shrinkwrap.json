@@ -1,19 +1,19 @@
 {
   "name": "@openclaw/whatsapp",
-  "version": "2026.6.8",
+  "version": "2026.6.8-23",
   "lockfileVersion": 3,
   "requires": true,
   "packages": {
     "": {
       "name": "@openclaw/whatsapp",
-      "version": "2026.6.8",
+      "version": "2026.6.8-23",
       "dependencies": {
         "audio-decode": "2.2.3",
         "baileys": "7.0.0-rc13",
         "typebox": "1.1.39"
       },
       "peerDependencies": {
-        "openclaw": ">=2026.6.8"
+        "openclaw": ">=2026.6.8-23"
       },
       "peerDependenciesMeta": {
         "openclaw": {
@@ -267,6 +267,7 @@
       "version": "2.2.3",
       "resolved": "https://registry.npmjs.org/audio-decode/-/audio-decode-2.2.3.tgz",
       "integrity": "sha512-Z0lHvMayR/Pad9+O9ddzaBJE0DrhZkQlStrC1RwcAHF3AhQAsdwKHeLGK8fYKyp2DDU6xHxzGb4CLMui12yVrg==",
+      "deprecated": "Renamed to @audio/decode — same API; this name remains a thin alias. npm i @audio/decode",
       "license": "MIT",
       "dependencies": {
         "@wasm-audio-decoders/flac": "^0.2.4",

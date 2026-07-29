@@ -1627,6 +1627,10 @@ public struct SessionsListParams: Codable, Sendable {
     public let spawnedby: String?
     public let agentid: String?
     public let search: String?
+    public let key: String?
+    public let includearchived: Bool?
+    public let archivedfrom: Int?
+    public let archivedto: Int?
 
     public init(
         limit: Int?,
@@ -1640,7 +1644,11 @@ public struct SessionsListParams: Codable, Sendable {
         label: String?,
         spawnedby: String?,
         agentid: String? = nil,
-        search: String?)
+        search: String?,
+        key: String?,
+        includearchived: Bool?,
+        archivedfrom: Int?,
+        archivedto: Int?)
     {
         self.limit = limit
         self.offset = offset
@@ -1654,6 +1662,10 @@ public struct SessionsListParams: Codable, Sendable {
         self.spawnedby = spawnedby
         self.agentid = agentid
         self.search = search
+        self.key = key
+        self.includearchived = includearchived
+        self.archivedfrom = archivedfrom
+        self.archivedto = archivedto
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -1669,6 +1681,10 @@ public struct SessionsListParams: Codable, Sendable {
         case spawnedby = "spawnedBy"
         case agentid = "agentId"
         case search
+        case key
+        case includearchived = "includeArchived"
+        case archivedfrom = "archivedFrom"
+        case archivedto = "archivedTo"
     }
 }
 
