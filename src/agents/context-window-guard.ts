@@ -58,6 +58,8 @@ export function resolveContextWindowInfo(params: {
   modelContextTokens?: number;
   modelContextWindow?: number;
   defaultTokens: number;
+  /** Native catalog capacity — configured values are capped to this. */
+  catalogContextWindow?: number;
 }): ContextWindowInfo {
   const fromModelsConfig = (() => {
     const providers = params.cfg?.models?.providers as
@@ -87,6 +89,20 @@ export function resolveContextWindowInfo(params: {
     : fromModel
       ? { tokens: fromModel, source: "model" as const }
       : { tokens: defaultTokens, source: "default" as const };
+
+  // Cap against the catalog-native context window so a user-configured value
+  // larger than what the provider actually supports does not cause overflow.
+  if (params.catalogContextWindow && params.catalogContextWindow > 0) {
+    const capped = Math.min(baseInfo.tokens, params.catalogContextWindow);
+    if (capped < baseInfo.tokens) {
+      const cappedInfo: ContextWindowInfo = { ...baseInfo, tokens: capped };
+      const capTokens = normalizePositiveInt(params.cfg?.agents?.defaults?.contextTokens);
+      if (capTokens && capTokens < cappedInfo.tokens) {
+        return { tokens: capTokens, source: "agentContextTokens" };
+      }
+      return cappedInfo;
+    }
+  }
 
   const capTokens = normalizePositiveInt(params.cfg?.agents?.defaults?.contextTokens);
   if (capTokens && capTokens < baseInfo.tokens) {

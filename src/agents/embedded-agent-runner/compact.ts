@@ -787,6 +787,7 @@ async function compactEmbeddedAgentSessionDirectOnce(
       modelContextTokens: readAgentModelContextTokens(runtimeModel),
       modelContextWindow: runtimeModelWithContext.contextWindow,
       defaultTokens: DEFAULT_CONTEXT_TOKENS,
+      catalogContextWindow: runtimeModelWithContext.contextWindow,
     });
     const resolvedContextTokenBudget =
       normalizeContextTokenBudget(ctxInfo.tokens) ?? DEFAULT_CONTEXT_TOKENS;
