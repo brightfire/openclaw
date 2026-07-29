@@ -3111,6 +3111,9 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         if (evt.transport) {
           spanAttrs["openclaw.transport"] = evt.transport;
         }
+        if (evt.agentId) {
+          spanAttrs["openclaw.agent"] = resolveAgentLabelAttr(evt);
+        }
         trackTrustedSpan(
           evt,
           metadata,
@@ -3148,6 +3151,9 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         }
         if (evt.transport) {
           spanAttrs["openclaw.transport"] = evt.transport;
+        }
+        if (evt.agentId) {
+          spanAttrs["openclaw.agent"] = resolveAgentLabelAttr(evt);
         }
         assignModelCallSizeTimingAttrs(spanAttrs, evt);
         assignOtelModelContentAttributes(spanAttrs, modelContent, contentCapturePolicy);
@@ -3201,6 +3207,9 @@ export function createDiagnosticsOtelService(): OpenClawPluginService {
         }
         if (evt.transport) {
           spanAttrs["openclaw.transport"] = evt.transport;
+        }
+        if (evt.agentId) {
+          spanAttrs["openclaw.agent"] = resolveAgentLabelAttr(evt);
         }
         assignModelCallSizeTimingAttrs(spanAttrs, evt);
         assignOtelModelContentAttributes(spanAttrs, modelContent, contentCapturePolicy);

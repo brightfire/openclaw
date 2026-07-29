@@ -528,6 +528,7 @@ type DiagnosticModelCallBaseEvent = DiagnosticBaseEvent & {
   callId: string;
   sessionKey?: string;
   sessionId?: string;
+  agentId?: string;
   provider: string;
   model: string;
   api?: string;

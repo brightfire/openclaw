@@ -1279,6 +1279,95 @@ describe("diagnostics-otel service", () => {
     await service.stop?.(ctx);
   });
 
+  test("sets openclaw.agent on model.call span from agentId", async () => {
+    const service = createDiagnosticsOtelService();
+    const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });
+    await service.start(ctx);
+
+    emitDiagnosticEvent({
+      type: "model.call.started",
+      runId: "run-1",
+      callId: "call-1",
+      agentId: "main",
+      provider: "openai",
+      model: "gpt-5.4",
+    });
+    emitDiagnosticEvent({
+      type: "model.call.completed",
+      runId: "run-1",
+      callId: "call-1",
+      agentId: "main",
+      provider: "openai",
+      model: "gpt-5.4",
+      durationMs: 80,
+    });
+    await flushDiagnosticEvents();
+
+    const modelCallOptions = startedSpanOptions("openclaw.model.call");
+    expect(modelCallOptions?.attributes?.["openclaw.agent"]).toBe("main");
+
+    await service.stop?.(ctx);
+  });
+
+  test("does not set openclaw.agent on model.call span when agentId is absent", async () => {
+    const service = createDiagnosticsOtelService();
+    const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });
+    await service.start(ctx);
+
+    emitDiagnosticEvent({
+      type: "model.call.started",
+      runId: "run-1",
+      callId: "call-1",
+      provider: "openai",
+      model: "gpt-5.4",
+    });
+    emitDiagnosticEvent({
+      type: "model.call.completed",
+      runId: "run-1",
+      callId: "call-1",
+      provider: "openai",
+      model: "gpt-5.4",
+      durationMs: 80,
+    });
+    await flushDiagnosticEvents();
+
+    const modelCallOptions = startedSpanOptions("openclaw.model.call");
+    expect(modelCallOptions?.attributes?.["openclaw.agent"]).toBeUndefined();
+
+    await service.stop?.(ctx);
+  });
+
+  test("sets openclaw.agent on model.call error span from agentId", async () => {
+    const service = createDiagnosticsOtelService();
+    const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });
+    await service.start(ctx);
+
+    emitDiagnosticEvent({
+      type: "model.call.started",
+      runId: "run-1",
+      callId: "call-1",
+      agentId: "worker",
+      provider: "openai",
+      model: "gpt-5.4",
+    });
+    emitDiagnosticEvent({
+      type: "model.call.error",
+      runId: "run-1",
+      callId: "call-1",
+      agentId: "worker",
+      provider: "openai",
+      model: "gpt-5.4",
+      durationMs: 30,
+      errorCategory: "timeout",
+    });
+    await flushDiagnosticEvents();
+
+    const modelCallOptions = startedSpanOptions("openclaw.model.call");
+    expect(modelCallOptions?.attributes?.["openclaw.agent"]).toBe("worker");
+
+    await service.stop?.(ctx);
+  });
+
   test("honors disabled traces when an OpenTelemetry SDK is preloaded", async () => {
     process.env.OPENCLAW_OTEL_PRELOADED = "1";
     const service = createDiagnosticsOtelService();
