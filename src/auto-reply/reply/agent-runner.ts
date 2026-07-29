@@ -35,11 +35,6 @@ import type { TypingMode } from "../../config/types.js";
 import { resolveSessionTranscriptCandidates } from "../../gateway/session-utils.fs.js";
 import { logVerbose } from "../../globals.js";
 import { emitAgentEvent } from "../../infra/agent-events.js";
-import { emitTrustedDiagnosticEvent, isDiagnosticsEnabled } from "../../infra/diagnostic-events.js";
-import {
-  createChildDiagnosticTraceContext,
-  freezeDiagnosticTraceContext,
-} from "../../infra/diagnostic-trace-context.js";
 import { measureDiagnosticsTimelineSpan } from "../../infra/diagnostics-timeline.js";
 import { enqueueSystemEvent } from "../../infra/system-events.js";
 import type { PluginHookReplyUsageState } from "../../plugins/hook-types.js";
@@ -2121,59 +2116,6 @@ export async function runReplyAgent(params: {
     });
 
     await signalTypingIfNeeded(guardedReplyPayloads, typingSignals);
-
-    if (isDiagnosticsEnabled(cfg) && hasNonzeroUsage(usage)) {
-      const input = usage.input ?? 0;
-      const output = usage.output ?? 0;
-      const cacheRead = usage.cacheRead ?? 0;
-      const cacheWrite = usage.cacheWrite ?? 0;
-      const usagePromptTokens = input + cacheRead + cacheWrite;
-      const totalTokens = usage.total ?? usagePromptTokens + output;
-      const contextUsedTokens = deriveContextPromptTokens({
-        lastCallUsage: runResult.meta?.agentMeta?.lastCallUsage,
-        promptTokens,
-        usage,
-      });
-      const costConfig = resolveModelCostConfig({
-        provider: providerUsed,
-        model: modelUsed,
-        config: cfg,
-      });
-      const costUsd = hasBillableUsageBuckets
-        ? estimateUsageCost({ usage, cost: costConfig })
-        : undefined;
-      emitTrustedDiagnosticEvent({
-        type: "model.usage",
-        ...(runResult.diagnosticTrace
-          ? {
-              trace: freezeDiagnosticTraceContext(
-                createChildDiagnosticTraceContext(runResult.diagnosticTrace),
-              ),
-            }
-          : {}),
-        sessionKey,
-        sessionId: followupRun.run.sessionId,
-        channel: replyToChannel,
-        agentId: followupRun.run.agentId,
-        provider: providerUsed,
-        model: modelUsed,
-        usage: {
-          input,
-          output,
-          cacheRead,
-          cacheWrite,
-          promptTokens: usagePromptTokens,
-          total: totalTokens,
-        },
-        lastCallUsage: runResult.meta?.agentMeta?.lastCallUsage,
-        context: {
-          limit: contextTokensUsed,
-          ...(contextUsedTokens !== undefined ? { used: contextUsedTokens } : {}),
-        },
-        costUsd,
-        durationMs: Date.now() - runStartedAt,
-      });
-    }
 
     const responseUsageRaw =
       activeSessionEntry?.responseUsage ??

@@ -176,6 +176,7 @@ export function buildWorkspaceSkillCommandSpecs(
       description,
       skillSource: resolveSkillTelemetrySource(entry.skill),
       ...(dispatch ? { dispatch } : {}),
+      ...(entry.skill.promptVersion ? { skillVersion: entry.skill.promptVersion } : {}),
     });
   }
 

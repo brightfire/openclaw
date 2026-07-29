@@ -35,6 +35,10 @@ import { resolvePluginSkillDirs } from "./plugin-skills.js";
 import { serializeByKey } from "./serialize.js";
 import { formatSkillsForPrompt, type Skill } from "./skill-contract.js";
 import { resolveAllowedSkillSymlinkTargetRealPaths, tryRealpath } from "./symlink-targets.js";
+import {
+  SKILL_HASH_SCHEMA_VERSION,
+  SKILL_VERSION_CONFIGURED_ROOT_MAX_DEPTH,
+} from "./watch-ignored.js";
 
 const fsp = fs.promises;
 const skillsLogger = createSubsystemLogger("skills");
@@ -150,7 +154,9 @@ const DEFAULT_MAX_RAW_ENTRIES_PER_DIRECTORY_SCAN = 10_000;
 // Match Codex's bounded recursive skills discovery without letting broad
 // workspace roots turn into unbounded filesystem walks.
 const MAX_GROUPED_SKILL_SCAN_DEPTH = 6;
-const MAX_CONFIGURED_ROOT_GROUPED_SKILL_SCAN_DEPTH = 2;
+// Imported from watch-ignored.ts so this stays in sync with CONFIGURED_ROOT_WATCH_DEPTH
+// in refresh.ts. Both the scan limit and the hash depth budget use this value.
+const MAX_CONFIGURED_ROOT_GROUPED_SKILL_SCAN_DEPTH = SKILL_VERSION_CONFIGURED_ROOT_MAX_DEPTH;
 
 type ResolvedSkillsLimits = {
   maxCandidatesPerRoot: number;
@@ -172,6 +178,15 @@ type CandidateSkillDir = {
   skillDirRealPath: string;
   name: string;
   skillMdRealPath: string;
+  /** Depth of this skill below the scan root. */
+  depth: number;
+  /**
+   * The watch-depth base that applies to this skill's location. Mirrors the chokidar
+   * depth the watcher uses: GROUPED_SKILLS_WATCH_DEPTH (6) for skills-root subtrees,
+   * CONFIGURED_ROOT_WATCH_DEPTH (2) for non-skills extraDir roots. Used with `depth` to
+   * compute the remaining depth budget passed to computeSkillPromptVersion.
+   */
+  watchBaseDepth: number;
 };
 
 type ChildDirectoryScan = {
@@ -560,12 +575,17 @@ function loadContainedSkillRecords(params: {
   source: string;
   maxSkillFileBytes: number;
   canonicalSkillDir?: string;
+  // Remaining depth budget relative to the skills watcher root. Pass a tighter value
+  // when the skill directory is nested below the watched root so the hash surface
+  // does not exceed what chokidar can observe.
+  remainingDepth?: number;
 }): LoadedSkillRecord[] {
   const expectedBaseDir = path.resolve(params.skillDir);
   const loaded = loadSkillsFromDirSafe({
     dir: params.skillDir,
     source: params.source,
     maxBytes: params.maxSkillFileBytes,
+    remainingDepth: params.remainingDepth,
   });
   const records = unwrapLoadedSkillRecords(loaded).filter(
     (record) => path.resolve(record.skill.baseDir) === expectedBaseDir,
@@ -891,11 +911,19 @@ function loadSkillEntries(
         return [];
       }
 
+      // The watcher observes this root at GROUPED_SKILLS_WATCH_DEPTH when the dir is
+      // named "skills" and at CONFIGURED_ROOT_WATCH_DEPTH otherwise. Since baseDir is
+      // the skill directory itself (depth 0), remainingDepth equals the watch base.
+      const directRootWatchDepth =
+        path.basename(baseDir) === "skills"
+          ? MAX_GROUPED_SKILL_SCAN_DEPTH
+          : MAX_CONFIGURED_ROOT_GROUPED_SKILL_SCAN_DEPTH;
       return loadContainedSkillRecords({
         skillDir: baseDir,
         source: params.source,
         maxSkillFileBytes: limits.maxSkillFileBytes,
         canonicalSkillDir: canonicalSkillDirForSource(params.source, baseDirRealPath),
+        remainingDepth: directRootWatchDepth,
       });
     }
 
@@ -947,6 +975,8 @@ function loadSkillEntries(
       skillDirRealPath,
       name,
       skillMdRealPath,
+      depth,
+      watchBaseDepth,
     }: CandidateSkillDir) => {
       try {
         const size = fs.statSync(skillMdRealPath).size;
@@ -969,6 +999,10 @@ function loadSkillEntries(
           source: params.source,
           maxSkillFileBytes: limits.maxSkillFileBytes,
           canonicalSkillDir: canonicalSkillDirForSource(params.source, skillDirRealPath),
+          // watchBaseDepth mirrors the chokidar depth cap for this skill's location;
+          // subtracting the scan depth gives the remaining levels the watcher can observe
+          // inside the skill directory, keeping the hash surface aligned with chokidar.
+          remainingDepth: Math.max(0, watchBaseDepth - depth),
         }),
       );
     };
@@ -1006,11 +1040,22 @@ function loadSkillEntries(
           candidatePath: skillMd,
         });
         if (skillMdRealPath) {
+          const skillCandidatePath = path.resolve(candidate.skillDir);
+          const isConfiguredRootSkill =
+            params.source === "openclaw-extra" &&
+            !baseDirIsNestedSkillsRoot &&
+            !baseDirLooksLikeSkillsRoot &&
+            skillCandidatePath !== nestedSkillsRootPath &&
+            !isPathInside(nestedSkillsRootPath, skillCandidatePath);
           skillCandidates.push({
             skillDir: candidate.skillDir,
             skillDirRealPath,
             name: candidate.name,
             skillMdRealPath,
+            depth: candidate.depth,
+            watchBaseDepth: isConfiguredRootSkill
+              ? MAX_CONFIGURED_ROOT_GROUPED_SKILL_SCAN_DEPTH
+              : MAX_GROUPED_SKILL_SCAN_DEPTH,
           });
         }
         continue;
@@ -1368,6 +1413,7 @@ export function buildWorkspaceSkillSnapshot(
     ...(skillFilter === undefined ? {} : { skillFilter }),
     resolvedSkills,
     version: opts?.snapshotVersion,
+    hashSchemaVersion: SKILL_HASH_SCHEMA_VERSION,
   };
 }
 

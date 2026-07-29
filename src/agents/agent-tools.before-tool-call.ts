@@ -58,6 +58,7 @@ import {
 import type { SkillSnapshot, SkillTelemetrySource } from "../skills/types.js";
 import { resolveSkillWorkshopToolApproval } from "../skills/workshop/policy.js";
 import { isPlainObject } from "../utils.js";
+import { resolveAgentConfig } from "./agent-scope.js";
 import { adjustedParamsByToolCallId } from "./agent-tools.before-tool-call.state.js";
 import { copyChannelAgentToolMeta, getChannelAgentToolMeta } from "./channel-tools.js";
 import {
@@ -115,11 +116,19 @@ export type HookContext = {
     skillName: string;
     skillSource?: SkillTelemetrySource;
     toolName?: string;
+    /** Carried from SkillCommandSpec so command-only skills report the correct version. */
+    skillVersion?: string;
   };
   sandbox?: {
     root: string;
     bridge: SandboxFsBridge;
   };
+  /**
+   * First 4000 chars of the most recent user-role message in the conversation,
+   * used as the trigger context when a skill is read-activated. Populated by
+   * the agent runner; absent in other call sites (subagent wrappers, etc.).
+   */
+  lastUserMessageExcerpt?: string;
 };
 
 type HookBlockedKind = "veto" | "failure";
@@ -309,6 +318,10 @@ type SkillUsageMatch = {
   skillName: string;
   skillSource: SkillTelemetrySource;
   activation: "command" | "read";
+  /** sha256 promptVersion from the matched skill entry, if available. */
+  skillVersion?: string;
+  /** Resolved file path that triggered a read activation, if available. */
+  triggerPath?: string;
 };
 
 function resolveRelativeToolPath(candidate: string, ctx?: HookContext): string | undefined {
@@ -346,18 +359,25 @@ function skillInstructionPaths(snapshot: SkillSnapshot | undefined): Map<string,
     if (!skillName) {
       continue;
     }
+    const filePath = typeof skill.filePath === "string" ? skill.filePath.trim() : "";
+    const baseDir = typeof skill.baseDir === "string" ? skill.baseDir.trim() : "";
+    const resolvedFilePath =
+      filePath && path.isAbsolute(filePath) ? path.resolve(filePath) : undefined;
+    const resolvedBaseSkillPath =
+      baseDir && path.isAbsolute(baseDir) ? path.resolve(baseDir, "SKILL.md") : undefined;
+    const triggerPath = resolvedFilePath ?? resolvedBaseSkillPath;
     const match = {
       skillName,
       skillSource: resolveSkillTelemetrySource(skill),
       activation: "read" as const,
+      ...(skill.promptVersion && { skillVersion: skill.promptVersion }),
+      ...(triggerPath && { triggerPath }),
     };
-    const filePath = typeof skill.filePath === "string" ? skill.filePath.trim() : "";
-    if (filePath && path.isAbsolute(filePath)) {
-      matches.set(path.resolve(filePath), match);
+    if (resolvedFilePath) {
+      matches.set(resolvedFilePath, match);
     }
-    const baseDir = typeof skill.baseDir === "string" ? skill.baseDir.trim() : "";
-    if (baseDir && path.isAbsolute(baseDir)) {
-      matches.set(path.resolve(baseDir, "SKILL.md"), match);
+    if (resolvedBaseSkillPath) {
+      matches.set(resolvedBaseSkillPath, match);
     }
   }
   return matches;
@@ -372,10 +392,18 @@ function findSkillUsageMatch(params: {
   if (command) {
     const commandToolName = normalizeToolName(command.toolName ?? params.toolName);
     if (!commandToolName || commandToolName === params.toolName) {
+      // Prefer the version carried in skillCommand (populated for all user-invocable skills
+      // including command-only ones). Fall back to resolvedSkills for older callers that
+      // pre-date the skillVersion field (command-only skills are absent from resolvedSkills).
+      const commandSkillVersion =
+        command.skillVersion ??
+        params.ctx?.skillsSnapshot?.resolvedSkills?.find((s) => s.name === command.skillName)
+          ?.promptVersion;
       return {
         skillName: command.skillName,
         skillSource: resolveSkillTelemetrySourceValue(command.skillSource),
         activation: "command",
+        ...(commandSkillVersion && { skillVersion: commandSkillVersion }),
       };
     }
   }
@@ -398,23 +426,52 @@ function emitSkillUsedDiagnostic(params: {
   match: SkillUsageMatch;
   toolName: string;
   toolCallId?: string;
+  captureInputMessages: boolean;
 }): void {
   const trace = params.ctx?.trace
     ? freezeDiagnosticTraceContext(createChildDiagnosticTraceContext(params.ctx.trace))
     : undefined;
-  emitTrustedDiagnosticEvent({
-    type: "skill.used",
+  const agentLabel =
+    params.ctx?.config && params.ctx?.agentId
+      ? resolveAgentConfig(params.ctx.config, params.ctx.agentId)?.name
+      : undefined;
+
+  // For command activation: trigger is the command name — safe in the public payload.
+  // For read activation: trigger is user message text — must go in privateData only,
+  // and only when captureInputMessages is opted in (same gate as tool/model content).
+  const commandTrigger =
+    params.match.activation === "command" && params.ctx?.skillCommand?.commandName
+      ? params.ctx.skillCommand.commandName.slice(0, 4000)
+      : undefined;
+  const readTrigger =
+    params.match.activation === "read" && params.ctx?.lastUserMessageExcerpt
+      ? params.ctx.lastUserMessageExcerpt
+      : undefined;
+
+  const eventPayload = {
+    type: "skill.used" as const,
     ...(params.ctx?.runId && { runId: params.ctx.runId }),
     ...(params.ctx?.sessionKey && { sessionKey: params.ctx.sessionKey }),
     ...(params.ctx?.sessionId && { sessionId: params.ctx.sessionId }),
     ...(params.ctx?.agentId && { agentId: params.ctx.agentId }),
+    ...(agentLabel && { agentLabel }),
     ...(trace && { trace }),
     skillName: params.match.skillName,
     skillSource: params.match.skillSource,
     activation: params.match.activation,
+    ...(params.match.skillVersion && { skillVersion: params.match.skillVersion }),
+    ...(commandTrigger && { trigger: commandTrigger }),
     toolName: params.toolName,
     ...(params.toolCallId && { toolCallId: params.toolCallId }),
-  });
+  };
+
+  if (readTrigger && params.captureInputMessages) {
+    emitTrustedDiagnosticEventWithPrivateData(eventPayload, {
+      skillContent: { trigger: readTrigger },
+    });
+  } else {
+    emitTrustedDiagnosticEvent(eventPayload);
+  }
 }
 
 function notifyPluginApprovalResolution(
@@ -1263,6 +1320,7 @@ export function wrapToolWithBeforeToolCallHook(
               match: skillMatch,
               toolName: normalizedToolName,
               toolCallId,
+              captureInputMessages: toolContentPolicy.inputMessages,
             });
           }
           emitTrustedDiagnosticEventWithPrivateData(

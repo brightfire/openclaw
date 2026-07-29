@@ -53,7 +53,9 @@ describe("redactSensitiveText", () => {
   });
 
   it("masks shell env references that do not match the assignment key", () => {
-    const output = redactSensitiveText("DISCORD_BOT_TOKEN=$SUPERSECRET123", { mode: "tools" });
+    const output = redactSensitiveText("DISCORD_BOT_TOKEN=$SUPERSECRET123", {
+      mode: "tools",
+    });
     expect(output).toBe("DISCORD_BOT_TOKEN=***");
   });
 
@@ -238,7 +240,9 @@ describe("redactSensitiveText", () => {
 
   it("masks Basic authorization header tokens", () => {
     const secret = "c2VjcmV0OnBhc3M=";
-    const output = redactSensitiveText(`Authorization: Basic ${secret}`, { mode: "tools" });
+    const output = redactSensitiveText(`Authorization: Basic ${secret}`, {
+      mode: "tools",
+    });
 
     expect(output).toBe("Authorization: Basic ***");
     expect(output).not.toContain(secret);
@@ -246,7 +250,9 @@ describe("redactSensitiveText", () => {
 
   it("masks Bot authorization header tokens", () => {
     const secret = `${"A".repeat(24)}.${"B".repeat(6)}.${"C".repeat(27)}`;
-    const output = redactSensitiveText(`Authorization: Bot ${secret}`, { mode: "tools" });
+    const output = redactSensitiveText(`Authorization: Bot ${secret}`, {
+      mode: "tools",
+    });
 
     expect(output).toBe("Authorization: Bot AAAAAA…CCCC");
     expect(output).not.toContain(secret);
@@ -273,7 +279,9 @@ describe("redactSensitiveText", () => {
 
   it("masks token prefixes embedded after adjacent text", () => {
     const token = `ghp_${"a".repeat(5_000)}`;
-    const output = redactSensitiveText(`prefix-${token} suffix`, { mode: "tools" });
+    const output = redactSensitiveText(`prefix-${token} suffix`, {
+      mode: "tools",
+    });
     expect(output).toBe("prefix-ghp_aa…aaaa suffix");
     expect(output).not.toContain(token);
     expect(output).not.toContain("a".repeat(100));
@@ -795,8 +803,20 @@ describe("redactSensitiveText", () => {
       "retaindb_abcdefghijklmnopqrstuvwxyz",
       "hsk-abcdefghijklmnopqrstuvwxyz",
       "mem0_abcdefghijklmnopqrstuvwxyz",
+      "BSAabcdefghijklmnopqrstuvwxyz",
       "brv_abcdefghijklmnopqrstuvwxyz",
       "xai-abcdefghijklmnopqrstuvwxyzABCDE",
+      // Fleet credential patterns from DEV-330 audit.
+      `cfat_${"a".repeat(40)}`,
+      `cfk_${"a".repeat(40)}`,
+      `cfut_${"a".repeat(40)}`,
+      `ATTA${"a".repeat(64)}`,
+      `lin_oauth_${"a".repeat(32)}`,
+      `lin_api_${"a".repeat(32)}`,
+      `gWn8Q~${"a".repeat(30)}`,
+      // Secret-sharing links — URL is the credential.
+      "https://onetimesecret.com/abc123def456ghi789jkl012mno345pqr678",
+      "https://share.1password.com/s#abcdef1234567890uvwxyz",
     ];
     // Redact each fixture alone so every vendor pattern proves it stays reachable through
     // DEFAULT_REDACT_PREFILTER_RE; a joined corpus would let one trigger unlock all others.
@@ -814,9 +834,11 @@ describe("redactSensitiveText", () => {
         mode: "tools",
       }),
     ).toBe("SG.abc…wxyz");
-    expect(redactSensitiveText("xai-abcdefghijklmnopqrstuvwxyzABCDE", { mode: "tools" })).toBe(
-      "xai-ab…BCDE",
-    );
+    expect(
+      redactSensitiveText("xai-abcdefghijklmnopqrstuvwxyzABCDE", {
+        mode: "tools",
+      }),
+    ).toBe("xai-ab…BCDE");
   });
 
   it("does not redact ordinary identifiers containing short token-prefix substrings", () => {
@@ -838,9 +860,11 @@ describe("redactSensitiveText", () => {
     expect(redactSensitiveText(dataUrlWithPlusBoundary, { mode: "tools" })).toBe(
       dataUrlWithPlusBoundary,
     );
-    expect(redactSensitiveText("aws AKIA_ID=AKIAABCDEFGHIJKLMNOP", { mode: "tools" })).toBe(
-      "aws AKIA_ID=AKIAAB…MNOP",
-    );
+    expect(
+      redactSensitiveText("aws AKIA_ID=AKIAABCDEFGHIJKLMNOP", {
+        mode: "tools",
+      }),
+    ).toBe("aws AKIA_ID=AKIAAB…MNOP");
   });
 
   it("does not corrupt large data URLs across chunked replacement boundaries", () => {
@@ -894,7 +918,9 @@ describe("redactSensitiveText", () => {
       }),
     ).toBe("GET https://example.test/cb?client_se+cret=***&safe=1");
     expect(
-      redactSensitiveText("body: client_secre%74=opaque-value-123&safe=1", { mode: "tools" }),
+      redactSensitiveText("body: client_secre%74=opaque-value-123&safe=1", {
+        mode: "tools",
+      }),
     ).toBe("body: client_secre%74=***&safe=1");
     expect(
       redactSensitiveText("body: client_se\u3164cret\u3164=opaque-value-123&safe=1", {
@@ -1010,6 +1036,7 @@ describe("redactSensitiveText", () => {
       mode: "off",
       patterns: [],
       redactFormBodies: false,
+      format: "hint",
     });
     expect(redactSensitiveText("OPENAI_API_KEY=sk-1234567890abcdef", options)).toBe(
       "OPENAI_API_KEY=sk-1234567890abcdef",
@@ -1141,7 +1168,12 @@ describe("redactSensitiveLines", () => {
   it("returns lines unmodified when resolved patterns is empty — does not fall back to defaults", () => {
     // Simulates the case where all user-configured patterns fail to compile.
     // The pre-resolved empty array must be honored, not silently replaced with defaults.
-    const resolved = { mode: "tools" as const, patterns: [], redactFormBodies: false };
+    const resolved = {
+      mode: "tools" as const,
+      patterns: [],
+      redactFormBodies: false,
+      format: "hint" as const,
+    };
     const lines = ["TOKEN=abcdef1234567890ghij"];
     expect(redactSensitiveLines(lines, resolved)).toEqual(lines);
   });

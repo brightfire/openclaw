@@ -6,6 +6,7 @@ import type { ParsedSkillFrontmatter } from "../types.js";
 import { parseFrontmatter, resolveSkillInvocationPolicy } from "./frontmatter.js";
 import { createSyntheticSourceInfo, type Skill } from "./skill-contract.js";
 import { computeSkillPromptVersion } from "./skill-version.js";
+import { SKILL_VERSION_MAX_DEPTH } from "./watch-ignored.js";
 
 type LoadedLocalSkill = {
   skill: Skill;
@@ -40,6 +41,10 @@ function loadSingleSkillDirectory(params: {
   source: string;
   rootRealPath: string;
   maxBytes?: number;
+  // Remaining depth budget passed to computeSkillPromptVersion so the hash surface
+  // stays aligned with the skills watcher. Callers that know how many levels have
+  // already been consumed from the watched root should pass a tighter value.
+  remainingDepth?: number;
 }): LoadedLocalSkill | null {
   const skillFilePath = path.join(params.skillDir, "SKILL.md");
   const raw = readSkillFileSync({
@@ -74,7 +79,10 @@ function loadSingleSkillDirectory(params: {
       description,
       filePath,
       baseDir,
-      promptVersion: computeSkillPromptVersion(raw),
+      promptVersion: computeSkillPromptVersion(
+        params.skillDir,
+        params.remainingDepth ?? SKILL_VERSION_MAX_DEPTH,
+      ),
       source: params.source,
       sourceInfo: createSyntheticSourceInfo(filePath, {
         source: params.source,
@@ -104,7 +112,16 @@ function listCandidateSkillDirs(dir: string): string[] {
 }
 
 /** Loads skills from a local directory while turning read/parse failures into diagnostics. */
-export function loadSkillsFromDirSafe(params: { dir: string; source: string; maxBytes?: number }): {
+export function loadSkillsFromDirSafe(params: {
+  dir: string;
+  source: string;
+  maxBytes?: number;
+  // Remaining depth budget relative to the skills watcher root. When the `dir` being
+  // scanned is already one or more levels below the watched root, pass the remaining
+  // observable depth so computeSkillPromptVersion never hashes deeper than the watcher
+  // can see. Defaults to SKILL_VERSION_MAX_DEPTH (the full watcher cap).
+  remainingDepth?: number;
+}): {
   skills: Skill[];
   frontmatterByFilePath: ReadonlyMap<string, ParsedSkillFrontmatter>;
 } {
@@ -116,11 +133,13 @@ export function loadSkillsFromDirSafe(params: { dir: string; source: string; max
     return { skills: [], frontmatterByFilePath: new Map() };
   }
 
+  const remainingDepth = params.remainingDepth ?? SKILL_VERSION_MAX_DEPTH;
   const rootSkill = loadSingleSkillDirectory({
     skillDir: rootDir,
     source: params.source,
     rootRealPath,
     maxBytes: params.maxBytes,
+    remainingDepth,
   });
   if (rootSkill) {
     return {
@@ -136,6 +155,9 @@ export function loadSkillsFromDirSafe(params: { dir: string; source: string; max
         source: params.source,
         rootRealPath,
         maxBytes: params.maxBytes,
+        // Subdirectory skills are one level below rootDir; subtract one from the
+        // remaining budget so their hash surface matches what the watcher sees.
+        remainingDepth: Math.max(0, remainingDepth - 1),
       }),
     )
     .filter((skill): skill is LoadedLocalSkill => skill !== null);

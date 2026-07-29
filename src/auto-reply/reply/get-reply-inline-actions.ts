@@ -376,6 +376,9 @@ export async function handleInlineActions(params: {
           ...(skillInvocation.command.skillSource
             ? { skillSource: skillInvocation.command.skillSource }
             : {}),
+          ...(skillInvocation.command.skillVersion
+            ? { skillVersion: skillInvocation.command.skillVersion }
+            : {}),
           toolName: dispatch.toolName,
         },
       });

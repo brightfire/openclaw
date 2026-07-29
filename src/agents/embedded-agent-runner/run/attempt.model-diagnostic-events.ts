@@ -41,6 +41,7 @@ type ModelCallDiagnosticContext = {
   runId: string;
   sessionKey?: string;
   sessionId?: string;
+  agentId?: string;
   provider: string;
   model: string;
   api?: string;
@@ -278,6 +279,7 @@ function baseModelCallEvent(
     callId,
     ...(ctx.sessionKey && { sessionKey: ctx.sessionKey }),
     ...(ctx.sessionId && { sessionId: ctx.sessionId }),
+    ...(ctx.agentId && { agentId: ctx.agentId }),
     provider: ctx.provider,
     model: ctx.model,
     ...(ctx.api && { api: ctx.api }),

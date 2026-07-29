@@ -1902,3 +1902,121 @@ describe("before_tool_call tool content private-data capture", () => {
     });
   });
 });
+
+describe("before_tool_call skill content private-data capture", () => {
+  type TrustedSkillEvent = {
+    event: DiagnosticEventPayload;
+    privateData: DiagnosticEventPrivateData;
+  };
+
+  beforeEach(() => {
+    resetDiagnosticSessionStateForTest();
+    resetDiagnosticEventsForTest();
+  });
+
+  async function withTrustedSkillEvents(
+    run: (emitted: TrustedSkillEvent[], flush: () => Promise<void>) => Promise<void>,
+  ) {
+    const emitted: TrustedSkillEvent[] = [];
+    const stop = onTrustedInternalDiagnosticEvent((event, _metadata, privateData) => {
+      if (event.type === "skill.used") {
+        emitted.push({ event, privateData });
+      }
+    });
+    const flush = () =>
+      new Promise<void>((resolve) => {
+        setImmediate(resolve);
+      });
+    try {
+      await run(emitted, flush);
+    } finally {
+      stop();
+    }
+  }
+
+  function makeReadSkillTool(config?: import("../config/types.openclaw.js").OpenClawConfig) {
+    const workspaceDir = path.join("/tmp", "openclaw-skill-content-capture");
+    const skillBaseDir = path.join(workspaceDir, ".agents", "skills", "audit-skill");
+    const skillFilePath = path.join(skillBaseDir, "SKILL.md");
+    const execute = vi.fn().mockResolvedValue({ content: [{ type: "text", text: "skill" }] });
+    return wrapToolWithBeforeToolCallHook({ name: "read", execute } as any, {
+      agentId: "main",
+      sessionKey: "session-key",
+      runId: "run-1",
+      workspaceDir,
+      lastUserMessageExcerpt: "run the pii audit on the latest export",
+      skillsSnapshot: {
+        prompt: "",
+        skills: [{ name: "audit-skill" }],
+        resolvedSkills: [
+          createCanonicalFixtureSkill({
+            name: "audit-skill",
+            description: "Audit skill",
+            filePath: skillFilePath,
+            baseDir: skillBaseDir,
+            source: "workspace",
+          }),
+        ],
+      },
+      loopDetection: { enabled: false },
+      ...(config !== undefined ? { config } : {}),
+    });
+  }
+
+  function configWithInputMessages() {
+    return {
+      diagnostics: {
+        enabled: true,
+        otel: {
+          enabled: true,
+          traces: true,
+          captureContent: { enabled: true, inputMessages: true },
+        },
+      },
+    } as unknown as import("../config/types.openclaw.js").OpenClawConfig;
+  }
+
+  it("puts read-activation trigger in skillContent private data when captureInputMessages is enabled", async () => {
+    const tool = makeReadSkillTool(configWithInputMessages());
+
+    await withTrustedSkillEvents(async (emitted, flush) => {
+      await tool.execute(
+        "call-skill-capture",
+        { path: path.join(".agents", "skills", "audit-skill", "SKILL.md") },
+        undefined,
+        undefined,
+      );
+      await flush();
+
+      expect(emitted).toHaveLength(1);
+      const skillEvt = emitted[0];
+      // Trigger must be in skillContent private data, not in the public event payload.
+      expect(skillEvt.privateData.skillContent?.trigger).toBe(
+        "run the pii audit on the latest export",
+      );
+      expect(JSON.stringify(skillEvt.event)).not.toContain("run the pii audit");
+    });
+  });
+
+  it("omits skillContent from private data when captureInputMessages is not enabled", async () => {
+    // No config — captureInputMessages defaults to false.
+    const tool = makeReadSkillTool();
+
+    await withTrustedSkillEvents(async (emitted, flush) => {
+      await tool.execute(
+        "call-skill-no-capture",
+        { path: path.join(".agents", "skills", "audit-skill", "SKILL.md") },
+        undefined,
+        undefined,
+      );
+      await flush();
+
+      expect(emitted).toHaveLength(1);
+      const skillEvt = emitted[0];
+      // No private data content when capture is not opted in.
+      expect(skillEvt.privateData.skillContent).toBeUndefined();
+      // User message text must not appear anywhere in the emitted event.
+      expect(JSON.stringify(skillEvt.event)).not.toContain("run the pii audit");
+    });
+  });
+});

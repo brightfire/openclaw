@@ -1990,6 +1990,7 @@ export async function runCodexAppServerAttempt(
     callId: codexModelCallId,
     ...(params.sessionKey ? { sessionKey: params.sessionKey } : {}),
     sessionId: params.sessionId,
+    ...(sessionAgentId ? { agentId: sessionAgentId } : {}),
     provider: params.provider,
     model: params.modelId,
     api: params.model.api,
