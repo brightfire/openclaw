@@ -770,7 +770,7 @@ describe("diagnostics-otel service", () => {
     expect(telemetryState.counters.get("openclaw.session.turn.created")?.add).toHaveBeenCalledWith(
       1,
       {
-        "openclaw.agent": "agent.default",
+        "openclaw.agent.id": "agent.default",
         "openclaw.channel": "telegram",
         "openclaw.trigger": "user",
       },
@@ -1172,7 +1172,7 @@ describe("diagnostics-otel service", () => {
     await service.stop?.(ctx);
   });
 
-  test("sets openclaw.agent on run span from agentId", async () => {
+  test("sets openclaw.agent.id on run span from agentId", async () => {
     const service = createDiagnosticsOtelService();
     const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });
     await service.start(ctx);
@@ -1189,12 +1189,12 @@ describe("diagnostics-otel service", () => {
     await flushDiagnosticEvents();
 
     const runSpanOptions = startedSpanOptions("openclaw.run");
-    expect(runSpanOptions?.attributes?.["openclaw.agent"]).toBe("main");
+    expect(runSpanOptions?.attributes?.["openclaw.agent.id"]).toBe("main");
 
     await service.stop?.(ctx);
   });
 
-  test("does not set openclaw.agent on run span when agentId is absent", async () => {
+  test("does not set openclaw.agent.id on run span when agentId is absent", async () => {
     const service = createDiagnosticsOtelService();
     const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });
     await service.start(ctx);
@@ -1210,12 +1210,12 @@ describe("diagnostics-otel service", () => {
     await flushDiagnosticEvents();
 
     const runSpanOptions = startedSpanOptions("openclaw.run");
-    expect(runSpanOptions?.attributes?.["openclaw.agent"]).toBeUndefined();
+    expect(runSpanOptions?.attributes?.["openclaw.agent.id"]).toBeUndefined();
 
     await service.stop?.(ctx);
   });
 
-  test("sets openclaw.agent on harness run span from agentId", async () => {
+  test("sets openclaw.agent.id on harness run span from agentId", async () => {
     const service = createDiagnosticsOtelService();
     const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });
     await service.start(ctx);
@@ -1243,12 +1243,12 @@ describe("diagnostics-otel service", () => {
     await flushDiagnosticEvents();
 
     const harnessSpanOptions = startedSpanOptions("openclaw.harness.run");
-    expect(harnessSpanOptions?.attributes?.["openclaw.agent"]).toBe("worker");
+    expect(harnessSpanOptions?.attributes?.["openclaw.agent.id"]).toBe("worker");
 
     await service.stop?.(ctx);
   });
 
-  test("does not set openclaw.agent on harness run span when agentId is absent", async () => {
+  test("does not set openclaw.agent.id on harness run span when agentId is absent", async () => {
     const service = createDiagnosticsOtelService();
     const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });
     await service.start(ctx);
@@ -1274,12 +1274,12 @@ describe("diagnostics-otel service", () => {
     await flushDiagnosticEvents();
 
     const harnessSpanOptions = startedSpanOptions("openclaw.harness.run");
-    expect(harnessSpanOptions?.attributes?.["openclaw.agent"]).toBeUndefined();
+    expect(harnessSpanOptions?.attributes?.["openclaw.agent.id"]).toBeUndefined();
 
     await service.stop?.(ctx);
   });
 
-  test("sets openclaw.agent on model.call span from agentId", async () => {
+  test("sets openclaw.agent.id on model.call span from agentId", async () => {
     const service = createDiagnosticsOtelService();
     const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });
     await service.start(ctx);
@@ -1304,12 +1304,12 @@ describe("diagnostics-otel service", () => {
     await flushDiagnosticEvents();
 
     const modelCallOptions = startedSpanOptions("openclaw.model.call");
-    expect(modelCallOptions?.attributes?.["openclaw.agent"]).toBe("main");
+    expect(modelCallOptions?.attributes?.["openclaw.agent.id"]).toBe("main");
 
     await service.stop?.(ctx);
   });
 
-  test("does not set openclaw.agent on model.call span when agentId is absent", async () => {
+  test("does not set openclaw.agent.id on model.call span when agentId is absent", async () => {
     const service = createDiagnosticsOtelService();
     const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });
     await service.start(ctx);
@@ -1332,12 +1332,12 @@ describe("diagnostics-otel service", () => {
     await flushDiagnosticEvents();
 
     const modelCallOptions = startedSpanOptions("openclaw.model.call");
-    expect(modelCallOptions?.attributes?.["openclaw.agent"]).toBeUndefined();
+    expect(modelCallOptions?.attributes?.["openclaw.agent.id"]).toBeUndefined();
 
     await service.stop?.(ctx);
   });
 
-  test("sets openclaw.agent on model.call error span from agentId", async () => {
+  test("sets openclaw.agent.id on model.call error span from agentId", async () => {
     const service = createDiagnosticsOtelService();
     const ctx = createOtelContext(OTEL_TEST_ENDPOINT, { traces: true, metrics: true });
     await service.start(ctx);
@@ -1363,7 +1363,7 @@ describe("diagnostics-otel service", () => {
     await flushDiagnosticEvents();
 
     const modelCallOptions = startedSpanOptions("openclaw.model.call");
-    expect(modelCallOptions?.attributes?.["openclaw.agent"]).toBe("worker");
+    expect(modelCallOptions?.attributes?.["openclaw.agent.id"]).toBe("worker");
 
     await service.stop?.(ctx);
   });
@@ -1867,7 +1867,7 @@ describe("diagnostics-otel service", () => {
     const tokens = telemetryState.counters.get("openclaw.tokens");
     expect(tokens?.add).toHaveBeenCalledWith(12, {
       "openclaw.channel": "webchat",
-      "openclaw.agent": "ops",
+      "openclaw.agent.id": "ops",
       "openclaw.provider": "openai",
       "openclaw.model": "gpt-5.4",
       "openclaw.token": "input",
@@ -1905,7 +1905,7 @@ describe("diagnostics-otel service", () => {
 
     expect(telemetryState.counters.get("openclaw.tokens")?.add).toHaveBeenCalledWith(2, {
       "openclaw.channel": "unknown",
-      "openclaw.agent": "unknown",
+      "openclaw.agent.id": "unknown",
       "openclaw.provider": "openai",
       "openclaw.model": "gpt-5.4",
       "openclaw.token": "input",
@@ -1932,7 +1932,7 @@ describe("diagnostics-otel service", () => {
 
     expect(telemetryState.counters.get("openclaw.tokens")?.add).toHaveBeenCalledWith(2, {
       "openclaw.channel": "unknown",
-      "openclaw.agent": "qa",
+      "openclaw.agent.id": "qa",
       "openclaw.provider": "openai",
       "openclaw.model": "gpt-5.4",
       "openclaw.token": "input",
@@ -2209,7 +2209,7 @@ describe("diagnostics-otel service", () => {
     await flushDiagnosticEvents();
 
     const expectedAttrs = {
-      "openclaw.agent": "main",
+      "openclaw.agent.id": "main",
       "openclaw.skill.activation": "read",
       "openclaw.skill.name": "tiny-llm-brainstorm",
       "openclaw.skill.source": "workspace",
@@ -5342,7 +5342,7 @@ describe("diagnostics-otel service", () => {
     const processor = new LangfuseMetadataSpanProcessor();
     const setAttributeMock = vi.fn();
     const span = {
-      attributes: { "openclaw.agent": "main", "openclaw.sessionId": "sess-123" },
+      attributes: { "openclaw.agent.id": "main", "openclaw.sessionId": "sess-123" },
       resource: { attributes: { "service.instance.id": "vash" } },
       setAttribute: setAttributeMock,
     } as unknown as Parameters<typeof processor.onStart>[0];
