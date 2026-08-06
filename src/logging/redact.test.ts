@@ -817,6 +817,7 @@ describe("redactSensitiveText", () => {
       // Secret-sharing links — URL is the credential.
       "https://onetimesecret.com/abc123def456ghi789jkl012mno345pqr678",
       "https://share.1password.com/s#abcdef1234567890uvwxyz",
+      "https://www.dropbox.com/scl/fi/abc123def456/secret-file.txt",
     ];
     // Redact each fixture alone so every vendor pattern proves it stays reachable through
     // DEFAULT_REDACT_PREFILTER_RE; a joined corpus would let one trigger unlock all others.
