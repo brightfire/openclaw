@@ -73,6 +73,7 @@ async function httpHealthFallback(
       const resp = await fetch(httpUrl, { signal: controller.signal });
       if (resp.ok || resp.status === 503) {
         // 200 = ready, 503 = alive but not ready yet — either way, gateway is reachable
+        // SAFETY: resp.json() returns unknown; the /ready endpoint returns a JSON object with an optional `ready` boolean. We only read `.ready`, so any shape is safe.
         const body = (await resp.json().catch(() => null)) as { ready?: boolean } | null;
         return { ok: true, ready: body?.ready === true };
       }
