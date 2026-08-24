@@ -260,14 +260,21 @@ jobs:
           PYEOF
 
       # Reuse upstream's composite so pnpm install + store-cache run the same
-      # way upstream CI does.
+      # way upstream CI does. We set install-deps=false and run pnpm install
+      # ourselves because the upstream action hardcodes CI=true, which makes
+      # pnpm default to --frozen-lockfile even when frozen-lockfile=false.
+      # The version bump + patch merges change package.json, so the lockfile
+      # needs to update during install.
       - name: Setup Node environment
         uses: ./.github/actions/setup-node-env
         with:
           node-version: '24'
           install-bun: 'false'
           cache-mode: 'restore'
-          frozen-lockfile: 'false'
+          install-deps: 'false'
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
 
       - name: Regenerate build artifacts
         run: /tmp/bf-build-stable/regenerate-artifacts.sh
