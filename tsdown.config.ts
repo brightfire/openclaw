@@ -318,7 +318,8 @@ function shouldAlwaysBundleDependency(id: string): boolean {
     ].includes(id) ||
     id.startsWith("@openclaw/acp-core/") ||
     id === "zod" ||
-    id.startsWith("zod/")
+    id.startsWith("zod/") ||
+    id === "get-east-asian-width"
   );
 }
 
