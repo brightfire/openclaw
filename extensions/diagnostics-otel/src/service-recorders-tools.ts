@@ -34,7 +34,6 @@ export function createToolAndSystemRecorders(runtime: DiagnosticsRecorderRuntime
     takeTrackedTrustedSpan,
     setSpanAttrs,
     addRunAttrs,
-    addSessionAttrs,
     resolveAgentLabelAttr,
     paramsSummaryAttrs,
     contentCapturePolicy,

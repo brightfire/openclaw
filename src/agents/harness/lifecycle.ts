@@ -42,6 +42,7 @@ import type {
   AgentHarnessSettledTurnFinalizationAttemptParams,
   AgentHarnessSettledTurnFinalizationResult,
 } from "./types.js";
+import { resolveAgentIdentity } from "../identity.js";
 
 type AgentHarnessCanonicalAttemptResult = EmbeddedRunAttemptResult;
 
@@ -91,6 +92,10 @@ function agentHarnessDiagnosticBase(
   return {
     runId: params.runId,
     sessionId: params.sessionId,
+    agentId: params.agentId,
+    agentLabel: params.config
+      ? resolveAgentIdentity(params.config, params.agentId ?? "")?.name?.trim()
+      : undefined,
     provider: params.provider,
     model: params.modelId,
     harnessId: harness.id,
