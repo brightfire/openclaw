@@ -15,7 +15,7 @@ is maintained, the merge-not-rebase philosophy, and the new-entry template.
 | Slack Markdown | `brightfire/slack-mrkdwn` | `eac47dc640` | — | 2026-08-24 |
 | CLI HTTP Health Fallback | `brightfire/cli-http-fallback` | `acaf002096` | — | 2026-08-24 |
 | Webhook Session Target Support | `brightfire/webhook-sessiontarget-support` | `822fe75a23` | https://github.com/brightfire/openclaw/pull/106 | 2026-08-24 |
-| OTEL Improvements | `brightfire/otel-improvements` | `b1b1703b26` | https://github.com/brightfire/openclaw/pull/173 | 2026-08-24 |
+| OTEL Improvements | `brightfire/otel-improvements` | `9f1ed1e55e` | https://github.com/brightfire/openclaw/pull/173 | 2026-08-24 |
 | Bundle All Plugins | `brightfire/bundle-all-plugins` | `1b80890e33` | — | 2026-08-24 |
 
 ## Upstream Test Fixes
