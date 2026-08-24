@@ -91,28 +91,31 @@ jobs:
           cp -r scripts/bf/build-stable /tmp/bf-build-stable
           chmod +x /tmp/bf-build-stable/*.sh
 
-      - name: Parse manifest (patches)
+      - name: Parse manifest (patches + base branch)
         id: patches
         run: |
           python3 /tmp/parse-patches.py "$PATCHES_FILE" "$GITHUB_OUTPUT"
 
-      # Read the version from package.json on origin/main. The base is now
-      # origin/main (not a pinned upstream tag), so the version is simply
-      # the `version` field from package.json on origin/main.
-      - name: Read version from origin/main
+      # Read the version from package.json on the base branch (default: main).
+      # The base branch is read from BRIGHTFIRE_PATCHES.md _meta.
+      - name: Read version from base branch
         id: upstream-version
+        env:
+          BASE_BRANCH: ${{ steps.patches.outputs.base_branch }}
         run: |
-          VERSION=$(git show origin/main:package.json | python3 -c "import sys,json; print(json.load(sys.stdin)['version'])")
+          git fetch origin "$BASE_BRANCH"
+          VERSION=$(git show "origin/$BASE_BRANCH:package.json" | python3 -c "import sys,json; print(json.load(sys.stdin)['version'])")
           if [ -z "$VERSION" ]; then
-            echo "::error::Could not read version from package.json on origin/main"
+            echo "::error::Could not read version from package.json on origin/$BASE_BRANCH"
             exit 1
           fi
-          echo "Version from origin/main: $VERSION"
+          echo "Version from origin/$BASE_BRANCH: $VERSION"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Prepare stable branch
         env:
           VERSION: ${{ steps.upstream-version.outputs.version }}
+          BASE_BRANCH: ${{ steps.patches.outputs.base_branch }}
         run: /tmp/bf-build-stable/prepare-stable-branch.sh
 
       - name: Compute version suffix

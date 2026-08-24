@@ -112,11 +112,29 @@ def parse_patches(patches_file: str) -> list[str]:
     return active
 
 
+def parse_base_branch(patches_file: str) -> str:
+    """Parse BRIGHTFIRE_PATCHES.md and return the base branch from _meta.
+
+    Reads `- **Base branch:** `main`` from the ## _meta section.
+    Defaults to 'main' if not found.
+    """
+    try:
+        with open(patches_file, "r") as f:
+            content = f.read()
+    except FileNotFoundError:
+        return "main"
+
+    m = re.search(r"##\s*_meta\s*\n.*?\*\*Base branch:\*\*\s*`([^`]+)`", content, re.DOTALL)
+    return m.group(1) if m else "main"
+
+
 def main():
     patches_file = sys.argv[1] if len(sys.argv) > 1 else "BRIGHTFIRE_PATCHES.md"
     active = parse_patches(patches_file)
+    base_branch = parse_base_branch(patches_file)
 
     out = ",".join(active)
+    print(f"Base branch: {base_branch}")
     print(f"Active patches ({len(active)}): {out}")
 
     # Write $GITHUB_OUTPUT file if provided
@@ -125,6 +143,7 @@ def main():
         with open(output_file, "a") as f:
             f.write(f"count={len(active)}\n")
             f.write(f"list={out}\n")
+            f.write(f"base_branch={base_branch}\n")
 
 
 if __name__ == "__main__":

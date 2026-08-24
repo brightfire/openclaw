@@ -3,6 +3,10 @@
 See [docs/brightfire-patches.md](docs/brightfire-patches.md) for how this file
 is maintained, the merge-not-rebase philosophy, and the new-entry template.
 
+## _meta
+
+- **Base branch:** `main`
+
 ## Patches
 
 | Name | Canonical branch | Branch HEAD | Source PR | Last updated |
