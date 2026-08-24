@@ -24,7 +24,7 @@ on:
     paths:
       - 'BRIGHTFIRE_PATCHES.md'
       - '.github/workflows/bf-build-stable.yml'
-      - 'scripts/bf/parse-patches.py'
+      - 'scripts/bf/**'
   workflow_dispatch:
     inputs:
       force_release:
