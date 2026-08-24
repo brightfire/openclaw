@@ -51,6 +51,7 @@ import {
   resolveOpenClawAgentSqlitePath,
   runOpenClawAgentWriteTransaction,
 } from "./openclaw-agent-db.js";
+import { AGENT_BASE_SCHEMA_SQL } from "./openclaw-agent-display-row-schema.js";
 import {
   closeOpenClawStateDatabaseForTest,
   OPENCLAW_SQLITE_BUSY_TIMEOUT_MS,
@@ -60,7 +61,6 @@ import {
 import { resolveOpenClawStateSqlitePath } from "./openclaw-state-db.paths.js";
 import {
   collectSqliteSchemaShape,
-  createSqliteSchemaShapeFromSql,
   normalizeSqliteSchemaShapeSql,
   replaceNamedIndexesWithNoncanonicalIndexes,
 } from "./sqlite-schema-shape.test-support.js";
@@ -77,6 +77,17 @@ let v13WorkerAgentDatabaseTemplatePath: string | undefined;
 
 function createTempStateDir(): string {
   return makeTempDir(agentDbTempDirs, "openclaw-agent-db-");
+}
+
+function createCurrentAgentRuntimeSchemaShape() {
+  const { DatabaseSync } = requireNodeSqlite();
+  const database = new DatabaseSync(":memory:");
+  try {
+    database.exec(AGENT_BASE_SCHEMA_SQL);
+    return collectSqliteSchemaShape(database);
+  } finally {
+    database.close();
+  }
 }
 
 function ensureSharedStateDatabaseTemplate(): string {
@@ -1273,9 +1284,7 @@ describe("openclaw agent database", () => {
       env: { OPENCLAW_STATE_DIR: stateDir },
     });
 
-    expect(collectSqliteSchemaShape(database.db)).toEqual(
-      createSqliteSchemaShapeFromSql(new URL("./openclaw-agent-schema.sql", import.meta.url)),
-    );
+    expect(collectSqliteSchemaShape(database.db)).toEqual(createCurrentAgentRuntimeSchemaShape());
     expect(
       database.db
         .prepare("SELECT name FROM sqlite_schema WHERE type = 'table' AND name = 'state_leases'")
@@ -3424,9 +3433,7 @@ describe("openclaw agent database", () => {
     const stateDir = createTempStateDir();
     const env = { OPENCLAW_STATE_DIR: stateDir };
     const databasePath = materializeCurrentWorkerAgentDatabase(stateDir);
-    const canonicalShape = normalizeSqliteSchemaShapeSql(
-      createSqliteSchemaShapeFromSql(new URL("./openclaw-agent-schema.sql", import.meta.url)),
-    );
+    const canonicalShape = normalizeSqliteSchemaShapeSql(createCurrentAgentRuntimeSchemaShape());
 
     const { DatabaseSync } = requireNodeSqlite();
     const drifted = new DatabaseSync(databasePath);
@@ -3490,9 +3497,11 @@ describe("openclaw agent database", () => {
         DROP TRIGGER session_nodes_entry_valid_after_insert;
         DROP TRIGGER session_nodes_entry_valid_after_entry_update;
         DROP TRIGGER session_nodes_entry_valid_after_identity_update;
+        DROP TRIGGER session_conversations_route_context_invalidate_after_update;
         DROP INDEX idx_agent_session_nodes_entry_valid_pending;
         DROP TABLE session_key_contract;
         ALTER TABLE session_nodes DROP COLUMN entry_valid;
+        ALTER TABLE session_conversations DROP COLUMN route_context_json;
       `);
       expect(readSqliteNumberPragma(shippedSchema, "user_version")).toBe(
         OPENCLAW_AGENT_SCHEMA_VERSION,
@@ -3503,9 +3512,7 @@ describe("openclaw agent database", () => {
 
     const repaired = migrateAndOpenLegacyAgentDatabaseForTest({ agentId: "worker-1", env });
     expect(normalizeSqliteSchemaShapeSql(collectSqliteSchemaShape(repaired.db))).toEqual(
-      normalizeSqliteSchemaShapeSql(
-        createSqliteSchemaShapeFromSql(new URL("./openclaw-agent-schema.sql", import.meta.url)),
-      ),
+      normalizeSqliteSchemaShapeSql(createCurrentAgentRuntimeSchemaShape()),
     );
     expect(
       repaired.db
@@ -3515,6 +3522,13 @@ describe("openclaw agent database", () => {
     expect(
       repaired.db.prepare("SELECT main_key FROM session_key_contract WHERE id = 1").get(),
     ).toEqual({ main_key: "main" });
+    expect(
+      repaired.db
+        .prepare(
+          "SELECT name FROM pragma_table_info('session_conversations') WHERE name = 'route_context_json'",
+        )
+        .get(),
+    ).toEqual({ name: "route_context_json" });
   });
 
   it("installs same-version session additions before maintenance index repair", () => {
