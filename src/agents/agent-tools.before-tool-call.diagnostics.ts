@@ -52,7 +52,6 @@ import { normalizeFileToolPathParam } from "./agent-tools.params.js";
 import { getBeforeToolCallSourceTool } from "./before-tool-call-metadata.js";
 import { getChannelAgentToolMeta } from "./channel-tools.js";
 import { resolveAgentRunAbortLifecycleFields } from "./run-termination.js";
-import { resolveAgentIdentity } from "./identity.js";
 import { normalizeToolPolicyName } from "./tool-policy.js";
 import {
   resolveToolExecutionErrorKind,
@@ -477,13 +476,6 @@ export function emitSkillUsedDiagnostic(params: {
       ...(params.ctx?.sessionKey && { sessionKey: params.ctx.sessionKey }),
       ...(params.ctx?.sessionId && { sessionId: params.ctx.sessionId }),
       ...(params.ctx?.agentId && { agentId: params.ctx.agentId }),
-      ...(params.ctx?.agentId &&
-        params.ctx?.config && {
-          agentLabel: resolveAgentIdentity(
-            params.ctx.config,
-            params.ctx.agentId,
-          )?.name?.trim(),
-        }),
       ...(trace && { trace }),
       skillName: params.match.skillName,
       skillSource: params.match.skillSource,
