@@ -221,6 +221,7 @@ export interface SessionConversations {
   first_seen_at: number;
   last_seen_at: number;
   role: Generated<string>;
+  route_context_json: string | null;
   session_id: string;
 }
 
@@ -322,6 +323,25 @@ export interface SessionTranscriptArchives {
   reason: string;
   session_id: string;
   session_key: string;
+}
+
+export interface SessionTranscriptDisplayRows {
+  display_ordinal: number;
+  kind: string;
+  revision: number;
+  row_id: string;
+  row_version: number;
+  session_id: string;
+  source_event_seq: number;
+}
+
+export interface SessionTranscriptDisplayState {
+  generation: string;
+  indexed_seq: number;
+  needs_rebuild: Generated<number>;
+  row_count: number;
+  session_id: string;
+  updated_at: number;
 }
 
 export interface SessionTranscriptFts {
@@ -505,6 +525,8 @@ export interface DB {
   session_suggestions: SessionSuggestions;
   session_transcript_active_events: SessionTranscriptActiveEvents;
   session_transcript_archives: SessionTranscriptArchives;
+  session_transcript_display_rows: SessionTranscriptDisplayRows;
+  session_transcript_display_state: SessionTranscriptDisplayState;
   session_transcript_fts: SessionTranscriptFts;
   session_transcript_fts_config: SessionTranscriptFtsConfig;
   session_transcript_fts_content: SessionTranscriptFtsContent;

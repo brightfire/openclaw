@@ -42,8 +42,9 @@ import {
 } from "./openclaw-agent-db-schema-helpers.js";
 import {
   backfillSessionConversations,
-  ensureSessionProjectColumn,
+  ensureSessionAdditiveColumns,
   ensureSessionEntryValidityProjection,
+  hasPendingSessionConversationRouteContextColumn,
   migrateConversationDeliveryTargetColumn,
   migrateSessionEntryStatusProjection,
   readSqliteTableColumns,
@@ -56,6 +57,7 @@ import {
 } from "./openclaw-agent-db-session-provenance.js";
 import type { DB as OpenClawAgentKyselyDatabase } from "./openclaw-agent-db.generated.js";
 import { resolveOpenClawAgentSqlitePath } from "./openclaw-agent-db.paths.js";
+import { AGENT_BASE_SCHEMA_SQL } from "./openclaw-agent-display-row-schema.js";
 import { OPENCLAW_AGENT_SCHEMA_SQL } from "./openclaw-agent-schema.js";
 import { OPENCLAW_SQLITE_BUSY_TIMEOUT_MS } from "./openclaw-state-db.js";
 
@@ -569,9 +571,10 @@ export function assertAgentDatabaseIntegrityBeforeMutation(
     (hasPendingMemoryChunkMetadataMigration(database) ||
       hasPendingSessionKeyContractSchemaMigration(database) ||
       hasRetiredAgentStateLeaseSchema(database) ||
+      hasPendingSessionConversationRouteContextColumn(database) ||
       hasPendingSessionProjectColumn(database));
   if (userVersion === OPENCLAW_AGENT_SCHEMA_VERSION && !hasPendingCurrentVersionMigration) {
-    verifyAndRepairCanonicalSqliteIndexes(database, pathname, OPENCLAW_AGENT_SCHEMA_SQL, {
+    verifyAndRepairCanonicalSqliteIndexes(database, pathname, AGENT_BASE_SCHEMA_SQL, {
       allowMissingColumns: true,
       validateAfterRepair: () =>
         assertOpenClawAgentCurrentRuntimeSchema(database, { agentId, pathname }),
@@ -628,16 +631,16 @@ function ensureAgentSchema(
       }
       migrateRetiredAgentStateLeaseSchema(db, pathname, targetVersion);
       if (previousVersion === targetVersion) {
-        ensureSessionProjectColumn(db);
+        ensureSessionAdditiveColumns(db);
         ensureSessionEntryValidityProjection(db);
         ensureSessionKeyContractSchemaInTransaction(db);
         if (hasPendingMemoryChunkMetadataMigration(db)) {
           migrateMemoryChunkMetadataSchema(db);
-          db.exec(OPENCLAW_AGENT_SCHEMA_SQL);
+          db.exec(AGENT_BASE_SCHEMA_SQL);
         }
         // Repeat index repair before the transactional schema assertion so a
         // concurrent opener cannot turn repairable drift into a hard refusal.
-        repairCanonicalSqliteIndexes(db, pathname, OPENCLAW_AGENT_SCHEMA_SQL, {
+        repairCanonicalSqliteIndexes(db, pathname, AGENT_BASE_SCHEMA_SQL, {
           verifyPhysicalIntegrity: false,
         });
         assertAgentSchemaVersion(db, { agentId, pathname, version: targetVersion });
@@ -663,9 +666,9 @@ function ensureAgentSchema(
       }
       backfillSessionEntryProvenance(db, previousVersion);
       migrateSessionNodesAndWindows(db, previousVersion);
-      ensureSessionProjectColumn(db);
+      ensureSessionAdditiveColumns(db);
       ensureSessionEntryValidityProjection(db);
-      db.exec(OPENCLAW_AGENT_SCHEMA_SQL);
+      db.exec(AGENT_BASE_SCHEMA_SQL);
       migrateMemoryChunkMetadataSchema(db);
       if (previousVersion < targetVersion) {
         ensureOpenClawAgentBoardSchemaInTransaction(db);
@@ -673,11 +676,11 @@ function ensureAgentSchema(
       migrateSessionTranscriptGenerations(db, previousVersion);
       migrateSessionTranscriptActiveProjection(db, previousVersion);
       if (previousVersion < 11) {
-        migrateSqliteSchemaToStrictInTransaction(db, OPENCLAW_AGENT_SCHEMA_SQL, {
+        migrateSqliteSchemaToStrictInTransaction(db, AGENT_BASE_SCHEMA_SQL, {
           databaseLabel: pathname,
         });
       }
-      repairCanonicalSqliteIndexes(db, pathname, OPENCLAW_AGENT_SCHEMA_SQL, {
+      repairCanonicalSqliteIndexes(db, pathname, AGENT_BASE_SCHEMA_SQL, {
         verifyPhysicalIntegrity: false,
       });
       const kysely = getNodeSqliteKysely<OpenClawAgentMetadataDatabase>(db);
