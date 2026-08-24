@@ -58,7 +58,9 @@ import type { EmbeddedRunAttemptParams } from "./types.js";
 type CacheTrace = ReturnType<typeof createCacheTrace>;
 type AnthropicPayloadLogger = ReturnType<typeof createAnthropicPayloadLogger>;
 type CompactionReplayStreamOptions = NonNullable<Parameters<StreamFn>[2]> & {
-  onCompactionRejected?: (checkpoint: OpenAIResponsesCompactionRejection) => void;
+  onCompactionRejected?: (
+    checkpoint: OpenAIResponsesCompactionRejection,
+  ) => void;
 };
 
 function wrapStreamFnWithCompactionReplayRepair(
@@ -85,7 +87,11 @@ export function installEmbeddedAttemptStreamGuards(input: {
   session: AgentSession;
   sessionAgentId: string;
   cacheTrace: CacheTrace;
-  allCustomTools: Array<{ name?: string; description?: string; parameters?: unknown }>;
+  allCustomTools: Array<{
+    name?: string;
+    description?: string;
+    parameters?: unknown;
+  }>;
   systemPromptText: string;
   transcriptPolicy: TranscriptPolicy;
   sessionManager: SessionManager | undefined;
@@ -135,7 +141,10 @@ export function installEmbeddedAttemptStreamGuards(input: {
           );
           return;
         }
-        repair = repairRejectedCompactionReplayInSessionManager({ ...repairParams, checkpoint });
+        repair = repairRejectedCompactionReplayInSessionManager({
+          ...repairParams,
+          checkpoint,
+        });
       } else {
         repair = repairRejectedThinkingReplayInSessionManager(repairParams);
       }
@@ -154,7 +163,8 @@ export function installEmbeddedAttemptStreamGuards(input: {
       );
     }
   };
-  const cacheObservabilityEnabled = Boolean(input.cacheTrace) || log.isEnabled("debug");
+  const cacheObservabilityEnabled =
+    Boolean(input.cacheTrace) || log.isEnabled("debug");
   const promptCacheTools = cacheObservabilityEnabled
     ? collectPromptCacheTools(input.allCustomTools)
     : [];
@@ -164,7 +174,9 @@ export function installEmbeddedAttemptStreamGuards(input: {
       system: input.systemPromptText,
       note: "after session create",
     });
-    session.agent.streamFn = input.cacheTrace.wrapStreamFn(session.agent.streamFn);
+    session.agent.streamFn = input.cacheTrace.wrapStreamFn(
+      session.agent.streamFn,
+    );
   }
 
   // Anthropic Claude endpoints can reject replayed `thinking` blocks on
@@ -178,7 +190,8 @@ export function installEmbeddedAttemptStreamGuards(input: {
     session.agent.streamFn = wrapStreamFnWithMessageTransform(
       session.agent.streamFn,
       (messages) => {
-        const reasoningSanitized = input.transcriptPolicy.dropReasoningFromHistory
+        const reasoningSanitized = input.transcriptPolicy
+          .dropReasoningFromHistory
           ? dropReasoningFromHistory(messages)
           : messages;
         return input.transcriptPolicy.dropThinkingBlocks
@@ -192,10 +205,13 @@ export function installEmbeddedAttemptStreamGuards(input: {
     input.transcriptPolicy.dropThinkingBlocks ||
     input.transcriptPolicy.dropReasoningFromHistory
   ) {
-    session.agent.streamFn = wrapAnthropicStreamWithRecovery(session.agent.streamFn, {
-      id: session.sessionId,
-      onRecoveredAnthropicThinking: () => repairRejectedReplay("thinking"),
-    });
+    session.agent.streamFn = wrapAnthropicStreamWithRecovery(
+      session.agent.streamFn,
+      {
+        id: session.sessionId,
+        onRecoveredAnthropicThinking: () => repairRejectedReplay("thinking"),
+      },
+    );
   }
 
   // Mistral (and other strict providers) reject tool call IDs that don't match their
@@ -219,13 +235,17 @@ export function installEmbeddedAttemptStreamGuards(input: {
           allowedToolNames: input.replayAllowedToolNames,
           preserveNativeAnthropicToolUseIds:
             input.transcriptPolicy.preserveNativeAnthropicToolUseIds,
-          duplicateToolCallIdStyle: input.transcriptPolicy.duplicateToolCallIdStyle,
-          preserveReplaySafeThinkingToolCallIds: shouldAllowProviderOwnedThinkingReplay({
-            modelApi: (model as { api?: unknown })?.api as string | null | undefined,
-            provider: attempt.provider,
-            policy: input.transcriptPolicy,
-          }),
-          repairToolUseResultPairing: input.transcriptPolicy.repairToolUseResultPairing,
+          duplicateToolCallIdStyle:
+            input.transcriptPolicy.duplicateToolCallIdStyle,
+          preserveReplaySafeThinkingToolCallIds:
+            shouldAllowProviderOwnedThinkingReplay({
+              modelApi: (model as { api?: unknown })?.api as
+                string | null | undefined,
+              provider: attempt.provider,
+              policy: input.transcriptPolicy,
+            }),
+          repairToolUseResultPairing:
+            input.transcriptPolicy.repairToolUseResultPairing,
         }),
     );
   }
@@ -235,15 +255,20 @@ export function installEmbeddedAttemptStreamGuards(input: {
       session.agent.streamFn,
       (checkpoint) => repairRejectedReplay("compaction", checkpoint),
     );
-    session.agent.streamFn = wrapStreamFnWithMessageTransform(session.agent.streamFn, (messages) =>
-      sanitizeOpenAIResponsesReplayForStream(messages),
+    session.agent.streamFn = wrapStreamFnWithMessageTransform(
+      session.agent.streamFn,
+      (messages) => sanitizeOpenAIResponsesReplayForStream(messages),
     );
   }
 
   const innerStreamFn = session.agent.streamFn;
   session.agent.streamFn = (model, context, options) => {
     const signal = input.abortSignal as AbortSignal & { reason?: unknown };
-    if (input.isYieldDetected() && signal.aborted && isSessionsYieldAbortReason(signal.reason)) {
+    if (
+      input.isYieldDetected() &&
+      signal.aborted &&
+      isSessionsYieldAbortReason(signal.reason)
+    ) {
       return createYieldAbortedResponse(model) as unknown as Awaited<
         ReturnType<typeof innerStreamFn>
       >;
@@ -268,7 +293,9 @@ export function installEmbeddedAttemptStreamGuards(input: {
     session.agent.streamFn,
     input.liveAllowedToolNames,
     {
-      unknownToolThreshold: resolveUnknownToolGuardThreshold(input.clientToolLoopDetection),
+      unknownToolThreshold: resolveUnknownToolGuardThreshold(
+        input.clientToolLoopDetection,
+      ),
     },
   );
 
@@ -278,11 +305,15 @@ export function installEmbeddedAttemptStreamGuards(input: {
       modelApi: attempt.model.api,
     })
   ) {
-    session.agent.streamFn = wrapStreamFnRepairMalformedToolCallArguments(session.agent.streamFn);
+    session.agent.streamFn = wrapStreamFnRepairMalformedToolCallArguments(
+      session.agent.streamFn,
+    );
   }
 
   if (resolveToolCallArgumentsEncoding(attempt.model) === "html-entities") {
-    session.agent.streamFn = wrapStreamFnDecodeXaiToolCallArguments(session.agent.streamFn);
+    session.agent.streamFn = wrapStreamFnDecodeXaiToolCallArguments(
+      session.agent.streamFn,
+    );
   }
 
   // Tool-call repair can replace structured arguments from fragmented deltas.
@@ -295,12 +326,16 @@ export function installEmbeddedAttemptStreamGuards(input: {
   }
 
   if (input.anthropicPayloadLogger) {
-    session.agent.streamFn = input.anthropicPayloadLogger.wrapStreamFn(session.agent.streamFn);
+    session.agent.streamFn = input.anthropicPayloadLogger.wrapStreamFn(
+      session.agent.streamFn,
+    );
   }
   // Anthropic-compatible providers can add new stop reasons before shared model runtime maps them.
   // Recover the known "sensitive" stop reason here so a model refusal does not
   // bubble out as an uncaught runner error and stall channel polling.
-  session.agent.streamFn = wrapStreamFnHandleSensitiveStopReason(session.agent.streamFn);
+  session.agent.streamFn = wrapStreamFnHandleSensitiveStopReason(
+    session.agent.streamFn,
+  );
 
   // Wrap stream with idle timeout detection.
   //
@@ -314,12 +349,15 @@ export function installEmbeddedAttemptStreamGuards(input: {
   });
   const resolvedRunTimeoutMs =
     attempt.runTimeoutOverrideMs ??
-    (attempt.timeoutMs !== configuredRunTimeoutMs ? attempt.timeoutMs : undefined);
+    (attempt.timeoutMs !== configuredRunTimeoutMs
+      ? attempt.timeoutMs
+      : undefined);
   const idleTimeoutMs = resolveLlmIdleTimeoutMs({
     cfg: attempt.config,
     trigger: attempt.trigger,
     runTimeoutMs: resolvedRunTimeoutMs,
-    modelRequestTimeoutMs: (attempt.model as { requestTimeoutMs?: number }).requestTimeoutMs,
+    modelRequestTimeoutMs: (attempt.model as { requestTimeoutMs?: number })
+      .requestTimeoutMs,
     model: {
       baseUrl: attempt.model.baseUrl,
       id: attempt.modelId,
@@ -329,7 +367,8 @@ export function installEmbeddedAttemptStreamGuards(input: {
   const firstEventTimeoutMs = resolveLlmFirstEventTimeoutMs({
     cfg: attempt.config,
     runTimeoutMs: resolvedRunTimeoutMs,
-    modelRequestTimeoutMs: (attempt.model as { requestTimeoutMs?: number }).requestTimeoutMs,
+    modelRequestTimeoutMs: (attempt.model as { requestTimeoutMs?: number })
+      .requestTimeoutMs,
     model: {
       baseUrl: attempt.model.baseUrl,
       id: attempt.modelId,
@@ -361,50 +400,65 @@ export function installEmbeddedAttemptStreamGuards(input: {
         firstEventTimeoutMs?: number;
         onFirstEventTimeout?: (error: Error) => void;
       };
-      const optionsWithFirstEvent = options as FirstEventStreamOptions | undefined;
+      const optionsWithFirstEvent = options as
+        FirstEventStreamOptions | undefined;
       return baseStreamFn(model, context, {
         ...options,
-        firstEventTimeoutMs: optionsWithFirstEvent?.firstEventTimeoutMs ?? firstEventTimeoutMs,
-        onFirstEventTimeout: optionsWithFirstEvent?.onFirstEventTimeout ?? input.onIdleTimeout,
+        firstEventTimeoutMs:
+          optionsWithFirstEvent?.firstEventTimeoutMs ?? firstEventTimeoutMs,
+        onFirstEventTimeout:
+          optionsWithFirstEvent?.onFirstEventTimeout ?? input.onIdleTimeout,
       } as typeof options);
     };
   }
   let diagnosticModelCallSeq = 0;
-  session.agent.streamFn = wrapStreamFnWithDiagnosticModelCallEvents(session.agent.streamFn, {
-    runId: attempt.runId,
-    ...(attempt.sessionKey && { sessionKey: attempt.sessionKey }),
-    ...(attempt.sessionId && { sessionId: attempt.sessionId }),
-    agentId: input.sessionAgentId,
-    agentLabel: attempt.config
-      ? resolveAgentIdentity(attempt.config, input.sessionAgentId)?.name?.trim()
-      : undefined,
-    provider: attempt.provider,
-    model: attempt.modelId,
-    api: attempt.model.api,
-    transport: input.effectiveAgentTransport,
-    ...(attempt.contextWindowInfo?.tokens
-      ? { contextTokenBudget: attempt.contextWindowInfo.tokens }
-      : {}),
-    ...(attempt.contextWindowInfo?.source
-      ? { contextWindowSource: attempt.contextWindowInfo.source }
-      : {}),
-    ...(attempt.contextWindowInfo?.referenceTokens
-      ? { contextWindowReferenceTokens: attempt.contextWindowInfo.referenceTokens }
-      : {}),
-    trace: input.runTrace,
-    contentCapture: resolveDiagnosticModelContentCapturePolicy(attempt.config),
-    nextCallId: () => `${attempt.runId}:model:${(diagnosticModelCallSeq += 1)}`,
-    ownerGeneration: input.diagnosticOwner.generation,
-    onStarted: () => {
-      attempt.onExecutionPhase?.({
-        phase: "model_call_started",
-        provider: attempt.provider,
-        model: attempt.modelId,
-        firstModelCallStarted: true,
-      });
+  session.agent.streamFn = wrapStreamFnWithDiagnosticModelCallEvents(
+    session.agent.streamFn,
+    {
+      runId: attempt.runId,
+      ...(attempt.sessionKey && { sessionKey: attempt.sessionKey }),
+      ...(attempt.sessionId && { sessionId: attempt.sessionId }),
+      agentId: input.sessionAgentId,
+      agentLabel: attempt.config
+        ? resolveAgentIdentity(
+            attempt.config,
+            input.sessionAgentId,
+          )?.name?.trim()
+        : undefined,
+      provider: attempt.provider,
+      model: attempt.modelId,
+      api: attempt.model.api,
+      transport: input.effectiveAgentTransport,
+      ...(attempt.contextWindowInfo?.tokens
+        ? { contextTokenBudget: attempt.contextWindowInfo.tokens }
+        : {}),
+      ...(attempt.contextWindowInfo?.source
+        ? { contextWindowSource: attempt.contextWindowInfo.source }
+        : {}),
+      ...(attempt.contextWindowInfo?.referenceTokens
+        ? {
+            contextWindowReferenceTokens:
+              attempt.contextWindowInfo.referenceTokens,
+          }
+        : {}),
+      trace: input.runTrace,
+      contentCapture: resolveDiagnosticModelContentCapturePolicy(
+        attempt.config,
+      ),
+      nextCallId: () =>
+        `${attempt.runId}:model:${(diagnosticModelCallSeq += 1)}`,
+      ownerGeneration: input.diagnosticOwner.generation,
+      onStarted: () => {
+        attempt.onExecutionPhase?.({
+          phase: "model_call_started",
+          provider: attempt.provider,
+          model: attempt.modelId,
+          firstModelCallStarted: true,
+        });
+      },
+      suppressPluginHooks: attempt.operation === "settled-tool-finalization",
     },
-    suppressPluginHooks: attempt.operation === "settled-tool-finalization",
-  });
+  );
   return {
     cacheObservabilityEnabled,
     promptCacheTools,
