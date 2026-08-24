@@ -107,7 +107,6 @@ jobs:
     if: false
     name: Validate candidate ref
     needs: authorize_actor
-    if: needs.authorize_actor.outputs.authorized == 'true'
     runs-on: ubuntu-24.04
     outputs:
       candidate_revision: ${{ steps.validate.outputs.candidate-revision }}

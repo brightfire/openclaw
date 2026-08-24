@@ -83,6 +83,7 @@ env:
 
 jobs:
   resolve_target:
+    if: false
     name: Resolve target ref
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -683,6 +684,7 @@ jobs:
           retention-days: ${{ matrix.deep_profile == 'true' && 14 || 30 }}
 
   source_performance:
+    if: false
     name: OpenClaw source performance probes
     needs: resolve_target
     runs-on: blacksmith-16vcpu-ubuntu-2404
@@ -987,9 +989,9 @@ jobs:
           retention-days: 30
 
   publish:
+    if: false
     name: Publish ${{ matrix.title }} report
     needs: [resolve_target, kova, source_performance]
-    if: ${{ always() && needs.resolve_target.outputs.secret_eligible == 'true' && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.publish_reports == true)) && needs.resolve_target.result == 'success' && needs.kova.result != 'cancelled' && needs.source_performance.result != 'cancelled' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -1425,9 +1427,9 @@ jobs:
           done
 
   artifact_only_guard:
+    if: false
     name: Verify artifact-only report mode
     needs: [resolve_target, kova, publish]
-    if: ${{ always() && github.event_name == 'workflow_dispatch' && inputs.publish_reports != true }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:

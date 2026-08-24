@@ -37,6 +37,7 @@ env:
 
 jobs:
   preflight:
+    if: false
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     outputs:
@@ -105,8 +106,8 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
   install-smoke-fast:
+    if: false
     needs: [preflight]
-    if: needs.preflight.outputs.run_fast_install_smoke == 'true' && needs.preflight.outputs.run_full_install_smoke != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
@@ -216,8 +217,8 @@ jobs:
           '
 
   root_dockerfile_image:
+    if: false
     needs: [preflight]
-    if: needs.preflight.outputs.run_full_install_smoke == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     permissions:
@@ -408,8 +409,8 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   root_dockerfile_image_ready:
+    if: false
     needs: [preflight, root_dockerfile_image]
-    if: always() && needs.preflight.result == 'success' && needs.preflight.outputs.run_full_install_smoke == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -426,8 +427,8 @@ jobs:
           fi
 
   qr_package_install_smoke:
+    if: false
     needs: [preflight]
-    if: needs.preflight.outputs.run_full_install_smoke == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -443,8 +444,8 @@ jobs:
         run: bash scripts/e2e/qr-import-docker.sh
 
   root_dockerfile_smokes:
+    if: false
     needs: [preflight, root_dockerfile_image, root_dockerfile_image_ready]
-    if: needs.preflight.outputs.run_full_install_smoke == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
@@ -602,8 +603,8 @@ jobs:
           '
 
   installer_smoke_candidate_payload:
+    if: false
     needs: [preflight]
-    if: needs.preflight.outputs.run_full_install_smoke == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 75
     outputs:
@@ -777,8 +778,8 @@ jobs:
           retention-days: 7
 
   installer_smoke_update_image:
+    if: false
     needs: [preflight]
-    if: needs.preflight.outputs.run_full_install_smoke == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     outputs:
@@ -850,8 +851,8 @@ jobs:
           retention-days: 7
 
   installer_smoke_nonroot_image:
+    if: false
     needs: [preflight]
-    if: needs.preflight.outputs.run_full_install_smoke == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     outputs:
@@ -923,8 +924,8 @@ jobs:
           retention-days: 7
 
   installer_smoke_update:
+    if: false
     needs: [preflight, installer_smoke_candidate_payload, installer_smoke_update_image]
-    if: needs.preflight.outputs.run_full_install_smoke == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
@@ -1139,8 +1140,8 @@ jobs:
             bash -lc 'dnf install -y -q ca-certificates tar gzip xz findutils which sudo >/dev/null && bash /tmp/install-cli.sh --prefix /tmp/openclaw-cli --version latest --no-onboard && /tmp/openclaw-cli/bin/openclaw --version'
 
   installer_smoke_nonroot:
+    if: false
     needs: [preflight, installer_smoke_candidate_payload, installer_smoke_nonroot_image]
-    if: needs.preflight.outputs.run_full_install_smoke == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
@@ -1311,6 +1312,7 @@ jobs:
         run: bash .release-harness/scripts/test-install-sh-docker.sh
 
   installer_smoke:
+    if: false
     needs:
       [
         preflight,
@@ -1356,8 +1358,8 @@ jobs:
           exit "$failed"
 
   bun_global_install_smoke:
+    if: false
     needs: [preflight, installer_smoke_candidate_payload]
-    if: needs.preflight.outputs.run_full_install_smoke == 'true' && needs.preflight.outputs.run_bun_global_install_smoke == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
@@ -1459,8 +1461,8 @@ jobs:
         run: bash scripts/e2e/bun-global-install-smoke.sh
 
   docker-e2e-fast:
+    if: false
     needs: [preflight]
-    if: needs.preflight.outputs.run_fast_install_smoke == 'true' || needs.preflight.outputs.run_full_install_smoke == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 12
     env:

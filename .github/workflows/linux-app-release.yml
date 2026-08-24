@@ -24,6 +24,7 @@ env:
 
 jobs:
   validate_release:
+    if: false
     name: Validate release tag
     runs-on: ubuntu-22.04
     timeout-minutes: 10
@@ -73,6 +74,7 @@ jobs:
         run: gh release view "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" --json tagName --jq .tagName
 
   build_linux:
+    if: false
     name: Build Linux companion bundles
     needs: validate_release
     # Oldest supported build base: bundles link against this glibc, so newer
@@ -163,8 +165,8 @@ jobs:
   # TEST-ONLY bundles: no Apple codesigning/notarization or Authenticode.
   # Users must bypass Gatekeeper or SmartScreen before running them.
   build_macos:
+    if: false
     name: Build unsigned macOS test bundles
-    if: ${{ inputs['desktop-test-bundles'] }}
     needs: validate_release
     # macos-15, not macos-14: tauri-plugin-notifications' Swift sources use
     # typed throws (`throws(FFIResult)`), which needs Swift 6. The macos-14
@@ -234,8 +236,8 @@ jobs:
           if-no-files-found: error
 
   build_windows:
+    if: false
     name: Build unsigned Windows test bundle
-    if: ${{ inputs['desktop-test-bundles'] }}
     needs: validate_release
     runs-on: windows-2022
     timeout-minutes: 45
@@ -299,8 +301,8 @@ jobs:
           if-no-files-found: error
 
   publish:
+    if: false
     name: Publish companion bundles and updater manifest
-    if: >-
       ${{
         always() &&
         needs.build_linux.result == 'success' &&

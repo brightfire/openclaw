@@ -41,7 +41,6 @@ jobs:
   hydrate:
     if: false
     name: hydrate
-    if: ${{ inputs.crabbox_job != 'hydrate-github' && inputs.crabbox_job != 'hydrate-windows-daemon' }}
     runs-on: [self-hosted, "${{ inputs.crabbox_runner_label }}"]
     timeout-minutes: 120
     steps:
@@ -442,7 +441,6 @@ jobs:
   hydrate-windows-daemon:
     if: false
     name: hydrate-windows-daemon
-    if: ${{ inputs.crabbox_job == 'hydrate-windows-daemon' }}
     runs-on: [self-hosted, "${{ inputs.crabbox_runner_label }}"]
     timeout-minutes: 120
     steps:
@@ -676,7 +674,6 @@ jobs:
   hydrate-github:
     if: false
     name: hydrate-github
-    if: ${{ inputs.crabbox_job == 'hydrate-github' }}
     runs-on: [self-hosted, "${{ inputs.crabbox_runner_label }}"]
     timeout-minutes: 120
     steps:

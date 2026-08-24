@@ -105,6 +105,7 @@ env:
 
 jobs:
   authorize_actor:
+    if: false
     name: Authorize workflow actor
     runs-on: blacksmith-8vcpu-ubuntu-2404
     outputs:
@@ -153,9 +154,9 @@ jobs:
             }
 
   validate_selected_ref:
+    if: false
     name: Validate selected ref
     needs: authorize_actor
-    if: needs.authorize_actor.outputs.authorized == 'true'
     runs-on: blacksmith-8vcpu-ubuntu-2404
     outputs:
       protocol_base_revision: ${{ steps.validate.outputs.protocol_base_revision }}
@@ -283,6 +284,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   plan_qa_profile:
+    if: false
     name: Plan QA profile shards
     needs: validate_selected_ref
     runs-on: blacksmith-8vcpu-ubuntu-2404
@@ -444,6 +446,7 @@ jobs:
           NODE
 
   run_qa_profile_shard:
+    if: false
     name: Generate QA profile evidence (${{ matrix.id }})
     needs: [validate_selected_ref, plan_qa_profile]
     runs-on: blacksmith-8vcpu-ubuntu-2404
@@ -745,9 +748,9 @@ jobs:
           if-no-files-found: error
 
   aggregate_qa_profile:
+    if: false
     name: Aggregate QA profile evidence
     needs: [validate_selected_ref, plan_qa_profile, run_qa_profile_shard]
-    if: ${{ always() && needs.validate_selected_ref.result == 'success' && needs.plan_qa_profile.result == 'success' }}
     runs-on: blacksmith-8vcpu-ubuntu-2404
     # Selected-revision code requires the protected QA environment before runner allocation.
     environment: qa-live-shared

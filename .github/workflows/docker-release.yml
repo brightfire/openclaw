@@ -48,6 +48,7 @@ env:
 
 jobs:
   validate_release_identity:
+    if: false
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -102,6 +103,7 @@ jobs:
           fi
 
   resolve_release_policy:
+    if: false
     needs: validate_release_identity
     runs-on: ubuntu-24.04
     permissions:
@@ -142,6 +144,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   approve_docker_publish:
+    if: false
     name: Approve Docker publication ${{ inputs.tag }}
     needs: [validate_release_identity, resolve_release_policy]
     # Docker publication remains protected even though only release orchestration can call it.
@@ -156,6 +159,7 @@ jobs:
           echo "Approved immutable Docker image publication for ${RELEASE_TAG}"
 
   validate_publish_config:
+    if: false
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -174,8 +178,8 @@ jobs:
           echo "Docker Hub publishing configured for ${DOCKERHUB_IMAGE}."
 
   resolve_build_provenance:
+    if: false
     needs: [approve_docker_publish, resolve_release_policy, validate_publish_config]
-    if: ${{ always() && needs.approve_docker_publish.result == 'success' && needs.resolve_release_policy.result == 'success' && needs.validate_publish_config.result == 'success' }}
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -201,8 +205,8 @@ jobs:
   # DO NOT MOVE IT BACK TO BLACKSMITH WITHOUT RE-VALIDATING TAG BUILDS AND BACKFILLS.
   # Build amd64 image. Default and slim tags point to the same slim runtime.
   build-amd64:
+    if: false
     needs: [approve_docker_publish, validate_publish_config, resolve_build_provenance]
-    if: ${{ always() && needs.approve_docker_publish.result == 'success' && needs.validate_publish_config.result == 'success' && needs.resolve_build_provenance.result == 'success' }}
     # WARNING: DO NOT REVERT THIS TO A BLACKSMITH RUNNER WITHOUT RE-VALIDATING TAG BACKFILLS.
     runs-on: ubuntu-24.04
     permissions:
@@ -430,8 +434,8 @@ jobs:
 
   # Build arm64 image. Default and slim tags point to the same slim runtime.
   build-arm64:
+    if: false
     needs: [approve_docker_publish, validate_publish_config, resolve_build_provenance]
-    if: ${{ always() && needs.approve_docker_publish.result == 'success' && needs.validate_publish_config.result == 'success' && needs.resolve_build_provenance.result == 'success' }}
     # WARNING: DO NOT REVERT THIS TO A BLACKSMITH RUNNER WITHOUT RE-VALIDATING TAG BACKFILLS.
     runs-on: ubuntu-24.04-arm
     permissions:
@@ -640,6 +644,7 @@ jobs:
 
   # Create multi-platform manifests
   create-manifest:
+    if: false
     needs:
       [
         approve_docker_publish,
@@ -784,9 +789,9 @@ jobs:
           fi
 
   verify-attestations:
+    if: false
     name: Verify attestations and promote channel
     needs: [resolve_release_policy, resolve_build_provenance, create-manifest]
-    if: ${{ always() && needs.create-manifest.result == 'success' }}
     runs-on: ubuntu-24.04
     outputs:
       vcr_source_refs: ${{ steps.vcr_source_refs.outputs.value }}

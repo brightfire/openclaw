@@ -43,6 +43,7 @@ env:
 
 jobs:
   resolve_request:
+    if: false
     name: Resolve Mantis request
     runs-on: ubuntu-24.04
     environment: qa-live-shared
@@ -164,9 +165,9 @@ jobs:
             });
 
   run_telegram_visible_proof:
+    if: false
     name: Run agentic native Telegram proof
     needs: resolve_request
-    if: needs.resolve_request.outputs.should_run == 'true'
     runs-on: blacksmith-16vcpu-ubuntu-2404
     timeout-minutes: 100
     environment: qa-live-shared

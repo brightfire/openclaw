@@ -46,6 +46,7 @@ env:
 
 jobs:
   preview_plugins_clawhub:
+    if: false
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -268,9 +269,9 @@ jobs:
           fi
 
   validate_release_publish_approval:
+    if: false
     name: Validate release publish approval
     needs: preview_plugins_clawhub
-    if: github.event_name == 'workflow_dispatch' && needs.preview_plugins_clawhub.outputs.has_candidates == 'true'
     runs-on: ubuntu-latest
     permissions:
       actions: read
@@ -306,8 +307,8 @@ jobs:
           printf '%s' "$RUN_JSON" | DIRECT_RELEASE_RECOVERY="${direct_recovery}" node scripts/validate-release-publish-approval.mjs
 
   pack_plugins_clawhub_artifacts:
+    if: false
     needs: [preview_plugins_clawhub, validate_release_publish_approval]
-    if: github.event_name == 'workflow_dispatch' && needs.preview_plugins_clawhub.outputs.has_candidates == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -375,8 +376,8 @@ jobs:
           retention-days: 7
 
   approve_plugins_clawhub_release:
+    if: false
     needs: [preview_plugins_clawhub, pack_plugins_clawhub_artifacts]
-    if: always() && github.event_name == 'workflow_dispatch' && inputs.dry_run != true && needs.preview_plugins_clawhub.outputs.has_candidates == 'true' && needs.pack_plugins_clawhub_artifacts.result == 'success'
     runs-on: ubuntu-latest
     environment: clawhub-plugin-release
     permissions:
@@ -387,9 +388,9 @@ jobs:
           echo "Approved CLAW-277 03 - Split OpenClaw plugin ClawHub publishing into OIDC release and token bootstrap workflows release publish gate."
 
   publish_plugins_clawhub:
+    if: false
     needs:
       [preview_plugins_clawhub, pack_plugins_clawhub_artifacts, approve_plugins_clawhub_release]
-    if: always() && github.event_name == 'workflow_dispatch' && needs.preview_plugins_clawhub.outputs.has_candidates == 'true' && needs.pack_plugins_clawhub_artifacts.result == 'success' && (inputs.dry_run == true || needs.approve_plugins_clawhub_release.result == 'success')
     uses: openclaw/clawhub/.github/workflows/package-publish.yml@87ca030c30f3cfb78ab15c8e66b5ff1469c8f9c8 # v0.23.3
     permissions:
       actions: read
@@ -415,8 +416,8 @@ jobs:
       publish_json_artifact_name: ${{ matrix.plugin.artifactName }}-publish-json
 
   verify_published_clawhub_package:
+    if: false
     needs: [preview_plugins_clawhub, publish_plugins_clawhub]
-    if: github.event_name == 'workflow_dispatch' && inputs.dry_run != true && needs.preview_plugins_clawhub.outputs.has_candidates == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:

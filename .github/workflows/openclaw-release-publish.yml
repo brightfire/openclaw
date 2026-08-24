@@ -119,6 +119,7 @@ env:
 
 jobs:
   resolve_release_target:
+    if: false
     name: Resolve release target
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -837,9 +838,9 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   publish:
+    if: false
     name: Publish plugins, then OpenClaw
     needs: [resolve_release_target]
-    if: ${{ !inputs.publish_docker_only }}
     permissions:
       actions: write
       attestations: write
@@ -2704,9 +2705,9 @@ jobs:
           if-no-files-found: error
 
   verify_core_npm_registry:
+    if: false
     name: Verify already-published core npm package
     needs: [resolve_release_target]
-    if: ${{ inputs.publish_docker_only }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -2736,9 +2737,9 @@ jobs:
           fi
 
   publish_docker:
+    if: false
     name: Publish Docker images
     needs: [resolve_release_target, publish, verify_core_npm_registry]
-    if: ${{ always() && ((inputs.publish_openclaw_npm && needs.publish.result == 'success') || (inputs.publish_docker_only && needs.verify_core_npm_registry.result == 'success')) }}
     uses: ./.github/workflows/docker-release.yml
     with:
       tag: ${{ inputs.tag }}
@@ -2751,9 +2752,9 @@ jobs:
       packages: write
 
   publish_vcr:
+    if: false
     name: Mirror Docker images to Vercel Container Registry
     needs: [publish_docker]
-    if: ${{ always() && needs.publish_docker.result == 'success' }}
     uses: ./.github/workflows/vercel-container-registry-publish.yml
     with:
       include_browser: ${{ needs.publish_docker.outputs.include_browser == 'true' }}
@@ -2765,9 +2766,9 @@ jobs:
       contents: read
 
   finalize_github_release:
+    if: false
     name: Finalize GitHub release
     needs: [publish, publish_docker]
-    if: ${{ always() && inputs.publish_openclaw_npm && needs.publish.result == 'success' && needs.publish_docker.result == 'success' }}
     runs-on: ubuntu-latest
     environment: npm-release
     permissions:

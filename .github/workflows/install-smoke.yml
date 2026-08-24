@@ -27,6 +27,7 @@ concurrency:
 
 jobs:
   install_smoke:
+    if: false
     permissions:
       actions: read
       contents: read

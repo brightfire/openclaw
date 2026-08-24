@@ -373,7 +373,6 @@ jobs:
       contents: read
     name: ${{ matrix.check_name }}
     needs: [preflight]
-    if: needs.preflight.outputs.run_plugin_prerelease_static == 'true'
     runs-on: ${{ github.event_name == 'workflow_dispatch' && 'ubuntu-24.04' || 'blacksmith-8vcpu-ubuntu-2404' }}
     timeout-minutes: 45
     strategy:
@@ -411,7 +410,6 @@ jobs:
       contents: read
     name: ${{ matrix.check_name }}
     needs: [preflight]
-    if: needs.preflight.outputs.run_plugin_prerelease_node == 'true'
     runs-on: ${{ github.event_name == 'workflow_dispatch' && 'ubuntu-24.04' || (matrix.runner || 'ubuntu-24.04') }}
     timeout-minutes: 60
     strategy:
@@ -522,7 +520,6 @@ jobs:
       contents: read
     name: ${{ matrix.check_name }}
     needs: [preflight]
-    if: needs.preflight.outputs.run_plugin_prerelease_extensions == 'true'
     runs-on: ${{ github.event_name == 'workflow_dispatch' && 'ubuntu-24.04' || matrix.runner }}
     timeout-minutes: 60
     strategy:
@@ -591,7 +588,6 @@ jobs:
       contents: read
     name: plugin-prerelease-inspector
     needs: [preflight]
-    if: needs.preflight.outputs.run_plugin_prerelease_suite == 'true'
     continue-on-error: true
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -770,7 +766,6 @@ jobs:
     if: false
     name: plugin-prerelease-docker-suite
     needs: [preflight]
-    if: ${{ inputs.full_release_validation && needs.preflight.outputs.run_plugin_prerelease_docker == 'true' }}
     permissions:
       actions: read
       contents: read

@@ -1007,7 +1007,6 @@ jobs:
     # npm trusted publishing + provenance requires this to stay on ubuntu-latest.
     if: false
     needs: [validate_publish_request]
-    if: ${{ !inputs.preflight_only }}
     runs-on: ubuntu-latest
     environment: npm-release
     permissions:

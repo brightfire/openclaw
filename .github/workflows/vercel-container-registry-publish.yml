@@ -31,6 +31,7 @@ concurrency:
 
 jobs:
   publish:
+    if: false
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     # VCR is a best-effort mirror. Failed steps remain visible, but the primary

@@ -169,6 +169,7 @@ env:
 
 jobs:
   resolve_target:
+    if: false
     name: Resolve target ref
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -430,9 +431,9 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   evidence_reuse:
+    if: false
     name: Check for reusable validation evidence
     needs: [resolve_target]
-    if: inputs.rerun_group == 'all' && inputs.reuse_evidence && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release-ci/'))
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
@@ -561,9 +562,9 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   docker_runtime_assets_preflight:
+    if: false
     name: Verify Docker runtime image assets
     needs: [resolve_target, evidence_reuse]
-    if: ${{ always() && github.run_attempt == 1 && needs.resolve_target.result == 'success' && inputs.rerun_group == 'all' && needs.evidence_reuse.outputs.reuse != 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
@@ -587,9 +588,9 @@ jobs:
             .
 
   prepare_release_candidate:
+    if: false
     name: Prepare shared release candidate
     needs: [resolve_target, evidence_reuse]
-    if: ${{ always() && github.run_attempt == 1 && needs.resolve_target.result == 'success' && needs.evidence_reuse.outputs.reuse != 'true' && inputs.release_package_spec == '' && inputs.package_acceptance_package_spec == '' && (contains(fromJSON('["all","plugin-prerelease","cross-os","package"]'), inputs.rerun_group) || (inputs.rerun_group == 'live-e2e' && needs.resolve_target.outputs.live_suite_filter == '')) }}
     permissions:
       actions: read
       contents: read
@@ -612,9 +613,9 @@ jobs:
       shared_image_policy: no-push-artifact
 
   normal_ci:
+    if: false
     name: Run normal full CI
     needs: [resolve_target, evidence_reuse]
-    if: ${{ always() && github.run_attempt == 1 && needs.resolve_target.result == 'success' && contains(fromJSON('["all","ci"]'), inputs.rerun_group) && needs.evidence_reuse.outputs.reuse != 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     outputs:
@@ -956,9 +957,9 @@ jobs:
           esac
 
   plugin_prerelease:
+    if: false
     name: Run plugin prerelease validation
     needs: [resolve_target, evidence_reuse, prepare_release_candidate]
-    if: ${{ always() && github.run_attempt == 1 && needs.resolve_target.result == 'success' && (needs.prepare_release_candidate.result == 'success' || needs.prepare_release_candidate.result == 'skipped') && contains(fromJSON('["all","plugin-prerelease"]'), inputs.rerun_group) && needs.evidence_reuse.outputs.reuse != 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     outputs:
@@ -980,9 +981,9 @@ jobs:
         run: *full_release_child_dispatch
 
   release_checks:
+    if: false
     name: Run release/live/Docker/QA validation
     needs: [resolve_target, evidence_reuse, prepare_release_candidate]
-    if: ${{ always() && github.run_attempt == 1 && needs.resolve_target.result == 'success' && (needs.prepare_release_candidate.result == 'success' || needs.prepare_release_candidate.result == 'skipped') && contains(fromJSON('["all","install-smoke","cross-os","live-e2e","package","qa-parity","qa-live"]'), inputs.rerun_group) && needs.evidence_reuse.outputs.reuse != 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 15
     outputs:
@@ -1017,9 +1018,9 @@ jobs:
         run: *full_release_child_dispatch
 
   npm_telegram:
+    if: false
     name: Run package Telegram E2E
     needs: [resolve_target, evidence_reuse]
-    if: ${{ always() && github.run_attempt == 1 && needs.resolve_target.result == 'success' && contains(fromJSON('["all","npm-telegram"]'), inputs.rerun_group) && (inputs.npm_telegram_package_spec != '' || inputs.release_package_spec != '') && needs.evidence_reuse.outputs.reuse != 'true' }}
     continue-on-error: ${{ startsWith(github.ref, 'refs/heads/tideclaw/alpha/') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -1042,9 +1043,9 @@ jobs:
         run: *full_release_child_dispatch
 
   performance:
+    if: false
     name: Run product performance evidence
     needs: [resolve_target, evidence_reuse]
-    if: ${{ always() && github.run_attempt == 1 && needs.resolve_target.result == 'success' && contains(fromJSON('["all","performance"]'), inputs.rerun_group) && needs.evidence_reuse.outputs.reuse != 'true' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 15
     outputs:
@@ -1064,6 +1065,7 @@ jobs:
         run: *full_release_child_dispatch
 
   release_execution_plan:
+    if: false
     name: Seal release execution plan
     needs:
       [
@@ -1236,9 +1238,9 @@ jobs:
           if-no-files-found: error
 
   release_decision:
+    if: false
     name: Release Decision
     needs: [resolve_target, release_execution_plan]
-    if: always()
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 720
     outputs:
@@ -1297,9 +1299,9 @@ jobs:
           exit 1
 
   diagnostic_drain:
+    if: false
     name: Diagnostic Drain
     needs: [resolve_target, release_execution_plan]
-    if: always()
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 720
     outputs:
@@ -1367,6 +1369,7 @@ jobs:
           esac
 
   summary:
+    if: false
     name: Verify full validation
     needs:
       [

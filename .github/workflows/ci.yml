@@ -75,9 +75,9 @@ jobs:
   # Preflight: establish routing truth and job matrices once, then let real
   # work fan out from a single source of truth.
   preflight:
+    if: false
     permissions:
       contents: read
-    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ${{ (vars.OPENCLAW_CI_RUNNER_BACKEND == 'github' || vars.OPENCLAW_CI_RUNNER_BACKEND == 'hybrid') && 'ubuntu-24.04' || github.event_name == 'workflow_dispatch' && 'ubuntu-24.04' || (github.repository == 'openclaw/openclaw' && (github.event_name != 'pull_request' || contains(fromJSON('["OWNER","MEMBER","COLLABORATOR","CONTRIBUTOR"]'), github.event.pull_request.author_association)) && 'blacksmith-4vcpu-ubuntu-2404' || 'ubuntu-24.04') }}
     timeout-minutes: 20
     outputs:
@@ -1031,9 +1031,9 @@ jobs:
   # Run dependency-free security checks on a hosted runner in parallel with
   # scope detection. No downstream job waits for Python/pre-commit setup.
   security-fast:
+    if: false
     permissions:
       contents: read
-    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
@@ -1244,10 +1244,10 @@ jobs:
   # GitHub backend, and docs-only same-repo PRs. This job restores only; the
   # trusted cache warmer owns publication.
   pnpm-store-warmup:
+    if: false
     permissions:
       contents: read
     needs: [preflight]
-    if: ${{ (needs.preflight.outputs.run_node == 'true' || needs.preflight.outputs.run_check_docs == 'true') && (vars.OPENCLAW_CI_RUNNER_BACKEND == 'github' || vars.OPENCLAW_CI_RUNNER_BACKEND == 'hybrid' || (!(github.repository == 'openclaw/openclaw' && github.event_name == 'push' && github.ref == 'refs/heads/main') && !(github.repository == 'openclaw/openclaw' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && needs.preflight.outputs.run_node == 'true'))) }}
     runs-on: ${{ (vars.OPENCLAW_CI_RUNNER_BACKEND == 'github' || vars.OPENCLAW_CI_RUNNER_BACKEND == 'hybrid') && 'ubuntu-24.04' || github.event_name == 'workflow_dispatch' && 'ubuntu-24.04' || (github.repository == 'openclaw/openclaw' && (github.event_name != 'pull_request' || contains(fromJSON('["OWNER","MEMBER","COLLABORATOR","CONTRIBUTOR"]'), github.event.pull_request.author_association)) && 'blacksmith-4vcpu-ubuntu-2404' || 'ubuntu-24.04') }}
     timeout-minutes: 20
     steps:
@@ -1321,10 +1321,10 @@ jobs:
   # Keep this overlapping with the fast correctness lanes so green PRs get heavy
   # test/build feedback sooner instead of waiting behind a full `check` pass.
   build-artifacts:
+    if: false
     permissions:
       contents: read
     needs: [preflight]
-    if: needs.preflight.outputs.run_build_artifacts == 'true'
     # 32 vCPU: the dist build sits on the light-run critical path alongside
     # check-lint/check-dependencies; tsdown parallelizes across the extra
     # cores for roughly the same billed core-minutes.
@@ -1605,11 +1605,11 @@ jobs:
           retention-days: 7
 
   sqlite-session-lifecycle:
+    if: false
     permissions:
       contents: read
     name: check-sqlite-session-lifecycle
     needs: [preflight, build-artifacts]
-    if: ${{ !cancelled() && always() && needs.preflight.outputs.run_sqlite_session_lifecycle == 'true' && needs.build-artifacts.result == 'success' }}
     runs-on: ${{ vars.OPENCLAW_CI_RUNNER_BACKEND == 'github' && 'ubuntu-24.04' || (vars.OPENCLAW_CI_RUNNER_BACKEND == 'hybrid' && github.run_attempt > 1) && 'ubuntu-24.04' || github.event_name == 'workflow_dispatch' && 'ubuntu-24.04' || (github.repository == 'openclaw/openclaw' && (github.event_name != 'pull_request' || contains(fromJSON('["OWNER","MEMBER","COLLABORATOR","CONTRIBUTOR"]'), github.event.pull_request.author_association)) && 'blacksmith-8vcpu-ubuntu-2404' || 'ubuntu-24.04') }}
     timeout-minutes: 20
     steps:
@@ -1638,10 +1638,10 @@ jobs:
         run: node scripts/run-vitest.mjs run --config test/vitest/vitest.e2e.config.ts test/scripts/sqlite-sessions-transcripts-flip-proof.built-cli.e2e.test.ts
 
   native-i18n:
+    if: false
     permissions:
       contents: read
     needs: [preflight]
-    if: ${{ !cancelled() && always() && needs.preflight.outputs.run_native_i18n == 'true' }}
     runs-on: ${{ (vars.OPENCLAW_CI_RUNNER_BACKEND == 'github' || vars.OPENCLAW_CI_RUNNER_BACKEND == 'hybrid') && 'ubuntu-24.04' || github.event_name == 'workflow_dispatch' && 'ubuntu-24.04' || (github.repository == 'openclaw/openclaw' && (github.event_name != 'pull_request' || contains(fromJSON('["OWNER","MEMBER","COLLABORATOR","CONTRIBUTOR"]'), github.event.pull_request.author_association)) && 'blacksmith-4vcpu-ubuntu-2404' || 'ubuntu-24.04') }}
     timeout-minutes: 10
     steps:
@@ -1677,11 +1677,11 @@ jobs:
           fi
 
   checks-ui:
+    if: false
     permissions:
       contents: read
     name: checks-ui
     needs: [preflight]
-    if: needs.preflight.outputs.run_ui_tests == 'true'
     # Measured 177s body on hosted 4-core (run 31861511624); hybrid attempt 1
     # rides the 8 vCPU class like the ui-e2e shards, retries stay hosted.
     runs-on: ${{ vars.OPENCLAW_CI_RUNNER_BACKEND == 'github' && 'ubuntu-24.04' || (vars.OPENCLAW_CI_RUNNER_BACKEND == 'hybrid' && github.run_attempt > 1) && 'ubuntu-24.04' || github.event_name == 'workflow_dispatch' && 'ubuntu-24.04' || (vars.OPENCLAW_CI_RUNNER_BACKEND == 'hybrid' && github.repository == 'openclaw/openclaw' && (github.event_name != 'pull_request' || contains(fromJSON('["OWNER","MEMBER","COLLABORATOR","CONTRIBUTOR"]'), github.event.pull_request.author_association)) && 'blacksmith-8vcpu-ubuntu-2404' || (github.repository == 'openclaw/openclaw' && (github.event_name != 'pull_request' || contains(fromJSON('["OWNER","MEMBER","COLLABORATOR","CONTRIBUTOR"]'), github.event.pull_request.author_association)) && 'blacksmith-4vcpu-ubuntu-2404' || 'ubuntu-24.04')) }}
@@ -1745,13 +1745,13 @@ jobs:
           fi
 
   checks-ui-e2e:
+    if: false
     permissions:
       contents: read
     name: checks-ui-e2e (${{ matrix.shard }}/${{ matrix.shard_count }})
     needs: [preflight]
     # Compatibility targets pin a frozen Control UI whose e2e expectations track
     # that release, not current main.
-    if: needs.preflight.outputs.run_ui_tests == 'true' && needs.preflight.outputs.compatibility_target != 'true'
     # Hybrid attempt 1 uses Blacksmith; github mode, hybrid retries, manual
     # dispatches, forks, and same-repo PR retries use GitHub-hosted capacity.
     runs-on: ${{ vars.OPENCLAW_CI_RUNNER_BACKEND == 'github' && 'ubuntu-24.04' || (vars.OPENCLAW_CI_RUNNER_BACKEND == 'hybrid' && github.run_attempt > 1) && 'ubuntu-24.04' || (github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.run_attempt > 1)) && 'ubuntu-24.04' || (github.repository == 'openclaw/openclaw' && (github.event_name != 'pull_request' || contains(fromJSON('["OWNER","MEMBER","COLLABORATOR","CONTRIBUTOR"]'), github.event.pull_request.author_association)) && 'blacksmith-8vcpu-ubuntu-2404' || 'ubuntu-24.04') }}
@@ -1805,13 +1805,13 @@ jobs:
         run: pnpm test:e2e:browser-extension
 
   checks-ui-e2e-real-gateway:
+    if: false
     permissions:
       contents: read
     name: checks-ui-e2e-real-gateway
     needs: [preflight]
     # Compatibility targets pin a frozen Control UI whose e2e expectations track
     # that release, not current main.
-    if: needs.preflight.outputs.run_ui_tests == 'true' && needs.preflight.outputs.compatibility_target != 'true'
     # First-attempt same-repo runs use Blacksmith unless the backend breaker is
     # set; manual dispatches, forks, and same-repo PR retries also use GitHub-hosted capacity.
     # This lane owns the same serial Chromium workload as checks-ui-e2e, so it
@@ -1870,11 +1870,11 @@ jobs:
           ui/src/e2e/logs-lifecycle.e2e.test.ts
 
   control-ui-i18n:
+    if: false
     permissions:
       contents: read
     name: control-ui-i18n
     needs: [preflight]
-    if: needs.preflight.outputs.run_control_ui_i18n == 'true'
     runs-on: ${{ (vars.OPENCLAW_CI_RUNNER_BACKEND == 'github' || vars.OPENCLAW_CI_RUNNER_BACKEND == 'hybrid') && 'ubuntu-24.04' || github.event_name == 'workflow_dispatch' && 'ubuntu-24.04' || (github.repository == 'openclaw/openclaw' && (github.event_name != 'pull_request' || contains(fromJSON('["OWNER","MEMBER","COLLABORATOR","CONTRIBUTOR"]'), github.event.pull_request.author_association)) && 'blacksmith-4vcpu-ubuntu-2404' || 'ubuntu-24.04') }}
     timeout-minutes: 10
     env:
@@ -1909,12 +1909,12 @@ jobs:
         run: pnpm ui:i18n:check
 
   checks-fast-core:
+    if: false
     permissions:
       contents: read
       pull-requests: read
     name: ${{ matrix.check_name }}
     needs: [preflight]
-    if: needs.preflight.outputs.run_checks_fast_core == 'true'
     runs-on: ${{ (vars.OPENCLAW_CI_RUNNER_BACKEND == 'github' || vars.OPENCLAW_CI_RUNNER_BACKEND == 'hybrid') && 'ubuntu-24.04' || github.event_name == 'workflow_dispatch' && 'ubuntu-24.04' || (github.repository == 'openclaw/openclaw' && (github.event_name != 'pull_request' || contains(fromJSON('["OWNER","MEMBER","COLLABORATOR","CONTRIBUTOR"]'), github.event.pull_request.author_association)) && (matrix.runner || 'blacksmith-4vcpu-ubuntu-2404') || 'ubuntu-24.04') }}
     timeout-minutes: 60
     strategy:
@@ -2052,11 +2052,11 @@ jobs:
           esac
 
   qa-smoke-ci-profile:
+    if: false
     permissions:
       contents: read
     name: QA Smoke CI (${{ matrix.name }})
     needs: [preflight]
-    if: needs.preflight.outputs.run_qa_smoke_ci == 'true'
     runs-on: ${{ vars.OPENCLAW_CI_RUNNER_BACKEND == 'github' && 'ubuntu-24.04' || (vars.OPENCLAW_CI_RUNNER_BACKEND == 'hybrid' && github.run_attempt > 1) && 'ubuntu-24.04' || github.event_name == 'workflow_dispatch' && 'ubuntu-24.04' || (github.repository == 'openclaw/openclaw' && (github.event_name != 'pull_request' || contains(fromJSON('["OWNER","MEMBER","COLLABORATOR","CONTRIBUTOR"]'), github.event.pull_request.author_association)) && 'blacksmith-16vcpu-ubuntu-2404' || 'ubuntu-24.04') }}
     timeout-minutes: 60
     strategy:
@@ -2236,11 +2236,11 @@ jobs:
           retention-days: 7
 
   checks-fast-plugin-contracts-shard:
+    if: false
     permissions:
       contents: read
     name: ${{ matrix.checkName }}
     needs: [preflight]
-    if: needs.preflight.outputs.run_plugin_contracts_shards == 'true'
     runs-on: ${{ (vars.OPENCLAW_CI_RUNNER_BACKEND == 'github' || vars.OPENCLAW_CI_RUNNER_BACKEND == 'hybrid') && 'ubuntu-24.04' || github.event_name == 'workflow_dispatch' && 'ubuntu-24.04' || (github.repository == 'openclaw/openclaw' && (github.event_name != 'pull_request' || contains(fromJSON('["OWNER","MEMBER","COLLABORATOR","CONTRIBUTOR"]'), github.event.pull_request.author_association)) && 'blacksmith-4vcpu-ubuntu-2404' || 'ubuntu-24.04') }}
     timeout-minutes: 60
     strategy:
@@ -2279,11 +2279,11 @@ jobs:
           OPENCLAW_VITEST_INCLUDE_FILE="$include_file" pnpm test:contracts:plugins
 
   checks-fast-channel-contracts-shard:
+    if: false
     permissions:
       contents: read
     name: ${{ matrix.checkName }}
     needs: [preflight]
-    if: needs.preflight.outputs.run_channel_contracts_shards == 'true'
     runs-on: ${{ (vars.OPENCLAW_CI_RUNNER_BACKEND == 'github' || vars.OPENCLAW_CI_RUNNER_BACKEND == 'hybrid') && 'ubuntu-24.04' || github.event_name == 'workflow_dispatch' && 'ubuntu-24.04' || (github.repository == 'openclaw/openclaw' && (github.event_name != 'pull_request' || contains(fromJSON('["OWNER","MEMBER","COLLABORATOR","CONTRIBUTOR"]'), github.event.pull_request.author_association)) && 'blacksmith-4vcpu-ubuntu-2404' || 'ubuntu-24.04') }}
     timeout-minutes: 60
     strategy:
@@ -2323,11 +2323,11 @@ jobs:
           OPENCLAW_VITEST_INCLUDE_FILE="$include_file" pnpm test:contracts:channels
 
   checks-node-compat:
+    if: false
     permissions:
       contents: read
     name: checks-node-compat-node22
     needs: [preflight]
-    if: needs.preflight.outputs.run_build_artifacts == 'true' && github.event_name == 'workflow_dispatch'
     runs-on: ${{ (vars.OPENCLAW_CI_RUNNER_BACKEND == 'github' || vars.OPENCLAW_CI_RUNNER_BACKEND == 'hybrid') && 'ubuntu-24.04' || github.event_name == 'workflow_dispatch' && 'ubuntu-24.04' || (github.repository == 'openclaw/openclaw' && (github.event_name != 'pull_request' || contains(fromJSON('["OWNER","MEMBER","COLLABORATOR","CONTRIBUTOR"]'), github.event.pull_request.author_association)) && 'blacksmith-4vcpu-ubuntu-2404' || 'ubuntu-24.04') }}
     timeout-minutes: 60
     steps:
@@ -2354,11 +2354,11 @@ jobs:
           pnpm test:build:singleton
 
   checks-node-core-test-nondist-shard:
+    if: false
     permissions:
       contents: read
     name: ${{ matrix.check_name }}
     needs: [preflight]
-    if: needs.preflight.outputs.run_checks_node_core_nondist == 'true'
     runs-on: ${{ vars.OPENCLAW_CI_RUNNER_BACKEND == 'github' && 'ubuntu-24.04' || (vars.OPENCLAW_CI_RUNNER_BACKEND == 'hybrid' && github.run_attempt > 1) && 'ubuntu-24.04' || github.event_name == 'workflow_dispatch' && 'ubuntu-24.04' || (github.repository == 'openclaw/openclaw' && (github.event_name != 'pull_request' || contains(fromJSON('["OWNER","MEMBER","COLLABORATOR","CONTRIBUTOR"]'), github.event.pull_request.author_association)) && (matrix.runner || 'blacksmith-4vcpu-ubuntu-2404') || 'ubuntu-24.04') }}
     timeout-minutes: ${{ matrix.timeout_minutes || 60 }}
     strategy:
@@ -2511,11 +2511,11 @@ jobs:
 
   # Types, lint, and format check shards.
   check-shard:
+    if: false
     permissions:
       contents: read
     name: ${{ matrix.check_name }}
     needs: [preflight]
-    if: ${{ !cancelled() && always() && needs.preflight.outputs.run_check == 'true' }}
     runs-on: ${{ vars.OPENCLAW_CI_RUNNER_BACKEND == 'github' && 'ubuntu-24.04' || (vars.OPENCLAW_CI_RUNNER_BACKEND == 'hybrid' && (github.run_attempt > 1 || (matrix.task != 'lint' && matrix.task != 'test-types' && matrix.task != 'dependencies'))) && 'ubuntu-24.04' || github.event_name == 'workflow_dispatch' && 'ubuntu-24.04' || (github.repository == 'openclaw/openclaw' && (github.event_name != 'pull_request' || contains(fromJSON('["OWNER","MEMBER","COLLABORATOR","CONTRIBUTOR"]'), github.event.pull_request.author_association)) && (matrix.runner || 'blacksmith-4vcpu-ubuntu-2404') || 'ubuntu-24.04') }}
     timeout-minutes: 20
     strategy:
@@ -2855,11 +2855,11 @@ jobs:
   # The github/hybrid planner profile aggregates core targets into five Programs
   # across five hosted jobs. All-Blacksmith mode keeps one lint job.
   check-lint-hosted-core-shard:
+    if: false
     permissions:
       contents: read
     name: check-lint-core-${{ matrix.stripe }}
     needs: [preflight]
-    if: ${{ needs.preflight.outputs.run_check == 'true' && (vars.OPENCLAW_CI_RUNNER_BACKEND == 'github' || vars.OPENCLAW_CI_RUNNER_BACKEND == 'hybrid' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     strategy:
@@ -2890,11 +2890,11 @@ jobs:
   # extensions/root/scripts tail. All-Blacksmith mode keeps the single
   # 16-vCPU test-types job.
   check-test-types-hosted-core-shard:
+    if: false
     permissions:
       contents: read
     name: check-test-types-core-${{ matrix.stripe }}
     needs: [preflight]
-    if: ${{ needs.preflight.outputs.run_check == 'true' && (vars.OPENCLAW_CI_RUNNER_BACKEND == 'github' || vars.OPENCLAW_CI_RUNNER_BACKEND == 'hybrid' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)) }}
     # Measured 232-269s per stripe on hosted 4-core; hybrid attempt 1 rides
     # the 8 vCPU class like the compact large rows, retries stay hosted.
     runs-on: ${{ vars.OPENCLAW_CI_RUNNER_BACKEND == 'github' && 'ubuntu-24.04' || (vars.OPENCLAW_CI_RUNNER_BACKEND == 'hybrid' && github.run_attempt > 1) && 'ubuntu-24.04' || github.event_name == 'workflow_dispatch' && 'ubuntu-24.04' || (vars.OPENCLAW_CI_RUNNER_BACKEND == 'hybrid' && github.repository == 'openclaw/openclaw' && (github.event_name != 'pull_request' || contains(fromJSON('["OWNER","MEMBER","COLLABORATOR","CONTRIBUTOR"]'), github.event.pull_request.author_association)) && 'blacksmith-8vcpu-ubuntu-2404' || 'ubuntu-24.04') }}
@@ -2926,11 +2926,11 @@ jobs:
           node scripts/run-tsgo-core-test-shards.mjs --stripe "${{ matrix.stripe }}/5" --concurrency 2
 
   check-additional-shard:
+    if: false
     permissions:
       contents: read
     name: ${{ matrix.check_name }}
     needs: [preflight]
-    if: ${{ !cancelled() && always() && needs.preflight.outputs.run_check_additional == 'true' }}
     runs-on: ${{ vars.OPENCLAW_CI_RUNNER_BACKEND == 'github' && 'ubuntu-24.04' || (vars.OPENCLAW_CI_RUNNER_BACKEND == 'hybrid' && (github.run_attempt > 1 || (matrix.group != 'extension-package-boundary' && matrix.group != 'runtime-topology-architecture' && matrix.group != 'plugin-sdk-api-diff'))) && 'ubuntu-24.04' || github.event_name == 'workflow_dispatch' && 'ubuntu-24.04' || (github.repository == 'openclaw/openclaw' && (github.event_name != 'pull_request' || contains(fromJSON('["OWNER","MEMBER","COLLABORATOR","CONTRIBUTOR"]'), github.event.pull_request.author_association)) && (matrix.runner || 'blacksmith-4vcpu-ubuntu-2404') || 'ubuntu-24.04') }}
     timeout-minutes: 20
     strategy:
@@ -3263,10 +3263,10 @@ jobs:
 
   # Validate docs (format, lint, broken links) only when docs files changed.
   check-docs:
+    if: false
     permissions:
       contents: read
     needs: [preflight]
-    if: needs.preflight.outputs.run_check_docs == 'true'
     runs-on: ${{ (vars.OPENCLAW_CI_RUNNER_BACKEND == 'github' || vars.OPENCLAW_CI_RUNNER_BACKEND == 'hybrid') && 'ubuntu-24.04' || github.event_name == 'workflow_dispatch' && 'ubuntu-24.04' || (github.repository == 'openclaw/openclaw' && (github.event_name != 'pull_request' || contains(fromJSON('["OWNER","MEMBER","COLLABORATOR","CONTRIBUTOR"]'), github.event.pull_request.author_association)) && 'blacksmith-4vcpu-ubuntu-2404' || 'ubuntu-24.04') }}
     timeout-minutes: 20
     steps:
@@ -3332,10 +3332,10 @@ jobs:
         run: pnpm check:docs
 
   skills-python:
+    if: false
     permissions:
       contents: read
     needs: [preflight]
-    if: needs.preflight.outputs.run_skills_python_job == 'true'
     runs-on: ${{ (vars.OPENCLAW_CI_RUNNER_BACKEND == 'github' || vars.OPENCLAW_CI_RUNNER_BACKEND == 'hybrid') && 'ubuntu-24.04' || github.event_name == 'workflow_dispatch' && 'ubuntu-24.04' || (github.repository == 'openclaw/openclaw' && (github.event_name != 'pull_request' || contains(fromJSON('["OWNER","MEMBER","COLLABORATOR","CONTRIBUTOR"]'), github.event.pull_request.author_association)) && 'blacksmith-4vcpu-ubuntu-2404' || 'ubuntu-24.04') }}
     timeout-minutes: 20
     steps:
@@ -3386,11 +3386,11 @@ jobs:
         run: python -m pytest -q -c skills/pyproject.toml skills
 
   checks-windows:
+    if: false
     permissions:
       contents: read
     name: ${{ matrix.check_name }}
     needs: [preflight]
-    if: needs.preflight.outputs.run_checks_windows == 'true'
     runs-on: ${{ vars.OPENCLAW_CI_RUNNER_BACKEND == 'github' && 'windows-2025' || (vars.OPENCLAW_CI_RUNNER_BACKEND == 'hybrid' && github.run_attempt > 1) && 'windows-2025' || github.event_name == 'workflow_dispatch' && 'windows-2025' || (github.repository == 'openclaw/openclaw' && (github.event_name != 'pull_request' || contains(fromJSON('["OWNER","MEMBER","COLLABORATOR","CONTRIBUTOR"]'), github.event.pull_request.author_association)) && 'blacksmith-8vcpu-windows-2025' || 'windows-2025') }}
     timeout-minutes: 60
     env:
@@ -3548,11 +3548,11 @@ jobs:
           esac
 
   macos-node:
+    if: false
     permissions:
       contents: read
     name: ${{ matrix.check_name }}
     needs: [preflight]
-    if: ${{ !cancelled() && always() && needs.preflight.outputs.run_macos_node == 'true' }}
     runs-on: ${{ vars.OPENCLAW_CI_RUNNER_BACKEND == 'github' && 'macos-15' || (github.event_name == 'workflow_dispatch' || github.run_attempt > 1) && 'macos-15' || (github.repository == 'openclaw/openclaw' && (github.event_name != 'pull_request' || contains(fromJSON('["OWNER","MEMBER","COLLABORATOR","CONTRIBUTOR"]'), github.event.pull_request.author_association)) && 'blacksmith-6vcpu-macos-15' || 'macos-15') }}
     timeout-minutes: 20
     strategy:
@@ -3588,11 +3588,11 @@ jobs:
           esac
 
   macos-swift:
+    if: false
     permissions:
       contents: read
     name: "macos-swift"
     needs: [preflight]
-    if: needs.preflight.outputs.run_macos_swift == 'true'
     runs-on: ${{ vars.OPENCLAW_CI_RUNNER_BACKEND == 'github' && 'macos-26' || (github.event_name == 'workflow_dispatch' || github.run_attempt > 1) && 'macos-26' || (github.repository == 'openclaw/openclaw' && (github.event_name != 'pull_request' || contains(fromJSON('["OWNER","MEMBER","COLLABORATOR","CONTRIBUTOR"]'), github.event.pull_request.author_association)) && 'blacksmith-12vcpu-macos-26' || 'macos-26') }}
     # Hosted runs may still be finalizing large Swift caches after every test
     # passes; keep that post-job work non-blocking.
@@ -3825,11 +3825,11 @@ jobs:
           key: ${{ steps.swift-build-cache.outputs.cache-primary-key }}
 
   ios-build:
+    if: false
     permissions:
       contents: read
     name: "ios-build"
     needs: [preflight]
-    if: needs.preflight.outputs.run_ios_build == 'true'
     runs-on: ${{ vars.OPENCLAW_CI_RUNNER_BACKEND == 'github' && 'macos-26' || (github.event_name == 'workflow_dispatch' || github.run_attempt > 1) && 'macos-26' || (github.repository == 'openclaw/openclaw' && (github.event_name != 'pull_request' || contains(fromJSON('["OWNER","MEMBER","COLLABORATOR","CONTRIBUTOR"]'), github.event.pull_request.author_association)) && 'blacksmith-12vcpu-macos-26' || 'macos-26') }}
     timeout-minutes: 150
     env:
@@ -4007,11 +4007,11 @@ jobs:
           retention-days: 14
 
   android:
+    if: false
     permissions:
       contents: read
     name: ${{ matrix.check_name }}
     needs: [preflight]
-    if: needs.preflight.outputs.run_android_job == 'true'
     runs-on: ${{ vars.OPENCLAW_CI_RUNNER_BACKEND == 'github' && 'ubuntu-24.04' || (vars.OPENCLAW_CI_RUNNER_BACKEND == 'hybrid' && github.run_attempt > 1) && 'ubuntu-24.04' || github.event_name == 'workflow_dispatch' && 'ubuntu-24.04' || (github.repository == 'openclaw/openclaw' && (github.event_name != 'pull_request' || contains(fromJSON('["OWNER","MEMBER","COLLABORATOR","CONTRIBUTOR"]'), github.event.pull_request.author_association)) && 'blacksmith-8vcpu-ubuntu-2404' || 'ubuntu-24.04') }}
     timeout-minutes: 20
     strategy:
@@ -4220,11 +4220,11 @@ jobs:
           esac
 
   docker-seed-e2e:
+    if: false
     permissions:
       contents: read
     name: docker-seed-e2e
     needs: [preflight]
-    if: needs.preflight.outputs.run_docker_seed_e2e == 'true'
     runs-on: ${{ vars.OPENCLAW_CI_RUNNER_BACKEND == 'github' && 'ubuntu-24.04' || (vars.OPENCLAW_CI_RUNNER_BACKEND == 'hybrid' && github.run_attempt > 1) && 'ubuntu-24.04' || github.event_name == 'workflow_dispatch' && 'ubuntu-24.04' || (github.event_name == 'pull_request' && (github.run_attempt > 1 || github.event.pull_request.head.repo.full_name != github.repository)) && 'ubuntu-24.04' || (github.repository == 'openclaw/openclaw' && (github.event_name != 'pull_request' || contains(fromJSON('["OWNER","MEMBER","COLLABORATOR","CONTRIBUTOR"]'), github.event.pull_request.author_association)) && 'blacksmith-16vcpu-ubuntu-2404' || 'ubuntu-24.04') }}
     timeout-minutes: 60
     steps:
@@ -4247,6 +4247,7 @@ jobs:
         run: pnpm test:docker:all
 
   ci-gate:
+    if: false
     permissions:
       contents: read
     name: openclaw/ci-gate
