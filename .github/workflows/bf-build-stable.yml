@@ -1,6 +1,6 @@
 # Build Stable
 #
-# Rebuilds the stable branch by creating it fresh from an upstream tag
+# Rebuilds the stable branch by creating it fresh from origin/main
 # and merging all active brightfire/* patch branches in manifest order.
 #
 # Build + test ALWAYS run (so we keep getting signal on patches still
@@ -27,10 +27,6 @@ on:
       - 'scripts/bf/parse-patches.py'
   workflow_dispatch:
     inputs:
-      upstream_tag:
-        description: 'Upstream tag to build from (e.g. v2026.5.7). Defaults to latest.'
-        required: false
-        type: string
       force_release:
         description: 'Tag and release even if manifest is unchanged'
         required: false
@@ -95,28 +91,34 @@ jobs:
           cp -r scripts/bf/build-stable /tmp/bf-build-stable
           chmod +x /tmp/bf-build-stable/*.sh
 
-      - name: Parse manifest (patches + upstream pin)
+      - name: Parse manifest (patches)
         id: patches
         run: |
           python3 /tmp/parse-patches.py "$PATCHES_FILE" "$GITHUB_OUTPUT"
 
-      - name: Determine upstream tag
-        id: upstream-tag
-        env:
-          INPUT_TAG: ${{ inputs.upstream_tag }}
-          MANIFEST_TAG: ${{ steps.patches.outputs.upstream_version }}
-        run: /tmp/bf-build-stable/determine-upstream-tag.sh
+      # Read the version from package.json on origin/main. The base is now
+      # origin/main (not a pinned upstream tag), so the version is simply
+      # the `version` field from package.json on origin/main.
+      - name: Read version from origin/main
+        id: upstream-version
+        run: |
+          VERSION=$(git show origin/main:package.json | python3 -c "import sys,json; print(json.load(sys.stdin)['version'])")
+          if [ -z "$VERSION" ]; then
+            echo "::error::Could not read version from package.json on origin/main"
+            exit 1
+          fi
+          echo "Version from origin/main: $VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Prepare stable branch
         env:
-          TAG: ${{ steps.upstream-tag.outputs.tag }}
-          VERSION: ${{ steps.upstream-tag.outputs.version }}
+          VERSION: ${{ steps.upstream-version.outputs.version }}
         run: /tmp/bf-build-stable/prepare-stable-branch.sh
 
       - name: Compute version suffix
         id: version
         env:
-          VERSION: ${{ steps.upstream-tag.outputs.version }}
+          VERSION: ${{ steps.upstream-version.outputs.version }}
         run: /tmp/bf-build-stable/compute-bf-version.sh
 
       - name: Configure git
@@ -130,7 +132,7 @@ jobs:
       - name: Merge patches in order
         env:
           PATCHES: ${{ steps.patches.outputs.list }}
-          VERSION: ${{ steps.upstream-tag.outputs.version }}
+          VERSION: ${{ steps.upstream-version.outputs.version }}
         run: /tmp/bf-build-stable/merge-patches.sh
 
       # Bump version BEFORE pnpm install so node_modules matches the final
@@ -151,7 +153,7 @@ jobs:
       - name: Inject brightfire CHANGELOG entry
         env:
           BF_VERSION: ${{ steps.version.outputs.version }}
-          UPSTREAM_VERSION: ${{ steps.upstream-tag.outputs.version }}
+          UPSTREAM_VERSION: ${{ steps.upstream-version.outputs.version }}
           REPO: https://github.com/brightfire/openclaw
         run: |
           python3 - << 'PYEOF'
@@ -272,9 +274,9 @@ jobs:
         uses: actions/cache@v5
         with:
           path: .artifacts/tsgo-cache/
-          key: upstream-${{ steps.upstream-tag.outputs.tag }}-tsgo-${{ hashFiles('BRIGHTFIRE_PATCHES.md', 'tsconfig.core.json') }}
+          key: upstream-v${{ steps.upstream-version.outputs.version }}-tsgo-${{ hashFiles('BRIGHTFIRE_PATCHES.md', 'tsconfig.core.json') }}
           restore-keys: |
-            upstream-${{ steps.upstream-tag.outputs.tag }}-tsgo-
+            upstream-v${{ steps.upstream-version.outputs.version }}-tsgo-
 
       - name: Restore Vite UI build cache
         uses: actions/cache@v5
@@ -282,9 +284,9 @@ jobs:
           path: |
             ui/node_modules/.vite/
             ui/dist/.vite/
-          key: upstream-${{ steps.upstream-tag.outputs.tag }}-vite-${{ hashFiles('ui/package.json', 'pnpm-lock.yaml', 'ui/vite.config.ts') }}
+          key: upstream-v${{ steps.upstream-version.outputs.version }}-vite-${{ hashFiles('ui/package.json', 'pnpm-lock.yaml', 'ui/vite.config.ts') }}
           restore-keys: |
-            upstream-${{ steps.upstream-tag.outputs.tag }}-vite-
+            upstream-v${{ steps.upstream-version.outputs.version }}-vite-
 
       # Lint and build run concurrently. Lint (pnpm check + UI lint) is
       # read-only source analysis — tsgo, oxlint, policy guards — and never
@@ -319,37 +321,14 @@ jobs:
       - name: Run tests
         id: run-tests
         env:
-          # Per-worker heap budget (V8 old-generation limit). 2 workers x ~6 GB
-          # RSS x 8 parallel leaves = ~96 GB theoretical max, fits comfortably
-          # in the 64 GB runner since not every worker hits peak RSS
-          # simultaneously and many tests are I/O-bound rather than CPU-bound.
           NODE_OPTIONS: "--max-old-space-size=4096"
-
-          # Workers per leaf shard. Reduced from 6 to 2 because LEAF_SHARDS
-          # expansion makes most leaves small enough that they don't benefit
-          # from 6 internal workers -- we get more wall-clock benefit from
-          # running multiple leaves concurrently (PARALLEL=8) than from
-          # over-parallelizing each individual leaf.
           OPENCLAW_VITEST_MAX_WORKERS: "2"
-
-          # Expand the 12 grouped shard configs into ~77 leaf configs, each
-          # run as its own vitest process. Per-config heap isolation, no
-          # cross-config leak accumulation. Without this, CI mode runs the
-          # 12 grouped shards serially in one shared vitest process tree,
-          # which caused the OOM in runs 26823240605 and 26826674026.
-          # See scripts/test-projects.test-support.mjs:buildFullSuiteVitestRunPlans.
           OPENCLAW_TEST_PROJECTS_LEAF_SHARDS: "1"
-
-          # Run 8 leaves in parallel (instead of the CI default of 1).
-          # Combined with MAX_WORKERS=2, that's 8 x 2 = 16 worker procs total,
-          # matching the 16 vCPU runner (ubuntu-latest-xl). Expected ~50%
-          # wall-clock reduction vs the prior 4-parallel baseline (~10m vs ~20m).
           OPENCLAW_TEST_PROJECTS_PARALLEL: "8"
 
           # Required by check-release-needed.sh (runs in background below).
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           FORCE_RELEASE: ${{ inputs.force_release || 'false' }}
-          UPSTREAM_TAG_INPUT: ${{ inputs.upstream_tag || '' }}
           # PINNED_MANIFEST_PATH and PINNED_MANIFEST_SHA256 are inherited from
           # the runner environment, written via $GITHUB_ENV in the pin-manifest
           # step above. Do NOT re-declare them here via ${{ env.* }} --
@@ -400,7 +379,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
-          STABLE_BRANCH="stable/${{ steps.upstream-tag.outputs.version }}"
+          STABLE_BRANCH="stable/${{ steps.upstream-version.outputs.version }}"
           git push --force origin "$STABLE_BRANCH"
           echo "Pushed $STABLE_BRANCH"
 
@@ -428,7 +407,7 @@ jobs:
         with:
           tag_name: ${{ steps.version.outputs.tag }}
           name: "Brightfire ${{ steps.version.outputs.version }}"
-          target_commitish: stable/${{ steps.upstream-tag.outputs.version }}
+          target_commitish: stable/${{ steps.upstream-version.outputs.version }}
           draft: false
           files: |
             ${{ steps.run-tests.outputs.tarball }}

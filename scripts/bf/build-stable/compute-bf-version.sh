@@ -11,7 +11,7 @@
 #   not recognized and was treated as a pre-release (i.e. earlier).
 #
 # Inputs (env):
-#   VERSION       — bare upstream version (X.Y.Z) from determine-upstream-tag.sh
+#   VERSION       — bare upstream version (X.Y.Z) from origin/main package.json
 #   GITHUB_OUTPUT — path to GitHub Actions output file
 #
 # Outputs (written to $GITHUB_OUTPUT):
@@ -48,7 +48,7 @@ if [[ -n "$ALL_BF_TAGS" ]]; then
 fi
 
 if [ -z "$BF_NUM" ]; then
-  BF_NUM=1
+  BF_NUM=50
 else
   BF_NUM=$((BF_NUM + 1))
 fi

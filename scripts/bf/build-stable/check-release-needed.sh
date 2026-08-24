@@ -16,12 +16,6 @@
 #
 # Edge cases:
 #   - FORCE_RELEASE=true             -> always needs_release=true
-#   - UPSTREAM_TAG_INPUT non-empty   -> always needs_release=true (operator
-#                                       asked to build a specific upstream
-#                                       tag; fingerprint comparison would
-#                                       skip ad-hoc builds for a different
-#                                       upstream version since the manifest
-#                                       is unchanged)
 #   - No prior bf/v* release         -> needs_release=true (first build)
 #   - Latest release has no asset    -> needs_release=true (backfill run)
 #   - gh release view fails (other)  -> fail loudly (no silent skip)
@@ -55,8 +49,7 @@
 #                              local testing
 #   FORCE_RELEASE            — "true" forces needs_release=true (from
 #                              workflow_dispatch)
-#   UPSTREAM_TAG_INPUT       — non-empty value forces needs_release=true
-#                              (from workflow_dispatch upstream_tag input)
+
 #
 # Outputs (written to $GITHUB_OUTPUT):
 #   needs_release     — "true" | "false"
@@ -66,7 +59,6 @@ set -euo pipefail
 
 MANIFEST_REF="${MANIFEST_REF:-origin/brightfire/ci}"
 FORCE_RELEASE="${FORCE_RELEASE:-false}"
-UPSTREAM_TAG_INPUT="${UPSTREAM_TAG_INPUT:-}"
 PINNED_MANIFEST_PATH="${PINNED_MANIFEST_PATH:-}"
 PINNED_MANIFEST_SHA256="${PINNED_MANIFEST_SHA256:-}"
 
@@ -117,10 +109,6 @@ emit_skip() {
 
 if [ "$FORCE_RELEASE" = "true" ]; then
   emit_release "force_release=true (workflow_dispatch input)"
-fi
-
-if [ -n "$UPSTREAM_TAG_INPUT" ]; then
-  emit_release "upstream_tag input set: $UPSTREAM_TAG_INPUT (workflow_dispatch input)"
 fi
 
 # Find the most recent bf/v* release. `gh release view` with no tag returns
