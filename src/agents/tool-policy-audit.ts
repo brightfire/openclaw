@@ -1,3 +1,4 @@
+import { truncateUtf16Safe } from "@openclaw/normalization-core/utf16-slice";
 /**
  * Tool policy audit logging helpers.
  * Emits bounded, sanitized logs when allow/deny policy filters remove tools or
@@ -6,16 +7,13 @@
 import { createSubsystemLogger } from "../logging/subsystem.js";
 import type { SandboxConfig } from "./sandbox/types.js";
 import { isToolAllowedByPolicyName } from "./tool-policy-match.js";
-import { normalizeToolList, normalizeToolName, type ToolPolicyLike } from "./tool-policy.js";
+import { normalizeToolList, normalizeToolPolicyName, type ToolPolicyLike } from "./tool-policy.js";
 
 // Emits bounded audit logs when tool allow/deny policies remove or block tools.
 // Sanitizing here keeps logs single-line and safe for arbitrary tool names.
 const MAX_AUDIT_TOOL_NAMES = 50;
 const MAX_AUDIT_FIELD_LENGTH = 160;
 const toolPolicyAuditLogger = createSubsystemLogger("agents/tool-policy");
-
-/** Log level used for tool-policy audit events. */
-export type ToolPolicyAuditLogLevel = "info" | "debug";
 
 type ToolPolicyRuleKind = "allow" | "deny" | "allow+deny" | "unknown";
 
@@ -117,8 +115,9 @@ function boundedToolNames(names: readonly string[]): {
   };
 }
 
-function sanitizeAuditField(value: string): string {
-  const sanitized = Array.from(value.trim(), (char) => {
+/** Escapes control characters as visible sequences for single-line audit/log output. */
+export function escapeControlCharsVisible(value: string): string {
+  return Array.from(value, (char) => {
     if (char === "\n") {
       return "\\n";
     }
@@ -134,13 +133,17 @@ function sanitizeAuditField(value: string): string {
     }
     return char;
   }).join("");
+}
+
+function sanitizeAuditField(value: string): string {
+  const sanitized = escapeControlCharsVisible(value.trim());
   if (!sanitized) {
     return "(unknown)";
   }
   if (sanitized.length <= MAX_AUDIT_FIELD_LENGTH) {
     return sanitized;
   }
-  return `${sanitized.slice(0, MAX_AUDIT_FIELD_LENGTH)}...`;
+  return `${truncateUtf16Safe(sanitized, MAX_AUDIT_FIELD_LENGTH)}...`;
 }
 
 function matchedPolicyRules(params: {
@@ -168,7 +171,6 @@ export function auditToolPolicyFilter(params: {
   policy: ToolPolicyLike;
   before: readonly { name: string }[];
   after: readonly { name: string }[];
-  logLevel?: ToolPolicyAuditLogLevel;
 }): void {
   const removedByRule = removedToolNamesByRule({
     policy: params.policy,
@@ -202,11 +204,9 @@ export function auditToolPolicyFilter(params: {
       removedTools: toolNames,
       removedToolsTruncated: truncated,
     };
-    if (params.logLevel === "debug") {
-      toolPolicyAuditLogger.debug(message, metadata);
-    } else {
-      toolPolicyAuditLogger.info(message, metadata);
-    }
+    // Routine policy filtering runs on every turn; per-turn removal detail is
+    // diagnostic, not operator-facing, so it stays out of info-level logs.
+    toolPolicyAuditLogger.debug(message, metadata);
   }
 }
 
@@ -219,7 +219,7 @@ export function auditSandboxToolPolicyBlock(params: {
   policy?: ToolPolicyLike;
   mode: SandboxConfig["mode"];
 }): void {
-  const normalizedToolName = normalizeToolName(params.toolName);
+  const normalizedToolName = normalizeToolPolicyName(params.toolName);
   if (!normalizedToolName) {
     return;
   }

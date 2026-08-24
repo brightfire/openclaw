@@ -21,11 +21,13 @@ async function loadGatewayRpcRuntime(): Promise<GatewayRpcRuntimeModule> {
   return gatewayRpcRuntimeLoader.load();
 }
 
-export function addGatewayClientOptions(cmd: Command) {
+export function addGatewayClientOptions(cmd: Command, defaults?: { timeoutMs?: number }) {
   return cmd
     .option("--url <url>", "Gateway WebSocket URL (defaults to gateway.remote.url when configured)")
+    .option("--port <port>", "Local Gateway port")
     .option("--token <token>", "Gateway token (if required)")
-    .option("--timeout <ms>", "Timeout in ms", "30000")
+    .option("--password <password>", "Gateway password (if required)")
+    .option("--timeout <ms>", "Timeout in ms", String(defaults?.timeoutMs ?? 30_000))
     .option("--expect-final", "Wait for final response (agent)", false);
 }
 
@@ -37,10 +39,28 @@ export async function callGatewayFromCli(
     clientName?: GatewayClientName;
     mode?: GatewayClientMode;
     deviceIdentity?: DeviceIdentity | null;
+    signal?: AbortSignal;
     expectFinal?: boolean;
     progress?: boolean;
     scopes?: OperatorScope[];
+    sharedStateMode?: "read-only";
   },
+) {
+  return await callGatewayFromCliWithTransport(method, opts, params, extra);
+}
+
+/** Resolve whether CLI Gateway options select the implicit local Gateway. */
+export async function isImplicitLocalGatewayTargetFromCli(opts: GatewayRpcOpts): Promise<boolean> {
+  const runtime = await loadGatewayRpcRuntime();
+  return await runtime.isImplicitLocalGatewayTargetFromCliRuntime(opts);
+}
+
+/** Internal CLI facade for callers that need transport or auth policy overrides. */
+export async function callGatewayFromCliWithTransport(
+  method: string,
+  opts: Parameters<GatewayRpcRuntimeModule["callGatewayFromCliRuntime"]>[1],
+  params?: unknown,
+  extra?: Parameters<GatewayRpcRuntimeModule["callGatewayFromCliRuntime"]>[3],
 ) {
   const runtime = await loadGatewayRpcRuntime();
   return await runtime.callGatewayFromCliRuntime(method, opts, params, extra);

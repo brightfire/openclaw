@@ -1,9 +1,11 @@
 /** Tests block reply pipeline buffering, dedupe, and final flush behavior. */
+import { MAX_TIMER_TIMEOUT_MS } from "@openclaw/normalization-core/number-coercion";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getReplyPayloadMetadata, setReplyPayloadMetadata } from "../reply-payload.js";
+import type { ReplyPayload } from "../types.js";
 import {
+  createAudioAsVoiceBuffer,
   createBlockReplyContentKey,
-  createBlockReplyPayloadKey,
   createBlockReplyPipeline,
 } from "./block-reply-pipeline.js";
 
@@ -22,48 +24,6 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers();
-});
-
-describe("createBlockReplyPayloadKey", () => {
-  it("produces different keys for payloads differing only by replyToId", () => {
-    const a = createBlockReplyPayloadKey({ text: "hello world", replyToId: "post-1" });
-    const b = createBlockReplyPayloadKey({ text: "hello world", replyToId: "post-2" });
-    const c = createBlockReplyPayloadKey({ text: "hello world" });
-    expect(a).not.toBe(b);
-    expect(a).not.toBe(c);
-  });
-
-  it("produces different keys for payloads with different text", () => {
-    const a = createBlockReplyPayloadKey({ text: "hello" });
-    const b = createBlockReplyPayloadKey({ text: "world" });
-    expect(a).not.toBe(b);
-  });
-
-  it("produces different keys for payloads with different media", () => {
-    const a = createBlockReplyPayloadKey({ text: "hello", mediaUrl: "file:///a.png" });
-    const b = createBlockReplyPayloadKey({ text: "hello", mediaUrl: "file:///b.png" });
-    expect(a).not.toBe(b);
-  });
-
-  it("produces different keys for payloads with different presentation content", () => {
-    const a = createBlockReplyPayloadKey({
-      presentation: {
-        blocks: [{ type: "buttons", buttons: [{ label: "Approve", value: "approve" }] }],
-      },
-    });
-    const b = createBlockReplyPayloadKey({
-      presentation: {
-        blocks: [{ type: "buttons", buttons: [{ label: "Reject", value: "reject" }] }],
-      },
-    });
-    expect(a).not.toBe(b);
-  });
-
-  it("trims whitespace from text for key comparison", () => {
-    const a = createBlockReplyPayloadKey({ text: "  hello  " });
-    const b = createBlockReplyPayloadKey({ text: "hello" });
-    expect(a).toBe(b);
-  });
 });
 
 describe("createBlockReplyContentKey", () => {
@@ -100,6 +60,42 @@ describe("createBlockReplyContentKey", () => {
 });
 
 describe("createBlockReplyPipeline dedup with threading", () => {
+  it("keeps an un-aborted delivery signal when timeouts are disabled", async () => {
+    let deliverySignal: AbortSignal | undefined;
+    const pipeline = createBlockReplyPipeline({
+      onBlockReply: async (_payload, options) => {
+        deliverySignal = options?.abortSignal;
+      },
+      timeoutMs: 0,
+    });
+
+    pipeline.enqueue({ text: "response text" });
+    await pipeline.flush({ force: true });
+
+    expect(deliverySignal).toBeDefined();
+    expect(deliverySignal?.aborted).toBe(false);
+  });
+
+  it("does not count reasoning or commentary as a terminal reply", async () => {
+    const pipeline = createBlockReplyPipeline({
+      onBlockReply: async () => {},
+      timeoutMs: 5000,
+    });
+
+    pipeline.enqueue({ text: "reasoning", isReasoning: true });
+    pipeline.enqueue({ text: "commentary", isCommentary: true });
+    pipeline.enqueue({ audioAsVoice: true });
+    await pipeline.flush({ force: true });
+
+    expect(pipeline.didStream()).toBe(true);
+    expect(pipeline.didStreamTerminalReply?.()).toBe(false);
+
+    pipeline.enqueue({ text: "final answer" });
+    await pipeline.flush({ force: true });
+
+    expect(pipeline.didStreamTerminalReply?.()).toBe(true);
+  });
+
   it("keeps separate deliveries for same text with different replyToId", async () => {
     const sent: Array<{ text?: string; replyToId?: string }> = [];
     const pipeline = createBlockReplyPipeline({
@@ -131,6 +127,31 @@ describe("createBlockReplyPipeline dedup with threading", () => {
     // Final payload with no replyToId should be recognized as already sent
     expect(pipeline.hasSentPayload({ text: "response text" })).toBe(true);
     expect(pipeline.hasSentPayload({ text: "response text", replyToId: "other-id" })).toBe(true);
+    expect(pipeline.hasSentExactPayload?.({ text: "response text" })).toBe(true);
+    expect(pipeline.hasSentExactPayload?.({ text: "response text", replyToId: "other-id" })).toBe(
+      true,
+    );
+  });
+
+  it("keeps exact payload evidence separate from streamed text coverage", async () => {
+    const pipeline = createBlockReplyPipeline({
+      onBlockReply: async () => {},
+      timeoutMs: 5000,
+    });
+
+    pipeline.enqueue({ text: "constx=1" });
+    await pipeline.flush({ force: true });
+
+    expect(pipeline.hasSentPayload({ text: "const x = 1" })).toBe(true);
+    expect(pipeline.hasSentExactPayload?.({ text: "const x = 1" })).toBe(false);
+    expect(
+      pipeline.hasSentExactPayload?.({
+        text: "constx=1",
+        presentation: {
+          blocks: [{ type: "buttons", buttons: [{ label: "Open", value: "open" }] }],
+        },
+      }),
+    ).toBe(false);
   });
 
   it("tracks media URLs delivered via block replies", async () => {
@@ -150,6 +171,62 @@ describe("createBlockReplyPipeline dedup with threading", () => {
       "file:///b.ogg",
       "file:///c.ogg",
     ]);
+  });
+
+  it.each([
+    {
+      name: "coalesced text on both sides of audio",
+      payloads: [{ text: "Before" }, { mediaUrl: "file:///voice.ogg" }, { text: "After" }],
+      expected: [{ text: "Before" }, { mediaUrl: "file:///voice.ogg" }, { text: "After" }],
+    },
+    {
+      name: "audio before a following image",
+      payloads: [{ mediaUrls: ["file:///voice.ogg"] }, { mediaUrls: ["file:///photo.png"] }],
+      expected: [{ mediaUrls: ["file:///voice.ogg"] }, { mediaUrls: ["file:///photo.png"] }],
+    },
+    {
+      name: "a late voice marker before following text",
+      payloads: [{ mediaUrl: "file:///voice.ogg" }, { text: "After", audioAsVoice: true }],
+      expected: [
+        { mediaUrl: "file:///voice.ogg", audioAsVoice: true },
+        { text: "After", audioAsVoice: true },
+      ],
+    },
+  ])("preserves streamed delivery order for $name", async ({ payloads, expected }) => {
+    const sent: ReplyPayload[] = [];
+    const pipeline = createBlockReplyPipeline({
+      onBlockReply: async (payload) => {
+        sent.push(payload);
+      },
+      timeoutMs: 5000,
+      coalescing: {
+        minChars: 1,
+        maxChars: 200,
+        idleMs: 0,
+        joiner: " ",
+      },
+      buffer: createAudioAsVoiceBuffer({
+        isAudioPayload: (payload) =>
+          [payload.mediaUrl, ...(payload.mediaUrls ?? [])].some((url) => url?.endsWith(".ogg")),
+      }),
+    });
+
+    for (const payload of payloads) {
+      pipeline.enqueue(payload);
+    }
+    await pipeline.flush({ force: true });
+
+    expect(sent).toHaveLength(expected.length);
+    expect(sent).toMatchObject(expected);
+    expect(pipeline.getSentMediaUrls()).toEqual(
+      expected.flatMap((payload) =>
+        "mediaUrls" in payload
+          ? payload.mediaUrls
+          : "mediaUrl" in payload
+            ? [payload.mediaUrl]
+            : [],
+      ),
+    );
   });
 
   it("keeps separate deliveries for distinct rich-only payloads", async () => {
@@ -423,5 +500,31 @@ describe("createBlockReplyPipeline content coverage dedup", () => {
     await pipeline.flush({ force: true });
 
     expect(pipeline.hasSentPayload({ text: "summary" })).toBe(false);
+  });
+
+  it("clamps oversized delivery timeouts before arming timers", async () => {
+    vi.useFakeTimers();
+    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
+    const observedTimeouts: number[] = [];
+    const pipeline = createBlockReplyPipeline({
+      onBlockReply: async (_payload, options) => {
+        observedTimeouts.push(options?.timeoutMs ?? 0);
+        await waitForAbort(options?.abortSignal);
+      },
+      timeoutMs: MAX_TIMER_TIMEOUT_MS + 1,
+    });
+
+    pipeline.enqueue({ text: "slow block" });
+    const flushing = pipeline.flush({ force: true });
+    await Promise.resolve();
+
+    expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), MAX_TIMER_TIMEOUT_MS);
+    expect(observedTimeouts).toEqual([MAX_TIMER_TIMEOUT_MS]);
+
+    await vi.advanceTimersByTimeAsync(MAX_TIMER_TIMEOUT_MS);
+    await flushing;
+
+    expect(pipeline.isAborted()).toBe(true);
+    setTimeoutSpy.mockRestore();
   });
 });

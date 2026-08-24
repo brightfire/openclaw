@@ -47,6 +47,7 @@ describe("broadcast groups", () => {
         defaults: { maxConcurrent: 10 },
         list: [{ id: "alfred" }, { id: "baerbel" }],
       },
+      bindings: [{ agentId: "alfred", match: { channel: "whatsapp", accountId: "default" } }],
       broadcast: {
         strategy: "sequential",
         "+1000": ["alfred", "baerbel"],
@@ -68,6 +69,7 @@ describe("broadcast groups", () => {
         defaults: { maxConcurrent: 10 },
         list: [{ id: "alfred" }, { id: "baerbel" }],
       },
+      bindings: [{ agentId: "alfred", match: { channel: "whatsapp", accountId: "default" } }],
       broadcast: {
         strategy: "sequential",
         "123@g.us": ["alfred", "baerbel"],
@@ -157,6 +159,7 @@ describe("broadcast groups", () => {
         defaults: { maxConcurrent: 10 },
         list: [{ id: "alfred" }, { id: "baerbel" }],
       },
+      bindings: [{ agentId: "alfred", match: { channel: "whatsapp", accountId: "work" } }],
       broadcast: {
         strategy: "sequential",
         "123@g.us": ["alfred", "baerbel"],
@@ -199,6 +202,7 @@ describe("broadcast groups", () => {
         defaults: { maxConcurrent: 10 },
         list: [{ id: "alfred" }, { id: "baerbel" }],
       },
+      bindings: [{ agentId: "alfred", match: { channel: "whatsapp", accountId: "default" } }],
       broadcast: {
         strategy: "parallel",
         "+1000": ["alfred", "baerbel"],
@@ -241,10 +245,13 @@ describe("broadcast groups", () => {
           reply,
           sendMedia,
         },
-        from: "+1000",
-        conversationId: "+1000",
-        accountId: "default",
-        chatType: "direct",
+        admission: {
+          accountId: "default",
+          conversation: {
+            kind: "direct",
+            id: "+1000",
+          },
+        },
       }),
     );
 

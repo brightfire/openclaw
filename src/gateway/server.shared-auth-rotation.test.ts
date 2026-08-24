@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { WebSocket } from "ws";
+import { deleteTestEnvValue, setTestEnvValue } from "../test-utils/env.js";
 import {
   loadGatewayConfig,
   openAuthenticatedGatewayWs,
@@ -12,10 +13,10 @@ import {
 } from "./shared-auth.test-helpers.js";
 import {
   connectOk,
-  getFreePort,
+  getGatewayTestPort,
   installGatewayTestHooks,
   rpcReq,
-  startGatewayServer,
+  startTestGatewayServer,
   testState,
   trackConnectChallengeNonce,
 } from "./test-helpers.js";
@@ -49,11 +50,13 @@ async function openDeviceTokenWsWithDetails(
     auth?: { deviceToken?: unknown };
   };
 }> {
-  const identityPath = path.join(os.tmpdir(), `openclaw-shared-auth-${process.pid}-${port}.json`);
+  const identityPath = path.join(os.tmpdir(), `openclaw-shared-auth-${process.pid}-${port}.sqlite`);
   const { loadOrCreateDeviceIdentity, publicKeyRawBase64UrlFromPem } =
     await import("../infra/device-identity.js");
-  const { approveDevicePairing, ensureDeviceToken, requestDevicePairing, rotateDeviceToken } =
-    await import("../infra/device-pairing.js");
+  const { approveDevicePairing } = await import("../infra/device-pairing-approval.js");
+  const { ensureDeviceToken, rotateDeviceToken } =
+    await import("../infra/device-pairing-tokens.js");
+  const { requestDevicePairing } = await import("../infra/device-pairing.js");
   const client = params.browserClient
     ? {
         id: "openclaw-control-ui",
@@ -68,7 +71,7 @@ async function openDeviceTokenWsWithDetails(
         mode: "test",
       };
 
-  const identity = loadOrCreateDeviceIdentity(identityPath);
+  const identity = loadOrCreateDeviceIdentity({ path: identityPath });
   const pending = await requestDevicePairing({
     deviceId: identity.deviceId,
     publicKey: publicKeyRawBase64UrlFromPem(identity.publicKeyPem),
@@ -208,7 +211,8 @@ async function expectIssuerTaggedDeviceToken(params: {
   token: string;
   issuerGeneration: string;
 }) {
-  const { getPairedDevice, verifyDeviceToken } = await import("../infra/device-pairing.js");
+  const { verifyDeviceToken } = await import("../infra/device-pairing-tokens.js");
+  const { getPairedDevice } = await import("../infra/device-pairing.js");
   const paired = await getPairedDevice(params.deviceId);
   expect(paired?.tokens?.operator?.issuer).toEqual({
     kind: "shared-gateway-auth",
@@ -249,16 +253,16 @@ async function expectIssuerMetadataPreservedOnReconnect(params: { browserClient?
 }
 
 describe("gateway shared auth rotation", () => {
-  let server: Awaited<ReturnType<typeof startGatewayServer>>;
+  let server: Awaited<ReturnType<typeof startTestGatewayServer>>;
   let sharedTokenRotationCase: {
     closed: Awaited<ReturnType<typeof waitForGatewayWsClose>>;
     ok: boolean;
   };
 
   beforeAll(async () => {
-    port = await getFreePort();
+    port = await getGatewayTestPort();
     testState.gatewayAuth = { mode: "token", token: OLD_TOKEN };
-    server = await startGatewayServer(port, { controlUiEnabled: true });
+    server = await startTestGatewayServer(port, { controlUiEnabled: true });
 
     const ws = await openAuthenticatedGatewayWs(port, OLD_TOKEN);
     try {
@@ -329,7 +333,7 @@ describe("gateway shared auth rotation", () => {
 });
 
 describe("gateway shared auth rotation with unchanged SecretRefs", () => {
-  let secretRefServer: Awaited<ReturnType<typeof startGatewayServer>>;
+  let secretRefServer: Awaited<ReturnType<typeof startTestGatewayServer>>;
   let secretRefPort = 0;
 
   beforeAll(async () => {
@@ -337,9 +341,9 @@ describe("gateway shared auth rotation with unchanged SecretRefs", () => {
     if (!configPath) {
       throw new Error("OPENCLAW_CONFIG_PATH missing in gateway test environment");
     }
-    secretRefPort = await getFreePort();
+    secretRefPort = await getGatewayTestPort();
     testState.gatewayAuth = undefined;
-    process.env[SECRET_REF_TOKEN_ID] = OLD_TOKEN;
+    setTestEnvValue(SECRET_REF_TOKEN_ID, OLD_TOKEN);
     await fs.mkdir(path.dirname(configPath), { recursive: true });
     await fs.writeFile(
       configPath,
@@ -357,16 +361,16 @@ describe("gateway shared auth rotation with unchanged SecretRefs", () => {
       )}\n`,
       "utf-8",
     );
-    secretRefServer = await startGatewayServer(secretRefPort, { controlUiEnabled: true });
+    secretRefServer = await startTestGatewayServer(secretRefPort, { controlUiEnabled: true });
   });
 
   beforeEach(() => {
     testState.gatewayAuth = undefined;
-    process.env[SECRET_REF_TOKEN_ID] = OLD_TOKEN;
+    setTestEnvValue(SECRET_REF_TOKEN_ID, OLD_TOKEN);
   });
 
   afterAll(async () => {
-    delete process.env[SECRET_REF_TOKEN_ID];
+    deleteTestEnvValue(SECRET_REF_TOKEN_ID);
     testState.gatewayAuth = ORIGINAL_GATEWAY_AUTH;
     await secretRefServer.close();
   });
@@ -379,7 +383,7 @@ describe("gateway shared auth rotation with unchanged SecretRefs", () => {
     const ws = await openSecretRefAuthenticatedWs();
     try {
       const closed = waitForGatewayWsClose(ws, 30_000);
-      process.env[SECRET_REF_TOKEN_ID] = NEW_TOKEN;
+      setTestEnvValue(SECRET_REF_TOKEN_ID, NEW_TOKEN);
       const res = await applyCurrentConfig(ws);
       expect(res.ok).toBe(true);
       await expectGatewayAuthChangedClose(closed);

@@ -7,11 +7,27 @@ import {
   resolveOAuthDir,
   resolveStateDir,
 } from "../config/config.js";
-import { pathExists, shortenHomePath } from "../utils.js";
+import { pathExists, resolveUserPath, shortenHomePath } from "../utils.js";
 import { buildCleanupPlan, isPathWithin } from "./cleanup-utils.js";
+import { planUpgradeConfigRepair } from "./doctor/shared/automatic-upgrade-config-repair.js";
 
-export type BackupAssetKind = "state" | "config" | "credentials" | "workspace";
-export type BackupSkipReason = "covered" | "missing";
+// DEFLATE can legitimately encode zero-filled sparse ranges just over 1000:1.
+// Keep bounded headroom without disabling node-tar's decompression bomb guard.
+export const BACKUP_MAX_DECOMPRESSION_RATIO = 1100;
+
+export function resolveRequiredBackupPath(
+  value: string | undefined,
+  label: "--repository" | "--target" | "<snapshot>" | "--scratch",
+): string {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    throw new Error(`Missing required ${label} value.`);
+  }
+  return resolveUserPath(trimmed);
+}
+
+type BackupAssetKind = "state" | "config" | "credentials" | "workspace";
+type BackupSkipReason = "covered" | "missing";
 
 export type BackupAsset = {
   kind: BackupAssetKind;
@@ -20,7 +36,7 @@ export type BackupAsset = {
   archivePath: string;
 };
 
-export type SkippedBackupAsset = {
+type SkippedBackupAsset = {
   kind: BackupAssetKind;
   sourcePath: string;
   displayPath: string;
@@ -28,7 +44,7 @@ export type SkippedBackupAsset = {
   coveredBy?: string;
 };
 
-export type BackupPlan = {
+type BackupPlan = {
   stateDir: string;
   configPath: string;
   oauthDir: string;
@@ -59,7 +75,7 @@ function backupAssetPriority(kind: BackupAssetKind): number {
 }
 
 /** Format a filesystem-safe local timestamp with explicit UTC offset for backup names. */
-export function formatBackupArchiveTimestamp(
+function formatBackupArchiveTimestamp(
   nowMs = Date.now(),
   offsetMinutes = -new Date(nowMs).getTimezoneOffset(),
 ): string {
@@ -90,7 +106,7 @@ export function buildBackupArchiveBasename(nowMs = Date.now()): string {
 }
 
 /** Encode an absolute or relative source path into a traversal-safe archive payload path. */
-export function encodeAbsolutePathForBackupArchive(sourcePath: string): string {
+function encodeAbsolutePathForBackupArchive(sourcePath: string): string {
   const normalized = sourcePath.replaceAll("\\", "/");
   const windowsMatch = normalized.match(/^([A-Za-z]):\/(.*)$/);
   if (windowsMatch) {
@@ -110,7 +126,7 @@ export function buildBackupArchivePath(archiveRoot: string, sourcePath: string):
 }
 
 /** Resolve a backup plan from explicit paths, deduplicating assets already covered by parents. */
-export async function resolveBackupPlanFromPaths(params: {
+async function resolveBackupPlanFromPaths(params: {
   stateDir: string;
   configPath: string;
   oauthDir: string;
@@ -250,6 +266,12 @@ export async function resolveBackupPlanFromPaths(params: {
   };
 }
 
+if (process.env.VITEST || process.env.NODE_ENV === "test") {
+  (globalThis as Record<PropertyKey, unknown>)[Symbol.for("openclaw.backupPlanTestApi")] = {
+    resolveBackupPlanFromPaths,
+  };
+}
+
 function compareCandidates(left: BackupAssetCandidate, right: BackupAssetCandidate): number {
   const depthDelta = left.canonicalPath.length - right.canonicalPath.length;
   if (depthDelta !== 0) {
@@ -270,6 +292,27 @@ async function canonicalizeExistingPath(targetPath: string): Promise<string> {
   }
 }
 
+/** Resolve symlinks in the existing prefix while retaining a not-yet-created suffix. */
+export async function canonicalizePathForContainment(targetPath: string): Promise<string> {
+  const resolved = path.resolve(targetPath);
+  const suffix: string[] = [];
+  let probe = resolved;
+
+  while (true) {
+    try {
+      const realProbe = await fs.realpath(probe);
+      return suffix.length === 0 ? realProbe : path.join(realProbe, ...suffix.toReversed());
+    } catch {
+      const parent = path.dirname(probe);
+      if (parent === probe) {
+        return resolved;
+      }
+      suffix.push(path.basename(probe));
+      probe = parent;
+    }
+  }
+}
+
 /** Resolve the backup plan from the current OpenClaw state/config/workspace paths on disk. */
 export async function resolveBackupPlanFromDisk(
   params: {
@@ -284,14 +327,17 @@ export async function resolveBackupPlanFromDisk(
   const configPath = resolveConfigPath();
   const oauthDir = resolveOAuthDir();
 
-  const configSnapshot = await readConfigFileSnapshot();
-  if (includeWorkspace && configSnapshot.exists && !configSnapshot.valid) {
+  // Backup discovery must not initialize or migrate the state DB before snapshot validation.
+  const configSnapshot = await readConfigFileSnapshot({ observe: false });
+  const discoverySnapshot = planUpgradeConfigRepair(configSnapshot)?.snapshot ?? configSnapshot;
+  if (includeWorkspace && discoverySnapshot.exists && !discoverySnapshot.valid) {
     throw new Error(
-      `Config invalid at ${shortenHomePath(configSnapshot.path)}. OpenClaw cannot reliably discover custom workspaces for backup. Fix the config or rerun with --no-include-workspace for a partial backup.`,
+      `Config invalid at ${shortenHomePath(discoverySnapshot.path)}. OpenClaw cannot reliably discover custom workspaces for backup. Fix the config or rerun with --no-include-workspace for a partial backup.`,
     );
   }
   const cleanupPlan = buildCleanupPlan({
-    cfg: configSnapshot.config,
+    // Discovery uses the validated compatibility view; the archive still reads configPath bytes.
+    cfg: discoverySnapshot.config,
     stateDir,
     configPath,
     oauthDir,

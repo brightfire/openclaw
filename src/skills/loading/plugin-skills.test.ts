@@ -1,5 +1,5 @@
 // Plugin skill loading tests cover skill discovery from plugin-provided skill bundles.
-import fsSync, { type Dirent } from "node:fs";
+import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -10,11 +10,10 @@ import {
 import type { OpenClawConfig } from "../../config/config.js";
 import type { PluginManifestRegistry } from "../../plugins/manifest-registry.js";
 import { createTrackedTempDirs } from "../../test-utils/tracked-temp-dirs.js";
-import { testing } from "./plugin-skills.js";
 
 const hoisted = vi.hoisted(() => {
   const loadManifestRegistry = vi.fn();
-  const loadPluginMetadataSnapshot = vi.fn(() => {
+  const loadPluginMetadataSnapshot = vi.fn((_params?: unknown) => {
     const manifestRegistry = loadManifestRegistry();
     return {
       manifestRegistry,
@@ -25,10 +24,14 @@ const hoisted = vi.hoisted(() => {
         )?.id ?? pluginId,
     };
   });
+  const resolvePluginMetadataSnapshot = vi.fn((params: unknown) =>
+    loadPluginMetadataSnapshot(params),
+  );
   return {
     loadPluginManifestRegistryForInstalledIndex: loadManifestRegistry,
     loadPluginManifestRegistryForPluginRegistry: loadManifestRegistry,
     loadPluginMetadataSnapshot,
+    resolvePluginMetadataSnapshot,
     loadPluginRegistrySnapshot: vi.fn(() => ({ plugins: [] })),
   };
 });
@@ -44,10 +47,11 @@ vi.mock("../../plugins/plugin-registry.js", () => ({
 
 vi.mock("../../plugins/plugin-metadata-snapshot.js", () => ({
   loadPluginMetadataSnapshot: hoisted.loadPluginMetadataSnapshot,
-  resolvePluginMetadataSnapshot: hoisted.loadPluginMetadataSnapshot,
+  resolvePluginMetadataSnapshot: hoisted.resolvePluginMetadataSnapshot,
 }));
 
 let resolvePluginSkillDirs: typeof import("./plugin-skills.js").resolvePluginSkillDirs;
+let resolvePluginSkillDirsFromMetadata: typeof import("./plugin-skills.js").resolvePluginSkillDirsFromMetadata;
 
 const tempDirs = createTrackedTempDirs();
 
@@ -99,6 +103,7 @@ function createSinglePluginRegistry(params: {
   pluginRoot: string;
   skills: string[];
   format?: "openclaw" | "bundle";
+  bundleFormat?: "agent" | "codex" | "claude" | "cursor";
   legacyPluginIds?: string[];
 }): PluginManifestRegistry {
   return {
@@ -108,6 +113,7 @@ function createSinglePluginRegistry(params: {
         id: "helper",
         name: "Helper",
         format: params.format,
+        bundleFormat: params.bundleFormat,
         channels: [],
         providers: [],
         cliBackends: [],
@@ -133,6 +139,20 @@ async function setupAcpxAndHelperRegistry() {
     buildRegistry({ acpxRoot, helperRoot }),
   );
   return { workspaceDir, acpxRoot, helperRoot };
+}
+
+function useStableMetadataSnapshot(manifestRegistry: PluginManifestRegistry): void {
+  const snapshot = {
+    manifestRegistry,
+    plugins: manifestRegistry.plugins,
+    normalizePluginId: (pluginId: string) =>
+      manifestRegistry.plugins.find((plugin) => plugin.legacyPluginIds?.includes(pluginId))?.id ??
+      pluginId,
+  };
+  hoisted.loadPluginMetadataSnapshot
+    .mockReturnValueOnce(snapshot)
+    .mockReturnValueOnce(snapshot)
+    .mockReturnValueOnce(snapshot);
 }
 
 async function setupPluginOutsideSkills() {
@@ -166,6 +186,7 @@ function registerHealthyAcpBackend() {
 afterEach(async () => {
   hoisted.loadPluginManifestRegistryForInstalledIndex.mockReset();
   hoisted.loadPluginMetadataSnapshot.mockClear();
+  hoisted.resolvePluginMetadataSnapshot.mockClear();
   hoisted.loadPluginRegistrySnapshot.mockReset();
   acpRuntimeTesting.resetAcpRuntimeBackendsForTests();
   await tempDirs.cleanup();
@@ -173,7 +194,29 @@ afterEach(async () => {
 
 describe("resolvePluginSkillDirs", () => {
   beforeAll(async () => {
-    ({ resolvePluginSkillDirs } = await import("./plugin-skills.js"));
+    ({ resolvePluginSkillDirs, resolvePluginSkillDirsFromMetadata } =
+      await import("./plugin-skills.js"));
+  });
+
+  it("uses supplied lifecycle metadata without a cold load", async () => {
+    const { workspaceDir, acpxRoot, helperRoot } = await setupAcpxAndHelperRegistry();
+    registerHealthyAcpBackend();
+    const manifestRegistry = buildRegistry({ acpxRoot, helperRoot });
+
+    const dirs = resolvePluginSkillDirsFromMetadata({
+      workspaceDir,
+      config: {
+        acp: { enabled: true },
+        plugins: { entries: { acpx: { enabled: true }, helper: { enabled: true } } },
+      } as OpenClawConfig,
+      metadataSnapshot: {
+        manifestRegistry,
+        normalizePluginId: (pluginId: string) => pluginId,
+      } as never,
+    });
+
+    expect(dirs).toEqual([path.resolve(acpxRoot, "skills"), path.resolve(helperRoot, "skills")]);
+    expect(hoisted.loadPluginMetadataSnapshot).not.toHaveBeenCalled();
   });
 
   beforeEach(() => {
@@ -183,6 +226,7 @@ describe("resolvePluginSkillDirs", () => {
       plugins: [],
     });
     hoisted.loadPluginMetadataSnapshot.mockClear();
+    hoisted.resolvePluginMetadataSnapshot.mockClear();
     hoisted.loadPluginRegistrySnapshot.mockReset();
     hoisted.loadPluginRegistrySnapshot.mockReturnValue({ plugins: [] });
   });
@@ -234,6 +278,98 @@ describe("resolvePluginSkillDirs", () => {
 
     expect(dirs).toEqual(expectedDirs({ acpxRoot, helperRoot }));
   });
+
+  it("reuses current lifecycle metadata before falling back to a cold load", async () => {
+    const { workspaceDir, acpxRoot, helperRoot } = await setupAcpxAndHelperRegistry();
+    registerHealthyAcpBackend();
+    const manifestRegistry = buildRegistry({ acpxRoot, helperRoot });
+    hoisted.resolvePluginMetadataSnapshot.mockReturnValueOnce({
+      manifestRegistry,
+      plugins: manifestRegistry.plugins,
+      normalizePluginId: (pluginId: string) => pluginId,
+    });
+
+    const dirs = resolvePluginSkillDirs({
+      workspaceDir,
+      config: {
+        acp: { enabled: true },
+        plugins: { entries: { acpx: { enabled: true }, helper: { enabled: true } } },
+      } as OpenClawConfig,
+    });
+
+    expect(dirs).toEqual([path.resolve(acpxRoot, "skills"), path.resolve(helperRoot, "skills")]);
+    expect(hoisted.resolvePluginMetadataSnapshot).toHaveBeenCalledOnce();
+    expect(hoisted.loadPluginMetadataSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("preserves absent config when resolving current lifecycle metadata", async () => {
+    const workspaceDir = await tempDirs.make("openclaw-");
+    const manifestRegistry: PluginManifestRegistry = { diagnostics: [], plugins: [] };
+    const metadataSnapshot = {
+      manifestRegistry,
+      plugins: manifestRegistry.plugins,
+      normalizePluginId: (pluginId: string) => pluginId,
+    };
+    hoisted.resolvePluginMetadataSnapshot.mockImplementationOnce((params: unknown) =>
+      (params as { config?: OpenClawConfig }).config === undefined
+        ? metadataSnapshot
+        : hoisted.loadPluginMetadataSnapshot(params),
+    );
+
+    expect(resolvePluginSkillDirs({ workspaceDir })).toEqual([]);
+    expect(hoisted.loadPluginMetadataSnapshot).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      name: "unavailable to available",
+      initiallyAvailable: false,
+      firstIncludesAcpx: false,
+      secondIncludesAcpx: true,
+    },
+    {
+      name: "available to unavailable",
+      initiallyAvailable: true,
+      firstIncludesAcpx: true,
+      secondIncludesAcpx: false,
+    },
+  ])(
+    "invalidates the memo when ACP changes from $name with stable inputs",
+    async ({ initiallyAvailable, firstIncludesAcpx, secondIncludesAcpx }) => {
+      const { workspaceDir, acpxRoot, helperRoot } = await setupAcpxAndHelperRegistry();
+      const manifestRegistry = buildRegistry({ acpxRoot, helperRoot });
+      useStableMetadataSnapshot(manifestRegistry);
+      const config = {
+        acp: { enabled: true },
+        plugins: {
+          entries: {
+            acpx: { enabled: true },
+            helper: { enabled: true },
+          },
+        },
+      } as OpenClawConfig;
+      if (initiallyAvailable) {
+        registerHealthyAcpBackend();
+      }
+
+      const first = resolvePluginSkillDirs({ workspaceDir, config });
+
+      if (initiallyAvailable) {
+        acpRuntimeTesting.resetAcpRuntimeBackendsForTests();
+      } else {
+        registerHealthyAcpBackend();
+      }
+      const second = resolvePluginSkillDirs({ workspaceDir, config });
+
+      const dirsForState = (includeAcpx: boolean) => [
+        ...(includeAcpx ? [path.resolve(acpxRoot, "skills")] : []),
+        path.resolve(helperRoot, "skills"),
+      ];
+      expect(first).toEqual(dirsForState(firstIncludesAcpx));
+      expect(second).toEqual(dirsForState(secondIncludesAcpx));
+      expect(resolvePluginSkillDirs({ workspaceDir, config })).toBe(second);
+    },
+  );
 
   it("rejects plugin skill paths that escape the plugin root", async () => {
     const { workspaceDir, pluginRoot, outsideSkills } = await setupPluginOutsideSkills();
@@ -364,6 +500,43 @@ describe("resolvePluginSkillDirs", () => {
     ]);
   });
 
+  it("limits Agent Plugins skills to valid immediate child directories", async () => {
+    const workspaceDir = await tempDirs.make("openclaw-");
+    const pluginRoot = await tempDirs.make("openclaw-agent-bundle-");
+    const pluginSkillsDir = await tempDirs.make("managed-plugin-skills-");
+    const skillsRoot = path.join(pluginRoot, "skills");
+    const validSkill = path.join(skillsRoot, "valid");
+    const nestedSkill = path.join(skillsRoot, "group", "deep");
+    await fs.mkdir(validSkill, { recursive: true });
+    await fs.mkdir(nestedSkill, { recursive: true });
+    await fs.mkdir(path.join(skillsRoot, "missing"), { recursive: true });
+    await fs.writeFile(path.join(skillsRoot, "SKILL.md"), "root skill must be ignored\n");
+    await fs.writeFile(path.join(validSkill, "SKILL.md"), "valid immediate skill\n");
+    await fs.writeFile(path.join(nestedSkill, "SKILL.md"), "nested skill must be ignored\n");
+
+    hoisted.loadPluginManifestRegistryForInstalledIndex.mockReturnValue(
+      createSinglePluginRegistry({
+        pluginRoot,
+        format: "bundle",
+        bundleFormat: "agent",
+        skills: ["skills"],
+      }),
+    );
+
+    const dirs = resolvePluginSkillDirs({
+      workspaceDir,
+      pluginSkillsDir,
+      config: {
+        plugins: { entries: { helper: { enabled: true } } },
+      } as OpenClawConfig,
+    });
+
+    expect(dirs).toEqual([validSkill]);
+    expect(fsSync.readlinkSync(path.join(pluginSkillsDir, "valid"))).toBe(validSkill);
+    expect(fsSync.existsSync(path.join(pluginSkillsDir, "deep"))).toBe(false);
+    expect(fsSync.existsSync(path.join(pluginSkillsDir, "skills"))).toBe(false);
+  });
+
   it("resolves enabled plugin skills through legacy manifest aliases", async () => {
     const workspaceDir = await tempDirs.make("openclaw-");
     const pluginRoot = await tempDirs.make("openclaw-legacy-plugin-");
@@ -393,7 +566,38 @@ describe("resolvePluginSkillDirs", () => {
 });
 
 describe("publishPluginSkills", () => {
-  const { isGeneratedPluginSkillEntry, publishPluginSkills, resolvePluginSkillLinkType } = testing;
+  beforeAll(async () => {
+    ({ resolvePluginSkillDirs } = await import("./plugin-skills.js"));
+  });
+
+  function publishPluginSkills(skillDirs: string[], opts: { pluginSkillsDir: string }): void {
+    const plugins = skillDirs.map((rootDir, index) => ({
+      id: `publish-test-${index}`,
+      name: `Publish Test ${index}`,
+      channels: [],
+      providers: [],
+      cliBackends: [],
+      skills: ["."],
+      hooks: [],
+      origin: "workspace" as const,
+      rootDir,
+      source: rootDir,
+      manifestPath: path.join(rootDir, "openclaw.plugin.json"),
+    }));
+    hoisted.loadPluginManifestRegistryForInstalledIndex.mockReturnValue({
+      diagnostics: [],
+      plugins,
+    });
+    resolvePluginSkillDirs({
+      workspaceDir: opts.pluginSkillsDir,
+      pluginSkillsDir: opts.pluginSkillsDir,
+      config: {
+        plugins: {
+          entries: Object.fromEntries(plugins.map((plugin) => [plugin.id, { enabled: true }])),
+        },
+      },
+    });
+  }
 
   function withPlatform<T>(platform: NodeJS.Platform, fn: () => T): T {
     const originalPlatform = process.platform;
@@ -436,12 +640,6 @@ describe("publishPluginSkills", () => {
     expect(fsSync.readlinkSync(linkB)).toBe(dirB);
   });
 
-  it("uses junction links for plugin skill directories on Windows", () => {
-    expect(resolvePluginSkillLinkType("win32")).toBe("junction");
-    expect(resolvePluginSkillLinkType("linux")).toBe("dir");
-    expect(resolvePluginSkillLinkType("darwin")).toBe("dir");
-  });
-
   it("is idempotent: skips symlinks that already point to the same target", async () => {
     const skillParent = await tempDirs.make("plugin-skills-");
     const managedDir = await tempDirs.make("managed-skills-");
@@ -472,6 +670,23 @@ describe("publishPluginSkills", () => {
     publishPluginSkills([dir2], { pluginSkillsDir: managedDir });
 
     expect(fsSync.readlinkSync(path.join(managedDir, "my-skill"))).toBe(dir2);
+  });
+
+  it("replaces owned generated symlinks when the previous target disappeared", async () => {
+    const staleParent = await tempDirs.make("plugin-skills-stale-");
+    const currentParent = await tempDirs.make("plugin-skills-current-");
+    const managedDir = await tempDirs.make("managed-skills-");
+
+    const staleDir = await writeSkillDir(staleParent, "my-skill", "old");
+    const currentDir = await writeSkillDir(currentParent, "my-skill", "new");
+    const linkPath = path.join(managedDir, "my-skill");
+
+    fsSync.symlinkSync(staleDir, linkPath, "dir");
+    await fs.rm(staleParent, { recursive: true, force: true });
+
+    publishPluginSkills([currentDir], { pluginSkillsDir: managedDir });
+
+    expect(fsSync.readlinkSync(linkPath)).toBe(currentDir);
   });
 
   it("replaces generated Windows directory entries before publishing a current skill", async () => {
@@ -519,21 +734,6 @@ describe("publishPluginSkills", () => {
 
     expect(fsSync.existsSync(path.join(managedDir, "current-skill"))).toBe(true);
     expect(fsSync.existsSync(staleDir)).toBe(false);
-  });
-
-  it("treats Windows directory entries as generated plugin skill entries", () => {
-    const directoryEntry = {
-      isDirectory: () => true,
-      isSymbolicLink: () => false,
-    } as Dirent;
-    const regularEntry = {
-      isDirectory: () => false,
-      isSymbolicLink: () => false,
-    } as Dirent;
-
-    expect(withPlatform("win32", () => isGeneratedPluginSkillEntry(directoryEntry))).toBe(true);
-    expect(withPlatform("linux", () => isGeneratedPluginSkillEntry(directoryEntry))).toBe(false);
-    expect(withPlatform("win32", () => isGeneratedPluginSkillEntry(regularEntry))).toBe(false);
   });
 
   it("cleans up broken symlinks (dangling)", async () => {

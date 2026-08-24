@@ -4,6 +4,7 @@
 import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
 import { resolveGatewayPort } from "../../config/config.js";
 import type { OpenClawConfig } from "../../config/types.js";
+import { projectGatewayUrlForDiagnostics } from "../../gateway/connection-details.js";
 import { resolveControlUiLinks } from "../../gateway/control-ui-links.js";
 import { formatDurationPrecise } from "../../infra/format-time/format-duration.ts";
 import {
@@ -16,7 +17,7 @@ import { formatUpdateOneLiner, resolveUpdateAvailability } from "../status.updat
 
 export { formatTimeAgo } from "../../infra/format-time/format-relative.ts";
 
-export type StatusOverviewRow = {
+type StatusOverviewRow = {
   Item: string;
   Value: string;
 };
@@ -27,6 +28,10 @@ type StatusGatewayConnection = {
   url: string;
   urlSource?: string;
 };
+
+function resolveStatusGatewayDisplayUrl(connection: StatusGatewayConnection): string {
+  return projectGatewayUrlForDiagnostics(connection.url);
+}
 
 type StatusGatewayProbe = {
   connectLatencyMs?: number | null;
@@ -237,11 +242,12 @@ export function buildStatusOverviewRows(params: {
 
 /** Builds overview rows directly from raw scan/update/gateway inputs. */
 export function buildStatusOverviewSurfaceRows(params: {
-  cfg: Pick<OpenClawConfig, "update" | "gateway">;
+  cfg: Pick<OpenClawConfig, "update" | "gateway" | "telemetry">;
   update: StatusUpdateLike;
   tailscaleMode: string;
   tailscaleDns?: string | null;
   tailscaleHttpsUrl?: string | null;
+  advertisedControlUiLinks?: { httpUrl: string; wsUrl: string };
   tailscaleBackendState?: string | null;
   includeBackendStateWhenOff?: boolean;
   includeBackendStateWhenOn?: boolean;
@@ -278,6 +284,9 @@ export function buildStatusOverviewSurfaceRows(params: {
   const { dashboardUrl, gatewayValue, gatewaySelfValue, gatewayServiceValue, nodeServiceValue } =
     buildStatusGatewaySurfaceValues({
       cfg: params.cfg,
+      ...(params.advertisedControlUiLinks
+        ? { advertisedControlUiLinks: params.advertisedControlUiLinks }
+        : {}),
       gatewayMode: params.gatewayMode,
       remoteUrlMissing: params.remoteUrlMissing,
       gatewayConnection: params.gatewayConnection,
@@ -372,9 +381,8 @@ export function buildGatewayStatusSummaryParts(params: {
   authText: string;
   modeLabel: string;
 } {
-  const targetText = params.remoteUrlMissing
-    ? `fallback ${params.gatewayConnection.url}`
-    : params.gatewayConnection.url;
+  const displayUrl = resolveStatusGatewayDisplayUrl(params.gatewayConnection);
+  const targetText = params.remoteUrlMissing ? `fallback ${displayUrl}` : displayUrl;
   const targetTextWithSource = params.gatewayConnection.urlSource
     ? `${targetText} (${params.gatewayConnection.urlSource})`
     : targetText;
@@ -401,6 +409,7 @@ export function buildGatewayStatusSummaryParts(params: {
 /** Builds gateway/dashboard/service values for overview rows. */
 export function buildStatusGatewaySurfaceValues(params: {
   cfg: Pick<OpenClawConfig, "gateway">;
+  advertisedControlUiLinks?: { httpUrl: string; wsUrl: string };
   gatewayMode: "local" | "remote";
   remoteUrlMissing: boolean;
   gatewayConnection: StatusGatewayConnection;
@@ -444,7 +453,8 @@ export function buildStatusGatewaySurfaceValues(params: {
         : ""
     }${gatewaySelfValue ? ` · ${gatewaySelfValue}` : ""}`;
   return {
-    dashboardUrl: resolveStatusDashboardUrl({ cfg: params.cfg }),
+    dashboardUrl:
+      params.advertisedControlUiLinks?.httpUrl ?? resolveStatusDashboardUrl({ cfg: params.cfg }),
     gatewayValue,
     gatewaySelfValue,
     gatewayServiceValue: formatStatusServiceValue({
@@ -498,7 +508,7 @@ export function buildGatewayStatusJsonPayload(params: {
 }) {
   return {
     mode: params.gatewayMode,
-    url: params.gatewayConnection.url,
+    url: resolveStatusGatewayDisplayUrl(params.gatewayConnection),
     urlSource: params.gatewayConnection.urlSource,
     misconfigured: params.remoteUrlMissing,
     reachable: params.gatewayReachable,
@@ -506,19 +516,11 @@ export function buildGatewayStatusJsonPayload(params: {
     self: params.gatewaySelf ?? null,
     error: params.gatewayProbe?.error ?? null,
     authWarning: params.gatewayProbeAuthWarning ?? null,
-    ...(params.gatewayProbe?.health &&
-    typeof params.gatewayProbe.health === "object" &&
-    "modelPricing" in params.gatewayProbe.health
-      ? {
-          // Preserve model pricing when the gateway already returned it; do not synthesize pricing locally.
-          modelPricing: (params.gatewayProbe.health as { modelPricing?: unknown }).modelPricing,
-        }
-      : {}),
   };
 }
 
 /** Redacts common credential shapes before text is printed in status diagnostics. */
-export function redactSecrets(text: string): string {
+export function redactStatusSecrets(text: string): string {
   if (!text) {
     return text;
   }

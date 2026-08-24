@@ -4,7 +4,7 @@ import type { resolveProviderScopedAuthProfile } from "./agent-runner-auth-profi
 import type { FollowupRun } from "./queue.js";
 
 /** Callback used to detect providers that require final-answer tags. */
-export type ReasoningTagProviderResolver = (
+type ReasoningTagProviderResolver = (
   provider: string,
   options: {
     config: FollowupRun["run"]["config"];
@@ -13,45 +13,51 @@ export type ReasoningTagProviderResolver = (
   },
 ) => boolean;
 
-/** Resolves whether a provider/model run should enforce final-answer tags. */
-export const resolveEnforceFinalTagWithResolver = (
-  run: FollowupRun["run"],
-  provider: string,
-  model = run.model,
-  isReasoningTagProvider?: ReasoningTagProviderResolver,
-) =>
-  (run.skipProviderRuntimeHints ? false : undefined) ??
-  (run.enforceFinalTag ||
-    isReasoningTagProvider?.(provider, {
-      config: run.config,
-      workspaceDir: run.workspaceDir,
-      modelId: model,
-    }) ||
-    false);
-
 /** Builds model fallback options for an embedded follow-up run. */
 export function resolveModelFallbackOptions(
   run: FollowupRun["run"],
   configOverride: FollowupRun["run"]["config"] = run.config,
 ) {
   const config = configOverride;
-  const fallbacksOverride = resolveEffectiveModelFallbacks({
-    cfg: config,
-    agentId: run.agentId,
-    sessionKey: run.sessionKey,
-    hasSessionModelOverride: run.hasSessionModelOverride === true,
-    modelOverrideSource: run.modelOverrideSource,
-    hasAutoFallbackProvenance: run.hasAutoFallbackProvenance === true,
-  });
+  const fallbacksOverride = run.modelSelectionLocked
+    ? []
+    : resolveEffectiveModelFallbacks({
+        cfg: config,
+        agentId: run.agentId,
+        sessionKey: run.sessionKey,
+        hasSessionModelOverride: run.hasSessionModelOverride === true,
+        modelOverrideSource: run.modelOverrideSource,
+        hasAutoFallbackProvenance: run.hasAutoFallbackProvenance === true,
+      });
   return {
     cfg: config,
     provider: run.provider,
     model: run.model,
+    requestedRouteResolution: run.requestedRouteResolution,
     agentDir: run.agentDir,
     agentId: run.agentId,
     sessionKey: run.runtimePolicySessionKey ?? run.sessionKey,
     fallbacksOverride,
   };
+}
+
+/** Resolves whether final-answer tags should be enforced for an embedded follow-up run. */
+function resolveEnforceFinalTagWithResolver(
+  run: FollowupRun["run"],
+  provider: string,
+  model: string,
+  isReasoningTagProvider?: ReasoningTagProviderResolver,
+): boolean {
+  return (
+    (run.skipProviderRuntimeHints ? false : undefined) ??
+    (run.enforceFinalTag ||
+      isReasoningTagProvider?.(provider, {
+        config: run.config,
+        workspaceDir: run.workspaceDir,
+        modelId: model,
+      }) ||
+      false)
+  );
 }
 
 /** Builds the shared embedded-agent run params from a queued follow-up run. */
@@ -66,40 +72,60 @@ export function buildEmbeddedRunBaseParams(params: {
   isReasoningTagProvider?: ReasoningTagProviderResolver;
 }) {
   const config = params.run.config;
-  const modelFallbacksOverride = resolveEffectiveModelFallbacks({
-    cfg: config,
-    agentId: params.run.agentId,
-    sessionKey: params.run.sessionKey,
-    hasSessionModelOverride: params.run.hasSessionModelOverride === true,
-    modelOverrideSource: params.run.modelOverrideSource,
-    hasAutoFallbackProvenance: params.run.hasAutoFallbackProvenance === true,
-  });
+  const modelFallbacksOverride = params.run.modelSelectionLocked
+    ? []
+    : resolveEffectiveModelFallbacks({
+        cfg: config,
+        agentId: params.run.agentId,
+        sessionKey: params.run.sessionKey,
+        hasSessionModelOverride: params.run.hasSessionModelOverride === true,
+        modelOverrideSource: params.run.modelOverrideSource,
+        hasAutoFallbackProvenance: params.run.hasAutoFallbackProvenance === true,
+      });
+  const enforceFinalTag = resolveEnforceFinalTagWithResolver(
+    params.run,
+    params.provider,
+    params.model,
+    params.isReasoningTagProvider,
+  );
   // Runtime policy keys may differ from session keys for direct-message scoped policy.
-  return {
+  const runParams = {
     sessionFile: params.run.sessionFile,
     workspaceDir: params.run.workspaceDir,
     cwd: params.run.cwd,
+    permissionMode: params.run.permissionMode,
+    sessionRoot: params.run.sessionRoot,
     agentDir: params.run.agentDir,
     config,
+    toolOverrides: params.run.toolOverrides,
     skillsSnapshot: params.run.skillsSnapshot,
     ownerNumbers: params.run.ownerNumbers,
     inputProvenance: params.run.inputProvenance,
+    trustedInternalHandoff: params.run.trustedInternalHandoff,
+    scheduledToolPolicy: params.run.scheduledToolPolicy,
+    runtimePluginToolGrant: params.run.runtimePluginToolGrant,
     senderIsOwner: params.run.senderIsOwner,
-    enforceFinalTag: resolveEnforceFinalTagWithResolver(
-      params.run,
-      params.provider,
-      params.model,
-      params.isReasoningTagProvider,
-    ),
+    conversationToolPolicy: params.run.conversationToolPolicy,
+    channelContext: params.run.channelContext,
+    approvalReviewerDeviceId: params.run.approvalReviewerDeviceId,
+    enforceFinalTag,
     silentExpected: params.run.silentExpected,
     allowEmptyAssistantReplyAsSilent: params.run.allowEmptyAssistantReplyAsSilent,
+    terminalReplyExpectation: params.run.terminalReplyExpectation,
     silentReplyPromptMode: params.run.silentReplyPromptMode,
     sourceReplyDeliveryMode: params.run.sourceReplyDeliveryMode,
+    clientCaps: params.run.clientCaps,
+    toolBindings: params.run.toolBindings,
+    taskSuggestionDeliveryMode: params.run.taskSuggestionDeliveryMode,
+    skillWorkshopProposalRevision: params.run.skillWorkshopProposalRevision,
     provider: params.provider,
     model: params.model,
+    modelSelectionLocked: params.run.modelSelectionLocked,
     modelFallbacksOverride,
     ...params.authProfile,
     thinkLevel: params.run.thinkLevel,
+    fastMode: params.run.fastMode,
+    fastModeAutoOnSeconds: params.run.fastModeAutoOnSeconds,
     verboseLevel: params.run.verboseLevel,
     reasoningLevel: params.run.reasoningLevel,
     execOverrides: params.run.execOverrides,
@@ -109,4 +135,5 @@ export function buildEmbeddedRunBaseParams(params: {
     promptCacheKey: params.promptCacheKey,
     allowTransientCooldownProbe: params.allowTransientCooldownProbe,
   };
+  return runParams;
 }

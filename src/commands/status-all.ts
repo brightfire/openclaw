@@ -16,6 +16,7 @@ export async function statusAllCommand(
 ): Promise<void> {
   await withProgress({ label: "Scanning status --all…", total: 11 }, async (progress) => {
     const overview = await collectStatusScanOverview({
+      env: process.env,
       commandName: "status --all",
       opts: {
         timeoutMs: opts?.timeoutMs,
@@ -24,6 +25,7 @@ export async function statusAllCommand(
       runtime,
       // status --all can afford gateway overrides so channel summaries reflect live runtime state.
       useGatewayCallOverridesForChannelsStatus: true,
+      includeAdvertisedControlUiLinks: true,
       progress,
       labels: {
         loadingConfig: "Loading config…",
@@ -36,7 +38,7 @@ export async function statusAllCommand(
       },
     });
     progress.setLabel("Checking services…");
-    const [daemon, nodeService] = await resolveStatusServiceSummaries();
+    const [daemon, nodeService] = await resolveStatusServiceSummaries(opts?.timeoutMs);
     const nodeOnlyGateway = await resolveNodeOnlyGatewayInfo({
       daemon,
       node: nodeService,

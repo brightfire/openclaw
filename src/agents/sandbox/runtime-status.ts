@@ -4,6 +4,7 @@
  * Resolves whether a session is sandboxed and explains policy blocks before tool execution.
  */
 import { normalizeOptionalLowercaseString } from "@openclaw/normalization-core/string-coerce";
+import { sliceUtf16Safe, truncateUtf16Safe } from "@openclaw/normalization-core/utf16-slice";
 import { formatCliCommand } from "../../cli/command-format.js";
 import {
   canonicalizeMainSessionAlias,
@@ -11,7 +12,7 @@ import {
 } from "../../config/sessions/main-session.js";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { resolveSessionAgentId } from "../agent-scope.js";
-import { auditSandboxToolPolicyBlock } from "../tool-policy-audit.js";
+import { auditSandboxToolPolicyBlock, escapeControlCharsVisible } from "../tool-policy-audit.js";
 import { resolveSandboxConfigForAgent } from "./config.js";
 import {
   classifyToolAgainstSandboxToolPolicy,
@@ -58,9 +59,15 @@ function resolveComparableSessionKeyForSandbox(params: {
 export function resolveSandboxRuntimeStatus(params: {
   cfg?: OpenClawConfig;
   sessionKey?: string;
+  agentId?: string;
+  /** Independent execution identity used for sandbox mode and policy classification. */
+  classificationSessionKey?: string;
+  classificationAgentId?: string;
 }): {
   agentId: string;
   sessionKey: string;
+  classificationAgentId: string;
+  classificationSessionKey: string;
   mainSessionKey: string;
   mode: SandboxConfig["mode"];
   sandboxed: boolean;
@@ -70,44 +77,42 @@ export function resolveSandboxRuntimeStatus(params: {
   const agentId = resolveSessionAgentId({
     sessionKey,
     config: params.cfg,
+    agentId: params.agentId,
+  });
+  const classificationSessionKey = params.classificationSessionKey?.trim() || sessionKey;
+  const classificationAgentId = resolveSessionAgentId({
+    sessionKey: classificationSessionKey,
+    config: params.cfg,
+    agentId: params.classificationAgentId,
   });
   const cfg = params.cfg;
-  const sandboxCfg = resolveSandboxConfigForAgent(cfg, agentId);
-  const mainSessionKey = resolveMainSessionKeyForSandbox({ cfg, agentId });
-  const sandboxed = sessionKey
+  const sandboxCfg = resolveSandboxConfigForAgent(cfg, classificationAgentId);
+  const mainSessionKey = resolveMainSessionKeyForSandbox({ cfg, agentId: classificationAgentId });
+  const sandboxed = classificationSessionKey
     ? shouldSandboxSession(
         sandboxCfg,
-        resolveComparableSessionKeyForSandbox({ cfg, agentId, sessionKey }),
+        resolveComparableSessionKeyForSandbox({
+          cfg,
+          agentId: classificationAgentId,
+          sessionKey: classificationSessionKey,
+        }),
         mainSessionKey,
       )
     : false;
   return {
     agentId,
     sessionKey,
+    classificationAgentId,
+    classificationSessionKey,
     mainSessionKey,
     mode: sandboxCfg.mode,
     sandboxed,
-    toolPolicy: resolveSandboxToolPolicyForAgent(cfg, agentId),
+    toolPolicy: resolveSandboxToolPolicyForAgent(cfg, classificationAgentId),
   };
 }
 
 function sanitizeForSingleLineDisplay(value: string): string {
-  return Array.from(value, (char) => {
-    if (char === "\n") {
-      return "\\n";
-    }
-    if (char === "\r") {
-      return "\\r";
-    }
-    if (char === "\t") {
-      return "\\t";
-    }
-    const codePoint = char.codePointAt(0) ?? 0;
-    if (codePoint < 0x20 || codePoint === 0x7f) {
-      return `\\x${codePoint.toString(16).padStart(2, "0")}`;
-    }
-    return char;
-  }).join("");
+  return escapeControlCharsVisible(value);
 }
 
 function hasUnsafeControlChars(value: string): boolean {
@@ -125,7 +130,7 @@ function redactSessionKey(value: string): string {
   if (trimmed.length <= 12) {
     return "(redacted)";
   }
-  return `${sanitizeForSingleLineDisplay(trimmed.slice(0, 6))}…${sanitizeForSingleLineDisplay(trimmed.slice(-6))}`;
+  return `${sanitizeForSingleLineDisplay(truncateUtf16Safe(trimmed, 6))}…${sanitizeForSingleLineDisplay(sliceUtf16Safe(trimmed, -6))}`;
 }
 
 function shellEscapeSingleArg(value: string): string {

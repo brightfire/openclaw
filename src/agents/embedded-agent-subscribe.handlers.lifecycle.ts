@@ -1,13 +1,14 @@
 /**
  * Handles lifecycle and compaction events from subscribed embedded-agent sessions.
  */
+import { isPromiseLike } from "@openclaw/normalization-core/promise-like";
 import { createInlineCodeState } from "../../packages/markdown-core/src/code-spans.js";
 import { emitAgentEvent } from "../infra/agent-events.js";
 import { hasAcceptedSessionSpawn } from "./accepted-session-spawn.js";
+import { sanitizeForConsole } from "./console-sanitize.js";
 import {
   buildApiErrorObservationFields,
   buildTextObservationFields,
-  sanitizeForConsole,
   shouldSuppressRawErrorConsoleSuffix,
 } from "./embedded-agent-error-observation.js";
 import {
@@ -16,15 +17,18 @@ import {
   GENERIC_ASSISTANT_ERROR_TEXT,
 } from "./embedded-agent-helpers.js";
 import { hasCommittedMessagingToolDeliveryEvidence } from "./embedded-agent-runner/delivery-evidence.js";
-import { isIncompleteTerminalAssistantTurn } from "./embedded-agent-runner/run/incomplete-turn.js";
+import { hasAttemptTerminalState } from "./embedded-agent-runner/run/attempt-terminal-evidence.js";
+import { resolveFinalAssistantVisibleText } from "./embedded-agent-runner/run/helpers.js";
+import { isIncompleteTerminalAssistantTurn } from "./embedded-agent-runner/run/incomplete-turn-classification.js";
+import { runBestEffortCallback } from "./embedded-agent-subscribe.callback.js";
 import {
-  consumePendingToolMediaReply,
   hasAssistantVisibleReply,
-} from "./embedded-agent-subscribe.handlers.messages.js";
+  readPendingToolMediaReply,
+} from "./embedded-agent-subscribe.handlers.messages.replies.js";
 import type { EmbeddedAgentSubscribeContext } from "./embedded-agent-subscribe.handlers.types.js";
-import { isPromiseLike } from "./embedded-agent-subscribe.promise.js";
 import { isAssistantMessage } from "./embedded-agent-utils.js";
 import type { AgentSessionEvent } from "./sessions/index.js";
+import { summarizeToolValidationError } from "./tool-error-summary.js";
 
 export {
   handleCompactionEnd,
@@ -47,9 +51,14 @@ export function handleAgentStart(ctx: EmbeddedAgentSubscribeContext) {
       startedAt: Date.now(),
     },
   });
-  void ctx.params.onAgentEvent?.({
-    stream: "lifecycle",
-    data: { phase: "start" },
+  runBestEffortCallback({
+    label: "lifecycle agent event",
+    log: ctx.log,
+    callback: () =>
+      ctx.params.onAgentEvent?.({
+        stream: "lifecycle",
+        data: { phase: "start" },
+      }),
   });
 }
 
@@ -57,22 +66,70 @@ export function handleAgentEnd(
   ctx: EmbeddedAgentSubscribeContext,
   evt?: Extract<AgentSessionEvent, { type: "agent_end" }>,
 ): void | Promise<void> {
+  ctx.state.liveEditDiffStateById.clear();
   type BeforeTerminalDeliveryDecision = void | { suppressTerminalDelivery?: boolean };
   const lastAssistant = ctx.state.lastAssistant;
   const isError = isAssistantMessage(lastAssistant) && lastAssistant.stopReason === "error";
   let lifecycleErrorText: string | undefined;
-  const hasAssistantVisibleText =
+  // Terminal delivery does not depend on streamed text alone: when the streamed
+  // assistant texts are empty, payload building falls back to the completed
+  // assistant message's visible text, so such a turn still reaches the user.
+  // Classification must key on the same fact, otherwise a delivered reply is
+  // recorded here as an abandoned, replay-invalid turn. Error and abort stop
+  // reasons keep the streamed-only view because their raw text can describe an
+  // interrupted generation rather than a reply (mirrors
+  // resolveTerminalAssistantTexts).
+  const hasStreamedAssistantVisibleText =
     Array.isArray(ctx.state.assistantTexts) &&
     ctx.state.assistantTexts.some((text) => hasAssistantVisibleReply({ text }));
+  const completedAssistantFallbackText =
+    isAssistantMessage(lastAssistant) &&
+    lastAssistant.stopReason !== "error" &&
+    lastAssistant.stopReason !== "aborted"
+      ? resolveFinalAssistantVisibleText(lastAssistant)
+      : undefined;
+  const hasAssistantVisibleText =
+    hasStreamedAssistantVisibleText ||
+    hasAssistantVisibleReply({ text: completedAssistantFallbackText ?? "" });
   const hadLivenessPreservingSideEffect =
     ctx.state.hadDeterministicSideEffect === true ||
     hasCommittedMessagingToolDeliveryEvidence(ctx.state) ||
     hasAcceptedSessionSpawn(ctx.state.acceptedSessionSpawns) ||
     (ctx.state.successfulCronAdds ?? 0) > 0;
+  const deferredMediaUrls = ctx.state.deferredBlockReplies.flatMap(
+    (payload) => payload.mediaUrls ?? [],
+  );
+  const hasTerminalOutput = hasAttemptTerminalState({
+    yieldDetected: ctx.state.yielded,
+    didSendDeterministicApprovalPrompt: ctx.state.deterministicApprovalPromptSent,
+    heartbeatToolResponse: ctx.state.heartbeatToolResponse,
+    lastToolError: ctx.state.lastToolError,
+    toolMediaUrls: [...ctx.state.pendingToolMediaUrls, ...deferredMediaUrls],
+    toolAudioAsVoice:
+      ctx.state.pendingToolAudioAsVoice ||
+      ctx.state.deferredBlockReplies.some((payload) => payload.audioAsVoice),
+    toolTrustedLocalMedia: resolveTerminalToolMediaTrust({
+      pendingMediaUrls: ctx.state.pendingToolMediaUrls,
+      pendingTrustByUrl: ctx.state.pendingToolMediaTrustByUrl,
+      deferredReplies: ctx.state.deferredBlockReplies,
+    }),
+    hasToolMediaBlockReply: ctx.state.hasToolMediaBlockReply,
+    didDeliverSourceReplyViaMessageTool:
+      ctx.state.messageToolOnlySourceReplyDelivered ||
+      ctx.params.hasDeliveredMessageToolOnlySourceReply?.() === true,
+    messagingToolSourceReplyPayloads: ctx.state.messagingToolSourceReplyPayloads,
+    messagingToolSentTexts: ctx.state.messagingToolSentTexts,
+    messagingToolSentMediaUrls: ctx.state.messagingToolSentMediaUrls,
+    messagingToolSentTargets: ctx.state.messagingToolSentTargets,
+    successfulCronAdds: ctx.state.successfulCronAdds,
+    acceptedSessionSpawns: ctx.state.acceptedSessionSpawns,
+    toolMetas: ctx.state.toolMetas,
+  });
   const hadBeforeFinalizeSideEffect =
     hadLivenessPreservingSideEffect || ctx.state.replayState.hadPotentialSideEffects;
   const incompleteTerminalAssistant = isIncompleteTerminalAssistantTurn({
     hasAssistantVisibleText,
+    hasTerminalOutput,
     lastAssistant: isAssistantMessage(lastAssistant) ? lastAssistant : null,
   });
   const replayInvalid =
@@ -144,6 +201,12 @@ export function handleAgentEnd(
       typeof ctx.state.terminalAborted === "boolean"
         ? ctx.state.terminalAborted
         : ctx.params.isTerminalAborted?.();
+    // Aborted validation loops lose their final tool result. Preserve only the
+    // argument-free validator summary; arbitrary tool errors can contain secrets.
+    const toolErrorSummary =
+      terminalAborted === true && ctx.state.lastToolError
+        ? summarizeToolValidationError(ctx.state.lastToolError)
+        : undefined;
     const terminalMeta = {
       ...(terminalStopReason ? { stopReason: terminalStopReason } : {}),
       ...(ctx.state.yielded === true ? { yielded: true } : {}),
@@ -152,39 +215,11 @@ export function handleAgentEnd(
         ? { providerStarted: ctx.state.providerStarted }
         : {}),
       ...(typeof terminalAborted === "boolean" ? { aborted: terminalAborted } : {}),
+      ...(toolErrorSummary ? { toolErrorSummary } : {}),
     };
-    if (isError) {
-      emitAgentEvent({
-        runId: ctx.params.runId,
-        ...(ctx.params.sessionKey ? { sessionKey: ctx.params.sessionKey } : {}),
-        ...(ctx.params.sessionId ? { sessionId: ctx.params.sessionId } : {}),
-        ...(ctx.params.agentId ? { agentId: ctx.params.agentId } : {}),
-        ...(ctx.params.lifecycleGeneration
-          ? { lifecycleGeneration: ctx.params.lifecycleGeneration }
-          : {}),
-        stream: "lifecycle",
-        data: {
-          phase: "error",
-          error: lifecycleErrorText ?? GENERIC_ASSISTANT_ERROR_TEXT,
-          ...terminalMeta,
-          ...(livenessState ? { livenessState } : {}),
-          ...(replayInvalid ? { replayInvalid } : {}),
-          endedAt: Date.now(),
-        },
-      });
-      void ctx.params.onAgentEvent?.({
-        stream: "lifecycle",
-        data: {
-          phase: "error",
-          error: lifecycleErrorText ?? GENERIC_ASSISTANT_ERROR_TEXT,
-          ...terminalMeta,
-          ...(livenessState ? { livenessState } : {}),
-          ...(replayInvalid ? { replayInvalid } : {}),
-        },
-      });
-      return;
-    }
-    const successPhase = ctx.params.terminalLifecyclePhase ?? "end";
+    const phase =
+      ctx.params.terminalLifecyclePhase === "finishing" ? "finishing" : isError ? "error" : "end";
+    const errorData = isError ? { error: lifecycleErrorText ?? GENERIC_ASSISTANT_ERROR_TEXT } : {};
     emitAgentEvent({
       runId: ctx.params.runId,
       ...(ctx.params.sessionKey ? { sessionKey: ctx.params.sessionKey } : {}),
@@ -195,21 +230,28 @@ export function handleAgentEnd(
         : {}),
       stream: "lifecycle",
       data: {
-        phase: successPhase,
+        phase,
+        ...errorData,
         ...terminalMeta,
         ...(livenessState ? { livenessState } : {}),
         ...(replayInvalid ? { replayInvalid } : {}),
         endedAt: Date.now(),
       },
     });
-    void ctx.params.onAgentEvent?.({
-      stream: "lifecycle",
-      data: {
-        phase: successPhase,
-        ...terminalMeta,
-        ...(livenessState ? { livenessState } : {}),
-        ...(replayInvalid ? { replayInvalid } : {}),
-      },
+    runBestEffortCallback({
+      label: "lifecycle agent event",
+      log: ctx.log,
+      callback: () =>
+        ctx.params.onAgentEvent?.({
+          stream: "lifecycle",
+          data: {
+            phase,
+            ...errorData,
+            ...terminalMeta,
+            ...(livenessState ? { livenessState } : {}),
+            ...(replayInvalid ? { replayInvalid } : {}),
+          },
+        }),
     });
   };
 
@@ -229,8 +271,8 @@ export function handleAgentEnd(
   };
 
   const flushPendingMediaAndChannel = () => {
-    if (ctx.params.onBlockReply) {
-      const pendingToolMediaReply = consumePendingToolMediaReply(ctx.state);
+    if (ctx.params.onBlockReply && !ctx.state.pendingToolMediaDeliveryFailed) {
+      const pendingToolMediaReply = readPendingToolMediaReply(ctx.state);
       if (pendingToolMediaReply && hasAssistantVisibleReply(pendingToolMediaReply)) {
         ctx.emitBlockReply(pendingToolMediaReply);
       }
@@ -239,7 +281,7 @@ export function handleAgentEnd(
     const postMediaFlushResult = ctx.flushBlockReplyBuffer();
     if (isPromiseLike<void>(postMediaFlushResult)) {
       return postMediaFlushResult.then(() => {
-        const onBlockReplyFlushResult = ctx.params.onBlockReplyFlush?.();
+        const onBlockReplyFlushResult = ctx.params.onBlockReplyFlush?.({ reason: "terminal" });
         if (isPromiseLike<void>(onBlockReplyFlushResult)) {
           return onBlockReplyFlushResult;
         }
@@ -247,7 +289,7 @@ export function handleAgentEnd(
       });
     }
 
-    const onBlockReplyFlushResult = ctx.params.onBlockReplyFlush?.();
+    const onBlockReplyFlushResult = ctx.params.onBlockReplyFlush?.({ reason: "terminal" });
     if (isPromiseLike<void>(onBlockReplyFlushResult)) {
       return onBlockReplyFlushResult;
     }
@@ -260,6 +302,7 @@ export function handleAgentEnd(
     const result = ctx.params.onBeforeTerminalDelivery?.({
       messages: evt?.messages ?? [],
       willRetry: evt?.willRetry === true,
+      ...(evt?.assistantEntryId ? { assistantEntryId: evt.assistantEntryId } : {}),
       ...(lastAssistant ? { lastAssistant } : {}),
       assistantTexts: ctx.state.assistantTexts,
       hasAssistantVisibleText,
@@ -374,3 +417,19 @@ export function handleAgentEnd(
   }
   return deliverTerminalWithLifecycleErrorFallback();
 }
+function resolveTerminalToolMediaTrust(params: {
+  pendingMediaUrls: readonly string[];
+  pendingTrustByUrl: ReadonlyMap<string, boolean>;
+  deferredReplies: readonly { mediaUrls?: string[]; trustedLocalMedia?: boolean }[];
+}): boolean {
+  const trust = [
+    ...params.pendingMediaUrls.map((url) => params.pendingTrustByUrl.get(url.trim()) === true),
+    ...params.deferredReplies.flatMap((payload) =>
+      (payload.mediaUrls ?? []).map(() => payload.trustedLocalMedia === true),
+    ),
+  ];
+  return trust.length > 0 && trust.every(Boolean);
+}
+
+const testing = { resolveTerminalToolMediaTrust };
+export { testing as __testing };

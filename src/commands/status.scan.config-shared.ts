@@ -2,19 +2,18 @@
 // Handles missing-config cold start and secret diagnostics before scan work begins.
 
 import { existsSync } from "node:fs";
+import type { BestEffortConfigSnapshot } from "../config/io.js";
 import { resolveConfigPath } from "../config/paths.js";
 import type { OpenClawConfig } from "../config/types.js";
 import { resolveGatewayAuthTokenSourceConflict } from "../gateway/auth-token-source-conflict.js";
 
 /** Returns true when tests should avoid the missing-config cold-start fast path. */
-export function shouldSkipStatusScanMissingConfigFastPath(
-  env: NodeJS.ProcessEnv = process.env,
-): boolean {
+function shouldSkipStatusScanMissingConfigFastPath(env: NodeJS.ProcessEnv = process.env): boolean {
   return env.VITEST === "true" || env.VITEST_POOL_ID !== undefined || env.NODE_ENV === "test";
 }
 
 /** Returns whether status should treat this run as a no-config cold start. */
-export function resolveStatusScanColdStart(params?: {
+function resolveStatusScanColdStart(params?: {
   env?: NodeJS.ProcessEnv;
   allowMissingConfigFastPath?: boolean;
 }): boolean {
@@ -27,10 +26,7 @@ export function resolveStatusScanColdStart(params?: {
 /** Loads best-effort config, resolves read-only secrets, and appends status secret diagnostics. */
 export async function loadStatusScanCommandConfig(params: {
   commandName: string;
-  readConfigSnapshot: () => Promise<{
-    config: OpenClawConfig;
-    sourceConfig: OpenClawConfig;
-  }>;
+  readConfigSnapshot: () => Promise<BestEffortConfigSnapshot>;
   resolveConfig: (
     sourceConfig: OpenClawConfig,
   ) => Promise<{ resolvedConfig: OpenClawConfig; diagnostics: string[] }>;
@@ -40,6 +36,7 @@ export async function loadStatusScanCommandConfig(params: {
   coldStart: boolean;
   sourceConfig: OpenClawConfig;
   resolvedConfig: OpenClawConfig;
+  configDiagnostics: BestEffortConfigSnapshot["configDiagnostics"];
   secretDiagnostics: string[];
 }> {
   const env = params.env ?? process.env;
@@ -49,7 +46,7 @@ export async function loadStatusScanCommandConfig(params: {
   });
   const configSnapshot =
     coldStart && params.allowMissingConfigFastPath === true
-      ? { config: {}, sourceConfig: {} }
+      ? { config: {}, sourceConfig: {}, configDiagnostics: null }
       : await params.readConfigSnapshot();
   const loadedConfig = configSnapshot.config;
   const sourceConfig = configSnapshot.sourceConfig;
@@ -63,6 +60,7 @@ export async function loadStatusScanCommandConfig(params: {
     coldStart,
     sourceConfig,
     resolvedConfig,
+    configDiagnostics: configSnapshot.configDiagnostics,
     secretDiagnostics: tokenConflict ? [...diagnostics, tokenConflict.diagnostic] : diagnostics,
   };
 }

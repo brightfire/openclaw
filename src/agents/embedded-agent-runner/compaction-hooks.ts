@@ -5,7 +5,7 @@ import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { createInternalHookEvent, triggerInternalHook } from "../../hooks/internal-hooks.js";
 import { formatErrorMessage } from "../../infra/errors.js";
 import { getGlobalHookRunner } from "../../plugins/hook-runner-global.js";
-import { getActiveMemorySearchManager } from "../../plugins/memory-runtime.js";
+import { getActiveMemorySearchManagerCore } from "../../plugins/memory-runtime.js";
 import { emitSessionTranscriptUpdate } from "../../sessions/transcript-events.js";
 import { resolveSessionAgentId } from "../agent-scope.js";
 import { resolveMemorySearchConfig } from "../memory-search.js";
@@ -23,6 +23,7 @@ function resolvePostCompactionIndexSyncMode(config?: OpenClawConfig): "off" | "a
 async function runPostCompactionSessionMemorySync(params: {
   config?: OpenClawConfig;
   sessionKey?: string;
+  sessionId?: string;
   agentId?: string;
   sessionFile: string;
 }): Promise<void> {
@@ -46,16 +47,27 @@ async function runPostCompactionSessionMemorySync(params: {
     if (!resolvedMemory.sync.sessions.postCompactionForce) {
       return;
     }
-    const { manager } = await getActiveMemorySearchManager({
+    const { manager } = await getActiveMemorySearchManagerCore({
       cfg: params.config,
       agentId,
     });
     if (!manager?.sync) {
       return;
     }
+    const sessionId = params.sessionId?.trim();
     await manager.sync({
       reason: "post-compaction",
-      sessionFiles: [sessionFile],
+      ...(sessionId
+        ? {
+            sessions: [
+              {
+                agentId,
+                sessionId,
+                ...(params.sessionKey ? { sessionKey: params.sessionKey } : {}),
+              },
+            ],
+          }
+        : { archiveFiles: [sessionFile] }),
     });
   } catch (err) {
     log.warn(`memory sync skipped (post-compaction): ${formatErrorMessage(err)}`);
@@ -65,6 +77,7 @@ async function runPostCompactionSessionMemorySync(params: {
 function syncPostCompactionSessionMemory(params: {
   config?: OpenClawConfig;
   sessionKey?: string;
+  sessionId?: string;
   agentId?: string;
   sessionFile: string;
   mode: "off" | "async" | "await";
@@ -76,6 +89,7 @@ function syncPostCompactionSessionMemory(params: {
   const syncTask = runPostCompactionSessionMemorySync({
     config: params.config,
     sessionKey: params.sessionKey,
+    sessionId: params.sessionId,
     agentId: params.agentId,
     sessionFile: params.sessionFile,
   });
@@ -91,6 +105,7 @@ function syncPostCompactionSessionMemory(params: {
 export async function runPostCompactionSideEffects(params: {
   config?: OpenClawConfig;
   sessionKey?: string;
+  sessionId?: string;
   agentId?: string;
   sessionFile: string;
 }): Promise<void> {
@@ -101,11 +116,13 @@ export async function runPostCompactionSideEffects(params: {
   emitSessionTranscriptUpdate({
     sessionFile,
     sessionKey: params.sessionKey,
+    ...(params.sessionId ? { sessionId: params.sessionId } : {}),
     ...(params.agentId ? { agentId: params.agentId } : {}),
   });
   await syncPostCompactionSessionMemory({
     config: params.config,
     sessionKey: params.sessionKey,
+    sessionId: params.sessionId,
     agentId: params.agentId,
     sessionFile,
     mode: resolvePostCompactionIndexSyncMode(params.config),
@@ -113,7 +130,7 @@ export async function runPostCompactionSideEffects(params: {
 }
 
 /** Narrow adapter over the global hook runner methods used by compaction. */
-export type CompactionHookRunner = {
+type CompactionHookRunner = {
   hasHooks?: (hookName?: string) => boolean;
   runBeforeCompaction?: (
     metrics: { messageCount: number; tokenCount?: number; sessionFile?: string },
@@ -192,7 +209,7 @@ export function buildBeforeCompactionHookMetrics(params: {
 export async function runBeforeCompactionHooks(params: {
   hookRunner?: CompactionHookRunner | null;
   sessionId: string;
-  sessionKey?: string;
+  sessionKey: string;
   sessionAgentId: string;
   workspaceDir: string;
   messageProvider?: string;
@@ -204,8 +221,8 @@ export async function runBeforeCompactionHooks(params: {
     sessionKey: string;
   }) => void | Promise<void>;
 }) {
-  const missingSessionKey = !params.sessionKey || !params.sessionKey.trim();
-  const hookSessionKey = params.sessionKey?.trim() || params.sessionId;
+  const missingSessionKey = false;
+  const hookSessionKey = params.sessionKey;
   try {
     const hookEvent = createInternalHookEvent("session", "compact:before", hookSessionKey, {
       sessionId: params.sessionId,
@@ -293,6 +310,7 @@ export async function runAfterCompactionHooks(params: {
   tokensAfter?: number;
   compactedCount: number;
   sessionFile: string;
+  previousSessionId?: string;
   summaryLength?: number;
   tokensBefore?: number;
   firstKeptEntryId?: string;
@@ -338,6 +356,7 @@ export async function runAfterCompactionHooks(params: {
           tokenCount: params.tokensAfter,
           compactedCount: params.compactedCount,
           sessionFile: params.sessionFile,
+          ...(params.previousSessionId ? { previousSessionId: params.previousSessionId } : {}),
         },
         {
           sessionId: params.sessionId,

@@ -1,16 +1,37 @@
 // Check Deadcode Unused Files tests cover check deadcode unused files script behavior.
+import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
+  checkKnipUnusedFileScanResult,
   checkUnusedFiles,
-  compareUnusedFilesToAllowlist,
-  KNIP_MAX_BUFFER_BYTES,
   parseKnipCompactUnusedFiles,
-  runKnipUnusedFiles,
-} from "../../scripts/check-deadcode-unused-files.mjs";
+} from "../../scripts/check-deadcode-unused-files.mts";
+import { KNIP_MAX_BUFFER_BYTES, runKnip } from "../../scripts/deadcode-knip-runner.mts";
+import { killPidIfAlive } from "../../src/test-utils/process-tree.js";
+import {
+  isProcessAlive,
+  waitForChildClose,
+  waitForDead,
+  waitForFile,
+  waitForPidFile,
+} from "../helpers/process-wait.js";
+
+const KNIP_UNUSED_FILE_ARGS = [
+  "--config",
+  "config/knip.config.ts",
+  "--production",
+  "--no-progress",
+  "--reporter",
+  "compact",
+  "--files",
+  "--no-config-hints",
+];
+const KNIP_UNUSED_FILE_SCAN_NAME = "production unused-file scan";
 
 class FakeKnipProcess extends EventEmitter {
   readonly stderr = new EventEmitter();
@@ -27,7 +48,31 @@ function finishFakeProcess(
   child.emit("close", status, signal);
 }
 
+function waitForPidFileSync(filePath: string, timeoutMs: number): number {
+  const deadlineAt = Date.now() + timeoutMs;
+  const waitSignal = new Int32Array(new SharedArrayBuffer(4));
+  while (Date.now() < deadlineAt) {
+    if (existsSync(filePath)) {
+      const pid = Number.parseInt(readFileSync(filePath, "utf8"), 10);
+      if (Number.isInteger(pid) && pid > 0) {
+        return pid;
+      }
+    }
+    Atomics.wait(waitSignal, 0, 0, 5);
+  }
+  throw new Error(`timeout waiting for pid in ${filePath}`);
+}
+
 describe("check-deadcode-unused-files", () => {
+  it("has no checked-in unused-file allowlist", () => {
+    expect(existsSync(path.resolve("scripts/deadcode-unused-files.allowlist.mjs"))).toBe(false);
+    const script = readFileSync(path.resolve("scripts/check-deadcode-unused-files.mts"), "utf8");
+    expect(script).not.toContain("allowlist");
+    expect(script).toContain("production and full-tree unused-file checks passed with 0 entries");
+    expect(script).toContain('"config/knip.all-exports.config.ts"');
+    expect(script).toContain("result.status !== 0");
+  });
+
   it("parses the compact Knip unused-file section", () => {
     expect(
       parseKnipCompactUnusedFiles(`
@@ -37,6 +82,9 @@ describe("check-deadcode-unused-files", () => {
 Unused files (2)
 src/b.ts: src/b.ts
 src/a.ts: src/a.ts
+C:\\tmp\\outside.ts: C:\\tmp\\outside.ts
+C:outside.ts: C:outside.ts
+\\\\server\\share\\outside.ts: \\\\server\\share\\outside.ts
 
 Unused dependencies (1)
 left-pad: package.json
@@ -51,6 +99,14 @@ left-pad: package.json
     ]);
   });
 
+  it("keeps dot-directory and root entry files", () => {
+    expect(
+      parseKnipCompactUnusedFiles(
+        ".agents/skills/example/scripts/check.mts: .agents/skills/example/scripts/check.mts\ntsdown.ai.config.ts: tsdown.ai.config.ts\n",
+      ),
+    ).toEqual([".agents/skills/example/scripts/check.mts", "tsdown.ai.config.ts"]);
+  });
+
   it("ignores pnpm dlx progress lines in files-only compact output", () => {
     expect(
       parseKnipCompactUnusedFiles(`
@@ -62,71 +118,39 @@ src/a.ts: src/a.ts
     ).toEqual(["src/a.ts", "src/b.ts"]);
   });
 
-  it("reports unexpected and stale allowlist entries", () => {
-    expect(
-      compareUnusedFilesToAllowlist(["src/a.ts", "src/new.ts"], ["src/a.ts", "src/old.ts"]),
-    ).toStrictEqual({
-      actual: ["src/a.ts", "src/new.ts"],
-      allowed: ["src/a.ts", "src/old.ts"],
-      unexpected: ["src/new.ts"],
-      stale: ["src/old.ts"],
-      duplicateAllowedCount: 0,
-      allowlistIsSorted: true,
-    });
-  });
-
-  it("accepts optional allowlist entries whether Knip reports them or not", () => {
-    expect(
-      compareUnusedFilesToAllowlist(
-        ["src/a.ts", "src/platform.ts"],
-        ["src/a.ts"],
-        ["src/platform.ts"],
-      ),
-    ).toStrictEqual({
-      actual: ["src/a.ts", "src/platform.ts"],
-      allowed: ["src/a.ts"],
-      allowlistIsSorted: true,
-      duplicateAllowedCount: 0,
-      unexpected: [],
-      stale: [],
-    });
-    expect(
-      compareUnusedFilesToAllowlist(["src/a.ts"], ["src/a.ts"], ["src/platform.ts"]),
-    ).toStrictEqual({
-      actual: ["src/a.ts"],
-      allowed: ["src/a.ts"],
-      allowlistIsSorted: true,
-      duplicateAllowedCount: 0,
-      unexpected: [],
-      stale: [],
-    });
-  });
-
-  it("accepts exactly allowlisted unused files", () => {
-    expect(checkUnusedFiles("Unused files (1)\nsrc/a.ts: src/a.ts\n", ["src/a.ts"])).toStrictEqual({
-      comparison: {
-        actual: ["src/a.ts"],
-        allowed: ["src/a.ts"],
-        allowlistIsSorted: true,
-        duplicateAllowedCount: 0,
-        stale: [],
-        unexpected: [],
-      },
+  it("accepts an empty compact report with zero unused files", () => {
+    expect(checkUnusedFiles("")).toStrictEqual({
+      files: [],
       ok: true,
       message: "",
     });
   });
 
-  it("rejects unsorted allowlists", () => {
+  it("rejects a nonzero Knip exit even when no unused files were printed", () => {
     expect(
-      compareUnusedFilesToAllowlist(["src/a.ts", "src/b.ts"], ["src/b.ts", "src/a.ts"]),
+      checkKnipUnusedFileScanResult({
+        errorCode: undefined,
+        output: "",
+        signal: null,
+        status: 2,
+      }),
     ).toStrictEqual({
-      actual: ["src/a.ts", "src/b.ts"],
-      allowed: ["src/a.ts", "src/b.ts"],
-      allowlistIsSorted: false,
-      duplicateAllowedCount: 0,
-      stale: [],
-      unexpected: [],
+      failureReason: "exit status 2",
+      message: "",
+      ok: false,
+    });
+  });
+
+  it("rejects every unused file without an allowlist", () => {
+    expect(
+      checkUnusedFiles("Unused files (2)\nsrc/z.ts: src/z.ts\nsrc/a.ts: src/a.ts\n"),
+    ).toStrictEqual({
+      files: ["src/a.ts", "src/z.ts"],
+      ok: false,
+      message: `Unused files are not allowed:
+  src/a.ts
+  src/z.ts
+Delete the files or model their real entrypoints in Knip.`,
     });
   });
 
@@ -137,7 +161,7 @@ src/a.ts: src/a.ts
     writeFileSync(pnpmExecPath, "console.log('pnpm');\n", "utf8");
 
     try {
-      const resultPromise = runKnipUnusedFiles({
+      const resultPromise = runKnip(KNIP_UNUSED_FILE_ARGS, {
         nodeExecPath: "/test-node",
         npmExecPath: pnpmExecPath,
         spawnCommand(command: string, args: string[], options: unknown) {
@@ -162,7 +186,7 @@ src/a.ts: src/a.ts
           "--config.minimum-release-age=0",
           "dlx",
           "--package",
-          "knip@6.8.0",
+          "knip@6.32.2",
           "knip",
           "--config",
           "config/knip.config.ts",
@@ -195,7 +219,7 @@ src/a.ts: src/a.ts
   it("falls back to bare pnpm when no managed pnpm runner is available", async () => {
     const calls: unknown[] = [];
 
-    const resultPromise = runKnipUnusedFiles({
+    const resultPromise = runKnip(KNIP_UNUSED_FILE_ARGS, {
       env: { PATH: "" },
       npmExecPath: "",
       platform: "linux",
@@ -217,7 +241,7 @@ src/a.ts: src/a.ts
         "--config.minimum-release-age=0",
         "dlx",
         "--package",
-        "knip@6.8.0",
+        "knip@6.32.2",
         "knip",
         "--config",
         "config/knip.config.ts",
@@ -243,6 +267,9 @@ src/a.ts: src/a.ts
     const kills: Array<NodeJS.Signals | number | undefined> = [];
     process.kill = ((pid: number, signal?: NodeJS.Signals | number) => {
       if (Math.abs(pid) === child.pid) {
+        if (signal === 0) {
+          throw Object.assign(new Error("gone"), { code: "ESRCH" });
+        }
         kills.push(signal);
         finishFakeProcess(child, null, (signal as NodeJS.Signals | undefined) ?? "SIGTERM");
         return true;
@@ -250,10 +277,11 @@ src/a.ts: src/a.ts
       return originalKill(pid, signal as NodeJS.Signals);
     }) as typeof process.kill;
     try {
-      const result = await runKnipUnusedFiles({
+      const result = await runKnip(KNIP_UNUSED_FILE_ARGS, {
         heartbeatMs: 1,
         killGraceMs: 50,
         maxBufferBytes: KNIP_MAX_BUFFER_BYTES,
+        scanName: KNIP_UNUSED_FILE_SCAN_NAME,
         spawnCommand: () => child,
         timeoutMs: 5,
         writeStatus: (message: string) => statuses.push(message),
@@ -264,7 +292,7 @@ src/a.ts: src/a.ts
       expect(kills).toContain("SIGTERM");
       expect(result).toStrictEqual({
         errorCode: "ETIMEDOUT",
-        errorMessage: expect.stringContaining("Knip unused-file scan timed out"),
+        errorMessage: expect.stringContaining("Knip production unused-file scan timed out"),
         output: "",
         signal: "SIGTERM",
         status: null,
@@ -274,9 +302,120 @@ src/a.ts: src/a.ts
     }
   });
 
+  it.skipIf(process.platform === "win32")(
+    "waits for timed-out Knip process groups after the wrapper exits",
+    async () => {
+      const root = mkdtempSync(path.join(os.tmpdir(), "openclaw-knip-timeout-"));
+      const childPidPath = path.join(root, "child.pid");
+      let childPid = 0;
+
+      try {
+        const childScript = [
+          "process.on('SIGTERM', () => {});",
+          "setInterval(() => {}, 1000);",
+        ].join("");
+        const parentScript = [
+          "const { spawn } = require('node:child_process');",
+          "const fs = require('node:fs');",
+          `const child = spawn(process.execPath, ['-e', ${JSON.stringify(childScript)}], { stdio: 'ignore' });`,
+          "fs.writeFileSync(process.env.OPENCLAW_TEST_CHILD_PID, String(child.pid));",
+          "process.on('SIGTERM', () => process.exit(0));",
+          "setInterval(() => {}, 1000);",
+        ].join("");
+
+        const resultPromise = runKnip(KNIP_UNUSED_FILE_ARGS, {
+          env: { ...process.env, OPENCLAW_TEST_CHILD_PID: childPidPath },
+          killGraceMs: 50,
+          spawnCommand(_command: string, _args: string[], options: unknown) {
+            const parent = spawn(process.execPath, ["-e", parentScript], {
+              ...(options as Parameters<typeof spawn>[2]),
+              env: { ...process.env, OPENCLAW_TEST_CHILD_PID: childPidPath },
+            });
+            childPid = waitForPidFileSync(childPidPath, 2_000);
+            return parent;
+          },
+          timeoutMs: 100,
+          writeStatus: () => {},
+        });
+
+        expect(isProcessAlive(childPid)).toBe(true);
+
+        await expect(resultPromise).resolves.toMatchObject({
+          errorCode: "ETIMEDOUT",
+        });
+        await waitForDead(childPid, 2_000);
+      } finally {
+        killPidIfAlive(childPid || undefined);
+        rmSync(root, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "cleans active Knip descendants before forwarding parent SIGTERM",
+    async () => {
+      const root = mkdtempSync(path.join(os.tmpdir(), "openclaw-knip-parent-signal-"));
+      const childPidPath = path.join(root, "child.pid");
+      const readyPath = path.join(root, "child.ready");
+      const scriptUrl = pathToFileURL(path.resolve("scripts/deadcode-knip-runner.mts")).href;
+      let childPid = 0;
+      let runner: ReturnType<typeof spawn> | undefined;
+
+      try {
+        const childScript = [
+          "const fs = require('node:fs');",
+          "process.on('SIGTERM', () => {});",
+          `fs.writeFileSync(${JSON.stringify(childPidPath)}, String(process.pid));`,
+          "setInterval(() => {}, 1000);",
+        ].join("");
+        const parentScript = [
+          "const { spawn } = require('node:child_process');",
+          `spawn(process.execPath, ['-e', ${JSON.stringify(childScript)}], { stdio: 'ignore' });`,
+          `require('node:fs').writeFileSync(${JSON.stringify(readyPath)}, 'ready');`,
+          "process.on('SIGTERM', () => process.exit(0));",
+          "setInterval(() => {}, 1000);",
+        ].join("");
+        const runnerScript = [
+          "import { spawn } from 'node:child_process';",
+          `import { runKnip } from ${JSON.stringify(scriptUrl)};`,
+          `await runKnip(${JSON.stringify(KNIP_UNUSED_FILE_ARGS)}, {`,
+          "  spawnCommand(_command, _args, options) {",
+          `    return spawn(process.execPath, ['-e', ${JSON.stringify(parentScript)}], options);`,
+          "  },",
+          "  timeoutMs: 60_000,",
+          "  writeStatus: () => {},",
+          "});",
+        ].join("\n");
+
+        runner = spawn(process.execPath, ["--input-type=module", "-e", runnerScript], {
+          cwd: process.cwd(),
+          stdio: ["ignore", "ignore", "pipe"],
+        });
+
+        await waitForFile(readyPath, 2_000);
+        childPid = await waitForPidFile(childPidPath, 2_000);
+        expect(isProcessAlive(childPid)).toBe(true);
+
+        runner.kill("SIGTERM");
+
+        await expect(waitForChildClose(runner)).resolves.toEqual({
+          code: null,
+          signal: "SIGTERM",
+        });
+        await waitForDead(childPid, 2_000);
+      } finally {
+        if (runner?.pid && isProcessAlive(runner.pid)) {
+          runner.kill("SIGKILL");
+        }
+        killPidIfAlive(childPid || undefined);
+        rmSync(root, { recursive: true, force: true });
+      }
+    },
+  );
+
   it("keeps output delivered after process exit but before stdio close", async () => {
     const child = new FakeKnipProcess();
-    const resultPromise = runKnipUnusedFiles({
+    const resultPromise = runKnip(KNIP_UNUSED_FILE_ARGS, {
       spawnCommand: () => child,
       writeStatus: () => {},
     });
@@ -300,15 +439,19 @@ src/a.ts: src/a.ts
     const originalKill = process.kill.bind(process);
     process.kill = ((pid: number, signal?: NodeJS.Signals | number) => {
       if (Math.abs(pid) === child.pid) {
+        if (signal === 0) {
+          throw Object.assign(new Error("gone"), { code: "ESRCH" });
+        }
         finishFakeProcess(child, null, (signal as NodeJS.Signals | undefined) ?? "SIGTERM");
         return true;
       }
       return originalKill(pid, signal as NodeJS.Signals);
     }) as typeof process.kill;
     try {
-      const resultPromise = runKnipUnusedFiles({
+      const resultPromise = runKnip(KNIP_UNUSED_FILE_ARGS, {
         killGraceMs: 50,
         maxBufferBytes: 4,
+        scanName: KNIP_UNUSED_FILE_SCAN_NAME,
         spawnCommand: () => child,
         timeoutMs: 1000,
         writeStatus: () => {},
@@ -317,7 +460,7 @@ src/a.ts: src/a.ts
 
       await expect(resultPromise).resolves.toStrictEqual({
         errorCode: "ENOBUFS",
-        errorMessage: "Knip unused-file scan exceeded 4 output bytes",
+        errorMessage: "Knip production unused-file scan exceeded 4 output bytes",
         output: "too ",
         signal: "SIGTERM",
         status: null,
@@ -328,7 +471,7 @@ src/a.ts: src/a.ts
   });
 
   it("reports spawn errors", async () => {
-    const resultPromise = runKnipUnusedFiles({
+    const resultPromise = runKnip(KNIP_UNUSED_FILE_ARGS, {
       spawnCommand: () => {
         const child = new FakeKnipProcess();
         queueMicrotask(() =>

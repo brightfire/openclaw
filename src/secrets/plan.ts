@@ -3,12 +3,14 @@ import { isRecord as isObjectRecord } from "@openclaw/normalization-core/record-
 import { normalizeStringEntries } from "@openclaw/normalization-core/string-normalization";
 import type { SecretProviderConfig, SecretRef } from "../config/types.secrets.js";
 import { SecretProviderSchema } from "../config/zod-schema.core.js";
-import { isValidExecSecretRefId, isValidSecretProviderAlias } from "./ref-contract.js";
-import { parseDotPath, toDotPath } from "./shared.js";
+import { isBlockedObjectKey } from "../infra/prototype-keys.js";
+import { toDotPath } from "../shared/dot-path.js";
+import { isValidSecretProviderAlias, isValidSecretRef } from "./ref-contract.js";
+import { parseDotPath } from "./shared.js";
 import { resolvePlanTargetAgainstRegistry, type ResolvedPlanTarget } from "./target-registry.js";
 
 /** Registry target id accepted by a secrets apply plan. */
-export type SecretsPlanTargetType = string;
+type SecretsPlanTargetType = string;
 
 /** One planned SecretRef mutation against config or auth-profile storage. */
 export type SecretsPlanTarget = {
@@ -60,14 +62,8 @@ export type SecretsApplyPlan = {
   };
 };
 
-const FORBIDDEN_PATH_SEGMENTS = new Set(["__proto__", "prototype", "constructor"]);
-
 function isSecretProviderConfigShape(value: unknown): value is SecretProviderConfig {
   return SecretProviderSchema.safeParse(value).success;
-}
-
-function hasForbiddenPathSegment(segments: string[]): boolean {
-  return segments.some((segment) => FORBIDDEN_PATH_SEGMENTS.has(segment));
 }
 
 /** Resolves a user-supplied plan target through the registry after path safety checks. */
@@ -91,7 +87,7 @@ export function resolveValidatedPlanTarget(candidate: {
     Array.isArray(candidate.pathSegments) && candidate.pathSegments.length > 0
       ? normalizeStringEntries(candidate.pathSegments)
       : parseDotPath(path);
-  if (segments.length === 0 || hasForbiddenPathSegment(segments) || path !== toDotPath(segments)) {
+  if (segments.length === 0 || segments.some(isBlockedObjectKey) || path !== toDotPath(segments)) {
     return null;
   }
   // Registry resolution is the ownership gate; caller-provided paths must map to a known
@@ -135,16 +131,19 @@ export function isSecretsApplyPlan(value: unknown): value is SecretsApplyPlan {
       !resolved ||
       !ref ||
       typeof ref !== "object" ||
-      (ref.source !== "env" && ref.source !== "file" && ref.source !== "exec") ||
+      (ref.source !== "env" &&
+        ref.source !== "file" &&
+        ref.source !== "exec" &&
+        ref.source !== "store") ||
       typeof ref.provider !== "string" ||
       ref.provider.trim().length === 0 ||
       typeof ref.id !== "string" ||
       ref.id.trim().length === 0 ||
-      (ref.source === "exec" && !isValidExecSecretRefId(ref.id))
+      !isValidSecretRef(ref as SecretRef)
     ) {
       return false;
     }
-    if (resolved.entry.configFile === "auth-profiles.json") {
+    if (resolved.entry.configFile === "auth-profile-store") {
       if (typeof candidate.agentId !== "string" || candidate.agentId.trim().length === 0) {
         return false;
       }
@@ -191,6 +190,8 @@ export function normalizeSecretsPlanOptions(
   return {
     scrubEnv: options?.scrubEnv ?? true,
     scrubAuthProfilesForProviderTargets: options?.scrubAuthProfilesForProviderTargets ?? true,
-    scrubLegacyAuthJson: options?.scrubLegacyAuthJson ?? true,
+    // Deprecated plan input retained for protocol compatibility. Doctor owns
+    // legacy auth.json migration; secrets apply never reads or rewrites it.
+    scrubLegacyAuthJson: false,
   };
 }

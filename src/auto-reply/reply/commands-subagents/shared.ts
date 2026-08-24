@@ -3,24 +3,20 @@ import {
   normalizeLowercaseStringOrEmpty,
   normalizeOptionalString,
 } from "@openclaw/normalization-core/string-coerce";
-import { resolveStoredSubagentCapabilities } from "../../../agents/subagent-capabilities.js";
-import type { ResolvedSubagentController } from "../../../agents/subagent-control.js";
-import { subagentRuns } from "../../../agents/subagent-registry-memory.js";
-import { countPendingDescendantRunsFromRuns } from "../../../agents/subagent-registry-queries.js";
-import { getSubagentRunsSnapshotForRead } from "../../../agents/subagent-registry-state.js";
-import type { SubagentRunRecord } from "../../../agents/subagent-registry.types.js";
+import type { ResolvedSubagentController } from "../../../agents/subagents/registry/subagent-control.js";
+import { buildSubagentRunReadIndex } from "../../../agents/subagents/registry/subagent-registry-read.js";
+import type { SubagentRunRecord } from "../../../agents/subagents/registry/subagent-registry.types.js";
+import { resolveStoredSubagentCapabilities } from "../../../agents/subagents/spawn/subagent-capabilities.js";
 import {
   resolveInternalSessionKey,
   resolveMainSessionAlias,
-  stripToolMessages,
 } from "../../../agents/tools/sessions-helpers.js";
 import { callGateway } from "../../../gateway/call.js";
-import { parseAgentSessionKey } from "../../../routing/session-key.js";
-import { isSubagentSessionKey } from "../../../routing/session-key.js";
+import { parseAgentSessionKey, isSubagentSessionKey } from "../../../routing/session-key.js";
 import { looksLikeSessionId } from "../../../sessions/session-id.js";
 import { isNativeCommandTurn, resolveCommandTurnContext } from "../../command-turn-context.js";
-import { resolveCommandSurfaceChannel, resolveChannelAccountId } from "../channel-context.js";
-import { extractMessageText, type ChatMessage } from "../commands-subagents-text.js";
+import { commandReply } from "../command-gates.js";
+import { extractSubagentMessageText, type ChatMessage } from "../commands-subagents-text.js";
 import type { CommandHandler, CommandHandlerResult } from "../commands-types.js";
 import {
   formatRunLabel,
@@ -28,11 +24,9 @@ import {
   type SubagentTargetResolution,
 } from "../subagents-utils.js";
 
-export { stripToolMessages };
-export { resolveCommandSurfaceChannel, resolveChannelAccountId };
 export type { ChatMessage } from "../commands-subagents-text.js";
 
-export const COMMAND = "/subagents";
+const COMMAND = "/subagents";
 const COMMAND_FOCUS = "/focus";
 const COMMAND_UNFOCUS = "/unfocus";
 const COMMAND_AGENTS = "/agents";
@@ -52,18 +46,15 @@ export type SubagentsCommandContext = {
   restTokens: string[];
 };
 
-export function stopWithText(text: string): CommandHandlerResult {
-  return { shouldContinue: false, reply: { text } };
-}
-
 function stopWithUnknownTargetError(error?: string): CommandHandlerResult {
-  return stopWithText(`⚠️ ${error ?? "Unknown subagent."}`);
+  return commandReply(`⚠️ ${error ?? "Unknown subagent."}`);
 }
 
 function resolveSubagentTarget(
   runs: SubagentRunRecord[],
   token: string | undefined,
 ): SubagentTargetResolution {
+  const readIndex = buildSubagentRunReadIndex();
   return resolveSubagentTargetFromRuns({
     runs,
     token,
@@ -71,14 +62,8 @@ function resolveSubagentTarget(
     label: (entry) => formatRunLabel(entry),
     aliases: (entry) => (entry.taskName ? [entry.taskName] : []),
     isActive: (entry) =>
-      !entry.endedAt ||
-      Math.max(
-        0,
-        countPendingDescendantRunsFromRuns(
-          getSubagentRunsSnapshotForRead(subagentRuns),
-          entry.childSessionKey,
-        ),
-      ) > 0,
+      !entry.execution.endedAt ||
+      Math.max(0, readIndex.countPendingDescendantRuns(entry.childSessionKey)) > 0,
     errors: {
       missingTarget: "Missing subagent id.",
       invalidIndex: (value) => `Invalid subagent index: ${value}`,
@@ -262,7 +247,7 @@ export function buildSubagentsHelp() {
 export function formatLogLines(messages: ChatMessage[]) {
   const lines: string[] = [];
   for (const msg of messages) {
-    const extracted = extractMessageText(msg);
+    const extracted = extractSubagentMessageText(msg);
     if (!extracted) {
       continue;
     }

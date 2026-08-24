@@ -1,6 +1,7 @@
 // Telegram User Credential Io script supports OpenClaw repository automation.
 import { spawn } from "node:child_process";
-import { readBoundedResponseText } from "../lib/bounded-response.ts";
+import { readBoundedResponseText } from "../lib/bounded-response.mjs";
+import { terminateManagedChild } from "../lib/managed-child-process.mts";
 
 export type JsonObject = Record<string, unknown>;
 
@@ -22,6 +23,7 @@ type RunCommandOptions = {
 const DEFAULT_OUTPUT_LIMIT = 128 * 1024;
 const DEFAULT_FETCH_BODY_LIMIT = 1024 * 1024;
 const KILL_GRACE_MS = readKillGraceMs();
+const PROCESS_TREE_EXIT_POLL_MS = 50;
 const SIGNAL_EXIT_CODES = {
   SIGHUP: 129,
   SIGINT: 130,
@@ -141,8 +143,8 @@ export function runCommand(
     let stderr = "";
     let settled = false;
     let killTimer: NodeJS.Timeout | undefined;
-    let pendingTimeoutReject: (() => void) | undefined;
     let timedOutError: Error | undefined;
+    let forceKillAt: number | undefined;
     const timeoutMs = Math.max(1, options.timeoutMs);
     const timeoutKillGraceMs = Math.max(0, options.timeoutKillGraceMs ?? KILL_GRACE_MS);
     const clearTimers = () => {
@@ -168,10 +170,11 @@ export function runCommand(
         `${command} ${args.join(" ")} timed out after ${timeoutMs}ms\n${stdout}${stderr}`,
       );
       activeChildTree.killChildTree("SIGTERM");
+      forceKillAt = Date.now() + timeoutKillGraceMs;
       killTimer = setTimeout(() => {
         killTimer = undefined;
+        forceKillAt = undefined;
         activeChildTree.killChildTree("SIGKILL");
-        pendingTimeoutReject?.();
       }, timeoutKillGraceMs);
     }, timeoutMs);
     timeout.unref?.();
@@ -195,15 +198,11 @@ export function runCommand(
       }
       if (timedOutError && killTimer && childProcessTreeMayStillExist(child)) {
         const error = timedOutError;
-        pendingTimeoutReject = () => {
-          if (settled) {
-            return;
-          }
-          settled = true;
-          clearTimers();
-          activeChildTree.unregister();
-          reject(error);
-        };
+        void finishTimedOutChildProcessTree(child, activeChildTree, {
+          forceKillAt,
+          killTimer,
+          timeoutKillGraceMs,
+        }).then(() => fail(error), fail);
         return;
       }
       settled = true;
@@ -223,16 +222,27 @@ export function runCommand(
   });
 }
 
-function signalChildProcessTree(child: ReturnType<typeof spawn>, signal: NodeJS.Signals) {
-  if (process.platform !== "win32" && child.pid) {
-    try {
-      process.kill(-child.pid, signal);
-      return;
-    } catch {
-      // The process group can disappear between timeout and cleanup.
-    }
+async function finishTimedOutChildProcessTree(
+  child: ReturnType<typeof spawn>,
+  activeChildTree: ReturnType<typeof registerActiveChildProcessTree>,
+  options: {
+    forceKillAt: number | undefined;
+    killTimer: NodeJS.Timeout;
+    timeoutKillGraceMs: number;
+  },
+) {
+  const graceRemainingMs =
+    options.forceKillAt === undefined
+      ? options.timeoutKillGraceMs
+      : Math.max(0, options.forceKillAt - Date.now());
+  if (graceRemainingMs > 0) {
+    await waitForChildProcessTreeExit(child, graceRemainingMs);
   }
-  child.kill(signal);
+  clearTimeout(options.killTimer);
+  if (childProcessTreeMayStillExist(child)) {
+    activeChildTree.killChildTree("SIGKILL");
+    await waitForChildProcessTreeExit(child, options.timeoutKillGraceMs);
+  }
 }
 
 function childProcessTreeMayStillExist(child: ReturnType<typeof spawn>) {
@@ -247,8 +257,21 @@ function childProcessTreeMayStillExist(child: ReturnType<typeof spawn>) {
   }
 }
 
+async function waitForChildProcessTreeExit(child: ReturnType<typeof spawn>, timeoutMs: number) {
+  const deadlineAt = Date.now() + timeoutMs;
+  while (Date.now() < deadlineAt) {
+    if (!childProcessTreeMayStillExist(child)) {
+      return true;
+    }
+    await new Promise((resolvePoll) => {
+      setTimeout(resolvePoll, PROCESS_TREE_EXIT_POLL_MS);
+    });
+  }
+  return !childProcessTreeMayStillExist(child);
+}
+
 function registerActiveChildProcessTree(child: ReturnType<typeof spawn>) {
-  const killChildTree = (signal: NodeJS.Signals) => signalChildProcessTree(child, signal);
+  const killChildTree = (signal: NodeJS.Signals) => terminateManagedChild(child, signal);
   ACTIVE_CHILD_TREE_KILLERS.add(killChildTree);
   return {
     killChildTree,

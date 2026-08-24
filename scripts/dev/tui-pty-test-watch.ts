@@ -4,9 +4,12 @@ import { mkdir, open, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { terminateManagedChild } from "../lib/managed-child-process.mts";
+import { sleep as delay } from "../lib/sleep.mjs";
 
 type Options = {
   altScreen: boolean;
+  help: boolean;
   mirrorPath: string;
   mode: "fake" | "local" | "all";
   vitestArgs: string[];
@@ -26,6 +29,12 @@ const CHILD_SIGTERM_GRACE_MS = 500;
 const CHILD_SIGKILL_GRACE_MS = 5_000;
 const MIRROR_READ_CHUNK_BYTES = 1024 * 1024;
 const CHILD_OUTPUT_TAIL_BYTES = 128 * 1024;
+const BOOLEAN_OPTIONS = new Set(["--help", "-h", "--no-alt-screen"]);
+const VALUE_OPTIONS = new Set(["--mode", "--mirror-path"]);
+
+class CliArgumentError extends Error {
+  override name = "CliArgumentError";
+}
 
 type KillableChild = {
   pid?: number;
@@ -48,7 +57,11 @@ function readOption(args: string[], name: string): string | undefined {
   if (idx < 0) {
     return undefined;
   }
-  return args[idx + 1]?.trim() || undefined;
+  const value = args[idx + 1];
+  if (!value || value.startsWith("-")) {
+    throw new CliArgumentError(`${name} requires a value`);
+  }
+  return value.trim();
 }
 
 function readMode(args: string[]): Options["mode"] {
@@ -56,29 +69,49 @@ function readMode(args: string[]): Options["mode"] {
   if (mode === "fake" || mode === "local" || mode === "all") {
     return mode;
   }
-  throw new Error(`--mode must be fake, local, or all; got ${JSON.stringify(mode)}`);
+  throw new CliArgumentError(`--mode must be fake, local, or all; got ${JSON.stringify(mode)}`);
+}
+
+function usage(): string {
+  return [
+    "Usage: node --import tsx scripts/dev/tui-pty-test-watch.ts [options] [-- vitest args...]",
+    "",
+    "Options:",
+    "  --mode <fake|local|all>   Select TUI PTY test group (default: fake)",
+    "  --mirror-path <path>       Write/read mirrored ANSI output at this path",
+    "  --no-alt-screen            Print without switching to the terminal alt screen",
+    "  -h, --help                 Show this help",
+  ].join("\n");
+}
+
+function validateOwnArgs(args: string[]): void {
+  for (let idx = 0; idx < args.length; idx += 1) {
+    const arg = args[idx] ?? "";
+    if (BOOLEAN_OPTIONS.has(arg)) {
+      continue;
+    }
+    if (VALUE_OPTIONS.has(arg)) {
+      idx += 1;
+      continue;
+    }
+    throw new CliArgumentError(`Unknown argument: ${arg}`);
+  }
 }
 
 function parseOptions(args = process.argv.slice(2)): Options {
   const separator = args.indexOf("--");
   const ownArgs = separator >= 0 ? args.slice(0, separator) : args;
   const vitestArgs = separator >= 0 ? args.slice(separator + 1) : [];
-  const mirrorPath =
-    readOption(ownArgs, "--mirror-path") !== undefined
-      ? path.resolve(readOption(ownArgs, "--mirror-path") ?? "")
-      : DEFAULT_MIRROR_PATH;
+  validateOwnArgs(ownArgs);
+  const mirrorPathOption = readOption(ownArgs, "--mirror-path");
   return {
     altScreen: !ownArgs.includes("--no-alt-screen"),
-    mirrorPath,
+    help: ownArgs.includes("--help") || ownArgs.includes("-h"),
+    mirrorPath:
+      mirrorPathOption !== undefined ? path.resolve(mirrorPathOption) : DEFAULT_MIRROR_PATH,
     mode: readMode(ownArgs),
     vitestArgs,
   };
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
 }
 
 function shouldUseAltScreen(options: Options) {
@@ -94,19 +127,6 @@ function currentTerminalDimension(value: number | undefined, fallback: number): 
   return String(value && value > 0 ? value : fallback);
 }
 
-function signalChildProcessTree(child: KillableChild, signal: NodeJS.Signals): void {
-  if (process.platform !== "win32" && typeof child.pid === "number") {
-    try {
-      process.kill(-child.pid, signal);
-      return;
-    } catch {
-      // Non-detached fallback or already-exited group; direct child signaling is
-      // still useful on platforms without process groups.
-    }
-  }
-  child.kill(signal);
-}
-
 function createChildStopper(
   child: KillableChild,
   options: {
@@ -115,7 +135,15 @@ function createChildStopper(
     sigkillGraceMs?: number;
   } = {},
 ): ChildStopper {
-  const signalChild = options.signalChild ?? signalChildProcessTree;
+  const signalChild =
+    options.signalChild ??
+    ((targetChild, signal) =>
+      terminateManagedChild(targetChild, signal, {
+        onChildSignalError(error) {
+          throw error;
+        },
+        taskkillTimeoutMs: null,
+      }));
   const sigtermGraceMs = options.sigtermGraceMs ?? CHILD_SIGTERM_GRACE_MS;
   const sigkillGraceMs = options.sigkillGraceMs ?? CHILD_SIGKILL_GRACE_MS;
   let stopping = false;
@@ -209,6 +237,10 @@ async function drainNewMirrorData(
 
 async function main(): Promise<void> {
   const options = parseOptions();
+  if (options.help) {
+    process.stdout.write(`${usage()}\n`);
+    return;
+  }
   const useAltScreen = shouldUseAltScreen(options);
   await createMirrorFile(options.mirrorPath);
 
@@ -240,8 +272,8 @@ async function main(): Promise<void> {
     },
   );
 
-  let childStdout = Buffer.alloc(0);
-  let childStderr = Buffer.alloc(0);
+  let childStdout: Buffer = Buffer.alloc(0);
+  let childStderr: Buffer = Buffer.alloc(0);
   let restored = false;
   let mirrorOffset = 0;
   let mirrorFilterPending = "";
@@ -422,6 +454,10 @@ async function main(): Promise<void> {
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
   main().catch((error: unknown) => {
+    if (error instanceof CliArgumentError) {
+      process.stderr.write(`${error.message}\n`);
+      process.exit(1);
+    }
     process.stderr.write(
       `${error instanceof Error ? error.stack || error.message : String(error)}\n`,
     );
@@ -433,6 +469,6 @@ export const testing = {
   appendBufferTail,
   createChildStopper,
   drainNewMirrorData,
+  parseOptions,
   readNewMirrorData,
-  signalChildProcessTree,
 };

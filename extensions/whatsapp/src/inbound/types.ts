@@ -1,8 +1,14 @@
 // Whatsapp type declarations define plugin contracts.
 import type { AnyMessageContent, MiscMessageGenerationOptions } from "baileys";
-import type { NormalizedLocation } from "openclaw/plugin-sdk/channel-inbound";
+import type {
+  ChannelInboundMediaInput,
+  MediaPlaceholderTextFact,
+  NormalizedLocation,
+} from "openclaw/plugin-sdk/channel-inbound";
 import type { PollInput } from "openclaw/plugin-sdk/poll-runtime";
 import type { WhatsAppIdentity, WhatsAppReplyContext, WhatsAppSelfIdentity } from "../identity.js";
+import type { WhatsAppQuotedMessageKey } from "../quoted-message.js";
+import type { WhatsAppInboundAdmission } from "./admission.js";
 import type { WhatsAppSendResult } from "./send-result.js";
 
 export type WebListenerCloseReason = {
@@ -12,13 +18,7 @@ export type WebListenerCloseReason = {
 };
 
 export type ActiveWebSendOptions = {
-  quotedMessageKey?: {
-    id: string;
-    remoteJid: string;
-    fromMe: boolean;
-    participant?: string;
-    messageText?: string;
-  };
+  quotedMessageKey?: WhatsAppQuotedMessageKey;
   gifPlayback?: boolean;
   accountId?: string;
   fileName?: string;
@@ -26,6 +26,7 @@ export type ActiveWebSendOptions = {
 };
 
 export type ActiveWebListener = {
+  assertSendReady?: (to: string) => Promise<void>;
   sendMessage: (
     to: string,
     text: string,
@@ -54,16 +55,17 @@ export type WhatsAppStructuredContactContext = {
   }>;
 };
 
-export type WhatsAppInboundEvent = {
+type WhatsAppInboundEvent = {
   id?: string;
   timestamp?: number;
   isBatched?: boolean;
 };
 
-export type WhatsAppInboundQuote = {
+type WhatsAppInboundQuote = {
   context?: WhatsAppReplyContext;
   id?: string;
   body?: string;
+  media?: MediaPlaceholderTextFact;
   sender?: {
     displayName?: string;
     jid?: string;
@@ -71,7 +73,7 @@ export type WhatsAppInboundQuote = {
   };
 };
 
-export type WhatsAppInboundGroupContext = {
+type WhatsAppInboundGroupContext = {
   subject?: string;
   participants?: string[];
   mentions?: {
@@ -80,24 +82,28 @@ export type WhatsAppInboundGroupContext = {
   };
 };
 
-export type WhatsAppInboundPayload = {
+type WhatsAppInboundStructuredContextEntry = {
+  label: string;
+  source?: string;
+  type?: string;
+  payload: unknown;
+};
+
+type WhatsAppInboundPayload = {
   body: string;
+  commandBody?: string;
   media?: {
     path?: string;
     type?: string;
     fileName?: string;
     url?: string;
+    kind?: ChannelInboundMediaInput["kind"];
   };
   location?: NormalizedLocation;
-  untrustedStructuredContext?: Array<{
-    label: string;
-    source?: string;
-    type?: string;
-    payload: unknown;
-  }>;
+  channelStructuredContext?: WhatsAppInboundStructuredContextEntry[];
 };
 
-export type WhatsAppInboundPlatform = {
+type WhatsAppInboundPlatform = {
   chatJid: string;
   recipientJid: string;
   sender?: WhatsAppIdentity;
@@ -118,114 +124,20 @@ export type WhatsAppInboundPlatform = {
   ) => Promise<WhatsAppSendResult>;
 };
 
-export type DeprecatedWebInboundMessageFlatAliases = {
-  /** @deprecated Use `event.id`. */
-  id?: string;
-  /** @deprecated Use `platform.recipientJid`. */
-  to: string;
-  /** @deprecated Use `payload.body`. */
-  body: string;
-  /** @deprecated Use `platform.pushName`. */
-  pushName?: string;
-  /** @deprecated Use `event.timestamp`. */
-  timestamp?: number;
-  /** @deprecated Use `platform.chatJid`. */
-  chatId: string;
-  /** @deprecated Use `platform.sender`. */
-  sender?: WhatsAppIdentity;
-  /** @deprecated Use `platform.senderJid`. */
-  senderJid?: string;
-  /** @deprecated Use `platform.senderE164`. */
-  senderE164?: string;
-  /** @deprecated Use `platform.senderName`. */
-  senderName?: string;
-  /** @deprecated Use `quote.context`. */
-  replyTo?: WhatsAppReplyContext;
-  /** @deprecated Use `quote.id`. */
-  replyToId?: string;
-  /** @deprecated Use `quote.body`. */
-  replyToBody?: string;
-  /** @deprecated Use `quote.sender.displayName`. */
-  replyToSender?: string;
-  /** @deprecated Use `quote.sender.jid`. */
-  replyToSenderJid?: string;
-  /** @deprecated Use `quote.sender.e164`. */
-  replyToSenderE164?: string;
-  /** @deprecated Use `group.subject`. */
-  groupSubject?: string;
-  /** @deprecated Use `group.participants`. */
-  groupParticipants?: string[];
-  /** @deprecated Use `group.mentions.jids`. */
-  mentions?: string[];
-  /** @deprecated Use `group.mentions.jids`. */
-  mentionedJids?: string[];
-  /** @deprecated Use `platform.self`. */
-  self?: WhatsAppSelfIdentity;
-  /** @deprecated Use `platform.selfJid`. */
-  selfJid?: string | null;
-  /** @deprecated Use `platform.selfLid`. */
-  selfLid?: string | null;
-  /** @deprecated Use `platform.selfE164`. */
-  selfE164?: string | null;
-  /** @deprecated Use `platform.fromMe`. */
-  fromMe?: boolean;
-  /** @deprecated Use `payload.location`. */
-  location?: NormalizedLocation;
-  /** @deprecated Use `platform.sendComposing`. */
-  sendComposing: () => Promise<void>;
-  /** @deprecated Use `platform.reply`. */
-  reply: (text: string, options?: MiscMessageGenerationOptions) => Promise<WhatsAppSendResult>;
-  /** @deprecated Use `platform.sendMedia`. */
-  sendMedia: (
-    payload: AnyMessageContent,
-    options?: MiscMessageGenerationOptions,
-  ) => Promise<WhatsAppSendResult>;
-  /** @deprecated Use `payload.media.path`. */
-  mediaPath?: string;
-  /** @deprecated Use `payload.media.type`. */
-  mediaType?: string;
-  /** @deprecated Use `payload.media.fileName`. */
-  mediaFileName?: string;
-  /** @deprecated Use `payload.media.url`. */
-  mediaUrl?: string;
-  /** @deprecated Use `payload.untrustedStructuredContext`. */
-  untrustedStructuredContext?: Array<{
-    label: string;
-    source?: string;
-    type?: string;
-    payload: unknown;
-  }>;
-  /** @deprecated Use `event.isBatched`. */
-  isBatched?: boolean;
-};
-
-type WebInboundMessageCommon = {
-  from: string; // conversation id: E.164 for direct chats, group JID for groups
-  conversationId: string; // alias for clarity (same as from)
-  accountId: string;
-  /** Set by the real inbound monitor after access-control / pairing checks pass. */
-  accessControlPassed?: boolean;
-  chatType: "direct" | "group";
-  quote?: WhatsAppInboundQuote;
-  group?: WhatsAppInboundGroupContext;
-  wasMentioned?: boolean;
-};
-
-export type WebInboundCallbackMessage = WebInboundMessageCommon & {
+export type WebInboundCallbackMessage = {
+  admission: WhatsAppInboundAdmission;
   event: WhatsAppInboundEvent;
   payload: WhatsAppInboundPayload;
   platform: WhatsAppInboundPlatform;
+  quote?: WhatsAppInboundQuote;
+  group?: WhatsAppInboundGroupContext;
+  wasMentioned?: boolean;
+  groupMention?: {
+    wasMentioned: boolean;
+    requireMention: boolean;
+  };
 };
 
-export type WebInboundMessage = WebInboundCallbackMessage & DeprecatedWebInboundMessageFlatAliases;
-
-export type LegacyFlatWebInboundMessage = WebInboundMessageCommon &
-  DeprecatedWebInboundMessageFlatAliases & {
-    event?: never;
-    payload?: never;
-    platform?: never;
-    quote?: never;
-    group?: never;
-  };
-
-export type WebInboundMessageInput = LegacyFlatWebInboundMessage | WebInboundCallbackMessage;
+export type WebInboundMessage = WebInboundCallbackMessage;
+export type AdmittedWebInboundMessage = WebInboundCallbackMessage;
+export type AdmittedWebInboundCallbackMessage = WebInboundCallbackMessage;

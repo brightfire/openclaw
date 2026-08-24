@@ -20,10 +20,10 @@ vi.mock("./gateway-cli/run.js", () => {
   };
 });
 
-vi.mock("./gateway-cli/call.js", () => {
+vi.mock("./gateway-rpc.runtime.js", () => {
   loaded.mark("gateway-call-runtime");
   return {
-    callGatewayCli: vi.fn(async () => ({})),
+    callGatewayFromCliRuntime: vi.fn(async () => ({})),
   };
 });
 
@@ -100,14 +100,6 @@ vi.mock("../commands/sessions-cleanup.js", () => {
 vi.mock("../commands/export-trajectory.js", () => {
   loaded.mark("export-trajectory-command");
   return { exportTrajectoryCommand: vi.fn(async () => {}) };
-});
-
-vi.mock("../commands/commitments.js", () => {
-  loaded.mark("commitments-command");
-  return {
-    commitmentsDismissCommand: vi.fn(async () => {}),
-    commitmentsListCommand: vi.fn(async () => {}),
-  };
 });
 
 vi.mock("../commands/tasks.js", () => {
@@ -280,7 +272,6 @@ describe("subcommand help cold imports", () => {
     expect(loaded.modules).not.toContain("sessions-command");
     expect(loaded.modules).not.toContain("sessions-cleanup-command");
     expect(loaded.modules).not.toContain("export-trajectory-command");
-    expect(loaded.modules).not.toContain("commitments-command");
     expect(loaded.modules).not.toContain("tasks-command");
     expect(loaded.modules).not.toContain("flows-command");
   });
@@ -321,10 +312,12 @@ describe("subcommand help cold imports", () => {
   });
 
   it("keeps agents help out of agent action modules", async () => {
-    const { registerAgentCommands } = await import("./program/register.agent.js");
+    const { registerAgentsCommands } = await import("./program/register.agent.js");
+    const { registerAgentTurnCommand } = await import("./program/register.agent-turn.js");
     const program = makeProgram();
 
-    registerAgentCommands(program, { agentChannelOptions: "last|telegram|discord" });
+    registerAgentTurnCommand(program, { agentChannelOptions: "last|telegram|discord" });
+    registerAgentsCommands(program);
     await expectHelpExit(program, ["agents", "--help"]);
 
     expect(loaded.modules).not.toContain("agent-via-gateway-command");

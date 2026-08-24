@@ -1,13 +1,15 @@
 // Plugin state store E2E tests cover persisted plugin state across runtime calls.
+
+import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import {
   closePluginStateDatabase,
   createPluginStateKeyedStore,
-  probePluginStateStore,
   resetPluginStateStoreForTests,
   sweepExpiredPluginStateEntries,
 } from "./plugin-state-store.js";
+import { probePluginStateStore } from "./plugin-state-store.test-helpers.js";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -109,7 +111,7 @@ describe("TTL", () => {
       // After sweep the entry list contains only the long-lived record.
       const remaining = await store.entries();
       expect(remaining).toHaveLength(1);
-      expect(remaining[0].key).toBe("long");
+      expect(expectDefined(remaining[0], "remaining[0] test invariant").key).toBe("long");
     });
   });
 });
@@ -172,30 +174,6 @@ describe("limits", () => {
       await expect(store.register("big", oversize)).rejects.toMatchObject({
         code: "PLUGIN_STATE_LIMIT_EXCEEDED",
       });
-    });
-  });
-
-  it("evicts oldest entries when namespace maxEntries is exceeded", async () => {
-    await withOpenClawTestState({ label: "e2e-limit-eviction" }, async () => {
-      vi.useFakeTimers();
-      const store = createPluginStateKeyedStore<number>("fixture-plugin", {
-        namespace: "capped",
-        maxEntries: 3,
-      });
-
-      vi.setSystemTime(1000);
-      await store.register("a", 1);
-      vi.setSystemTime(2000);
-      await store.register("b", 2);
-      vi.setSystemTime(3000);
-      await store.register("c", 3);
-      vi.setSystemTime(4000);
-      await store.register("d", 4); // should evict "a"
-
-      const entries = await store.entries();
-      expect(entries).toHaveLength(3);
-      expect(entries.map((e) => e.key)).toEqual(["b", "c", "d"]);
-      await expect(store.lookup("a")).resolves.toBeUndefined();
     });
   });
 });

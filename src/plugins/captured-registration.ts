@@ -5,7 +5,10 @@ import type {
   AgentToolResultMiddleware,
   AgentToolResultMiddlewareOptions,
 } from "./agent-tool-result-middleware-types.js";
-import { normalizeAgentToolResultMiddlewareRuntimes } from "./agent-tool-result-middleware.js";
+import {
+  agentToolResultMiddlewareRegistrationCoversTool,
+  normalizeAgentToolResultMiddlewareRuntimes,
+} from "./agent-tool-result-middleware.js";
 import { buildPluginApi } from "./api-builder.js";
 import type { CodexAppServerExtensionFactory } from "./codex-app-server-extension-types.js";
 import type { EmbeddingProviderAdapter } from "./embedding-providers.js";
@@ -19,9 +22,10 @@ import type {
   PluginToolMetadataRegistration,
   PluginTrustedToolPolicyRegistration,
 } from "./host-hooks.js";
-import type { MemoryEmbeddingProviderAdapter } from "./memory-embedding-providers.js";
 import type { PluginAgentToolResultMiddlewareRegistration } from "./registry-types.js";
-import type { PluginRuntime } from "./runtime/types.js";
+import { createPluginRuntime } from "./runtime/index.js";
+import type { SessionCatalogProvider } from "./session-catalog.js";
+import { normalizePluginToolMatcher } from "./tool-hook-matcher.js";
 import type {
   AnyAgentTool,
   AgentHarness,
@@ -32,7 +36,7 @@ import type {
   TranscriptSourceProvider,
   MigrationProviderPlugin,
   MusicGenerationProviderPlugin,
-  OpenClawPluginCliCommandDescriptor,
+  OpenClawPluginCliRootCommandDescriptor,
   OpenClawPluginCliRegistrar,
   PluginTextTransformRegistration,
   ProviderPlugin,
@@ -43,13 +47,14 @@ import type {
   VideoGenerationProviderPlugin,
   WebFetchProviderPlugin,
   WebSearchProviderPlugin,
+  WorkerProvider,
 } from "./types.js";
 
 type CapturedPluginCliRegistration = {
   register: OpenClawPluginCliRegistrar;
   parentPath: string[];
   commands: string[];
-  descriptors: OpenClawPluginCliCommandDescriptor[];
+  descriptors: OpenClawPluginCliRootCommandDescriptor[];
 };
 
 export type CapturedPluginRegistration = {
@@ -72,8 +77,8 @@ export type CapturedPluginRegistration = {
   musicGenerationProviders: MusicGenerationProviderPlugin[];
   webFetchProviders: WebFetchProviderPlugin[];
   webSearchProviders: WebSearchProviderPlugin[];
+  workerProviders: WorkerProvider[];
   migrationProviders: MigrationProviderPlugin[];
-  memoryEmbeddingProviders: MemoryEmbeddingProviderAdapter[];
   sessionExtensions: PluginSessionExtensionRegistration[];
   trustedToolPolicies: PluginTrustedToolPolicyRegistration[];
   toolMetadata: PluginToolMetadataRegistration[];
@@ -84,6 +89,7 @@ export type CapturedPluginRegistration = {
   sessionActions: PluginSessionActionRegistration[];
   tools: AnyAgentTool[];
   modelCatalogProviders: UnifiedModelCatalogProviderPlugin[];
+  sessionCatalogs: SessionCatalogProvider[];
 };
 
 export function createCapturedPluginRegistration(params?: {
@@ -111,8 +117,8 @@ export function createCapturedPluginRegistration(params?: {
   const musicGenerationProviders: MusicGenerationProviderPlugin[] = [];
   const webFetchProviders: WebFetchProviderPlugin[] = [];
   const webSearchProviders: WebSearchProviderPlugin[] = [];
+  const workerProviders: WorkerProvider[] = [];
   const migrationProviders: MigrationProviderPlugin[] = [];
-  const memoryEmbeddingProviders: MemoryEmbeddingProviderAdapter[] = [];
   const sessionExtensions: PluginSessionExtensionRegistration[] = [];
   const trustedToolPolicies: PluginTrustedToolPolicyRegistration[] = [];
   const toolMetadata: PluginToolMetadataRegistration[] = [];
@@ -124,6 +130,7 @@ export function createCapturedPluginRegistration(params?: {
   let capturedSessionTurnCount = 0;
   const tools: AnyAgentTool[] = [];
   const modelCatalogProviders: UnifiedModelCatalogProviderPlugin[] = [];
+  const sessionCatalogs: SessionCatalogProvider[] = [];
   const pluginId = params?.id ?? "captured-plugin-registration";
   const pluginName = params?.name ?? "Captured Plugin Registration";
   const pluginSource = params?.source ?? "captured-plugin-registration";
@@ -153,8 +160,8 @@ export function createCapturedPluginRegistration(params?: {
     musicGenerationProviders,
     webFetchProviders,
     webSearchProviders,
+    workerProviders,
     migrationProviders,
-    memoryEmbeddingProviders,
     sessionExtensions,
     trustedToolPolicies,
     toolMetadata,
@@ -165,24 +172,35 @@ export function createCapturedPluginRegistration(params?: {
     sessionActions,
     tools,
     modelCatalogProviders,
+    sessionCatalogs,
     api: buildPluginApi({
       id: pluginId,
       name: pluginName,
       source: pluginSource,
       registrationMode: params?.registrationMode ?? "full",
       config: params?.config ?? ({} as OpenClawConfig),
-      runtime: {} as PluginRuntime,
+      runtime: createPluginRuntime(),
       logger: noopLogger,
       resolvePath: (input) => input,
       handlers: {
         registerCli(registrar, opts) {
           const parentPath = normalizeStringEntries(opts?.parentPath ?? []);
+          const rootRegistration = parentPath.length === 0;
           const descriptors = (opts?.descriptors ?? [])
-            .map((descriptor) => ({
-              name: descriptor.name.trim(),
-              description: descriptor.description.trim(),
-              hasSubcommands: descriptor.hasSubcommands,
-            }))
+            .map((descriptor) => {
+              const machineOutput = rootRegistration
+                ? (descriptor as OpenClawPluginCliRootCommandDescriptor).machineOutput
+                : undefined;
+              const normalized: OpenClawPluginCliRootCommandDescriptor = {
+                name: descriptor.name.trim(),
+                description: descriptor.description.trim(),
+                hasSubcommands: descriptor.hasSubcommands,
+              };
+              if (machineOutput) {
+                normalized.machineOutput = machineOutput;
+              }
+              return normalized;
+            })
             .filter((descriptor) => descriptor.name && descriptor.description);
           const commands = normalizeStringEntries([
             ...(opts?.commands ?? []),
@@ -204,6 +222,9 @@ export function createCapturedPluginRegistration(params?: {
         registerModelCatalogProvider(provider: UnifiedModelCatalogProviderPlugin) {
           modelCatalogProviders.push(provider);
         },
+        registerSessionCatalog(provider: SessionCatalogProvider) {
+          sessionCatalogs.push(provider);
+        },
         registerAgentHarness(harness: AgentHarness) {
           agentHarnesses.push(harness);
         },
@@ -215,14 +236,34 @@ export function createCapturedPluginRegistration(params?: {
           options?: AgentToolResultMiddlewareOptions,
         ) {
           const runtimes = normalizeAgentToolResultMiddlewareRuntimes(options);
-          agentToolResultMiddlewares.push({
+          const matcher = normalizePluginToolMatcher(options?.matcher);
+          const scopedHandler: AgentToolResultMiddleware = (event, ctx) => {
+            if (
+              !agentToolResultMiddlewareRegistrationCoversTool(
+                registration,
+                ctx.runtime,
+                event.toolName,
+              )
+            ) {
+              return;
+            }
+            return handler(event, ctx);
+          };
+          const registration: PluginAgentToolResultMiddlewareRegistration = {
             pluginId,
             pluginName,
             rawHandler: handler,
-            handler,
+            handler: scopedHandler,
             runtimes,
+            scopes: [
+              {
+                runtimes,
+                ...(matcher ? { matcher } : {}),
+              },
+            ],
             source: pluginSource,
-          });
+          };
+          agentToolResultMiddlewares.push(registration);
         },
         registerCliBackend(backend: CliBackendPlugin) {
           cliBackends.push(backend);
@@ -263,17 +304,18 @@ export function createCapturedPluginRegistration(params?: {
         registerWebSearchProvider(provider: WebSearchProviderPlugin) {
           webSearchProviders.push(provider);
         },
+        registerWorkerProvider(provider: WorkerProvider) {
+          workerProviders.push(provider);
+        },
         registerMigrationProvider(provider: MigrationProviderPlugin) {
           migrationProviders.push(provider);
-        },
-        registerMemoryEmbeddingProvider(adapter: MemoryEmbeddingProviderAdapter) {
-          memoryEmbeddingProviders.push(adapter);
         },
         registerSessionExtension(extension: PluginSessionExtensionRegistration) {
           sessionExtensions.push(extension);
         },
         registerTrustedToolPolicy(policy: PluginTrustedToolPolicyRegistration) {
-          trustedToolPolicies.push(policy);
+          const matcher = normalizePluginToolMatcher(policy.matcher);
+          trustedToolPolicies.push({ ...policy, ...(matcher ? { matcher } : {}) });
         },
         registerToolMetadata(metadata: PluginToolMetadataRegistration) {
           toolMetadata.push(metadata);

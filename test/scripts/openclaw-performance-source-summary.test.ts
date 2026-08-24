@@ -1,8 +1,9 @@
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { buildMarkdown, parseArgs } from "../../scripts/openclaw-performance-source-summary.mjs";
+import { buildMarkdown, parseArgs } from "../../scripts/openclaw-performance-source-summary.mts";
 
 const tmpRoots: string[] = [];
 
@@ -15,6 +16,22 @@ function mkTmpRoot() {
 function writeJson(filePath: string, value: unknown) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, JSON.stringify(value), "utf8");
+}
+
+function runCli(...args: string[]) {
+  return spawnSync(
+    process.execPath,
+    ["--import", "tsx", "scripts/openclaw-performance-source-summary.mts", ...args],
+    {
+      cwd: path.resolve("."),
+      encoding: "utf8",
+    },
+  );
+}
+
+function expectNoNodeStack(stderr: string) {
+  expect(stderr).not.toContain("Node.js");
+  expect(stderr).not.toContain("\n    at ");
 }
 
 function writeSourceFixture(sourceDir: string) {
@@ -33,6 +50,8 @@ function writeSourceFixture(sourceDir: string) {
           cpuCoreRatio: { p95: 0.25 },
           startupTrace: {
             "memory.ready.heapUsedMb": { p50: 30, p95: 32 },
+            "phase.load.total": { p50: 70, p95: 80 },
+            "phase.load.itemCount": { p50: 40, p95: 50 },
             "phase.load": { p50: 7, p95: 8 },
           },
         },
@@ -58,6 +77,9 @@ function writeSourceFixture(sourceDir: string) {
     },
   });
   writeJson(path.join(sourceDir, "extension-memory.json"), {
+    baseline: { maxRssMb: 50, status: "ok" },
+    combined: { maxRssMb: 180, status: "ok" },
+    counts: { totalEntries: 12 },
     topByDeltaMb: [
       { dir: "extensions/browser", maxRssMb: 80, deltaFromBaselineMb: 12, status: "ok" },
     ],
@@ -71,7 +93,7 @@ function writeSourceFixture(sourceDir: string) {
       agentDatabases: 2,
       channelIngressEvents: 1000,
       cronJobs: 100,
-      cronRunLogs: 1000,
+      cronTaskRuns: 1000,
       deliveryQueueEntries: 1000,
       pluginStateEntries: 1000,
       stateRows: 4100,
@@ -121,10 +143,25 @@ describe("parseArgs", () => {
     for (const flag of ["--source-dir", "--baseline-source-dir", "--output"]) {
       expect(() => parseArgs([flag])).toThrow(`${flag} requires a value`);
       expect(() => parseArgs([flag, ""])).toThrow(`${flag} requires a value`);
+      expect(() => parseArgs([flag, "-h"])).toThrow(`${flag} requires a value`);
       expect(() => parseArgs([flag, "--source-dir", "reports/current"])).toThrow(
         `${flag} requires a value`,
       );
     }
+  });
+
+  it("reports CLI argument errors without a Node stack trace", () => {
+    const missingSource = runCli();
+    expect(missingSource.status).toBe(1);
+    expect(missingSource.stdout).toBe("");
+    expect(missingSource.stderr.trim()).toBe("--source-dir is required");
+    expectNoNodeStack(missingSource.stderr);
+
+    const unknownArg = runCli("--wat");
+    expect(unknownArg.status).toBe(1);
+    expect(unknownArg.stdout).toBe("");
+    expect(unknownArg.stderr.trim()).toBe("Unknown argument: --wat");
+    expectNoNodeStack(unknownArg.stderr);
   });
 });
 
@@ -137,6 +174,17 @@ describe("buildMarkdown", () => {
     expect(buildMarkdown(sourceDir, null)).toContain("gateway health json");
     expect(buildMarkdown(sourceDir, null)).toContain("## SQLite State Smoke");
     expect(buildMarkdown(sourceDir, null)).toContain("4100");
+    expect(buildMarkdown(sourceDir, null)).toContain("| default | phase.load | 7.0ms | 8.0ms |");
+    expect(buildMarkdown(sourceDir, null)).not.toContain("phase.load.total");
+    expect(buildMarkdown(sourceDir, null)).not.toContain("phase.load.itemCount");
+    expect(buildMarkdown(sourceDir, null)).not.toContain("memory.ready.heapUsedMb");
+    expect(buildMarkdown(sourceDir, null)).toContain(
+      "Per-plugin rows are isolated cold imports and are not additive.",
+    );
+    expect(buildMarkdown(sourceDir, null)).toContain(
+      "| all 12 bundled plugins | 180.0MB | 130.0MB | ok |",
+    );
+    expect(buildMarkdown(sourceDir, null)).toContain("isolated delta from empty process");
   });
 
   it("rejects a missing source directory", () => {
@@ -193,6 +241,20 @@ describe("buildMarkdown", () => {
 
     expect(() => buildMarkdown(sourceDir, null)).toThrow(
       "[source-performance] incomplete gateway startup metrics for default:",
+    );
+  });
+
+  it("rejects extension memory artifacts without combined-process context", () => {
+    const sourceDir = mkTmpRoot();
+    writeSourceFixture(sourceDir);
+    writeJson(path.join(sourceDir, "extension-memory.json"), {
+      topByDeltaMb: [
+        { dir: "extensions/browser", maxRssMb: 80, deltaFromBaselineMb: 12, status: "ok" },
+      ],
+    });
+
+    expect(() => buildMarkdown(sourceDir, null)).toThrow(
+      "[source-performance] incomplete extension memory context:",
     );
   });
 

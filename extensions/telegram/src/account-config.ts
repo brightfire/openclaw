@@ -72,17 +72,14 @@ export function mergeTelegramAccountConfig(
   };
   const account = resolveTelegramAccountConfig(cfg, accountId) ?? {};
 
-  // Multi-account bots must not inherit channel-level groups unless explicitly set.
-  // Single-account bots fall back to root `channels.telegram.groups` when the
-  // account does not declare its own groups — including the empty-literal case
-  // `accounts.<id>.groups: {}`, which is almost always a config-migration
-  // artifact rather than an intentional "block all" declaration (use
-  // `groupPolicy: "disabled"` for that).
+  // Root groups are shared defaults; an account groups map replaces the whole map.
+  // In multi-account configs an explicit empty map remains an account-local opt-out,
+  // while the single-account empty-map migration artifact still falls back to root.
   const configuredAccountIds = Object.keys(cfg.channels?.telegram?.accounts ?? {});
   const isMultiAccount = configuredAccountIds.length > 1;
   const hasAccountGroups = account.groups && Object.keys(account.groups).length > 0;
   const groups = isMultiAccount
-    ? account.groups
+    ? (account.groups ?? channelGroups)
     : hasAccountGroups
       ? account.groups
       : channelGroups;
@@ -90,6 +87,10 @@ export function mergeTelegramAccountConfig(
     baseAllowFrom: base.allowFrom,
     accountAllowFrom: account.allowFrom,
   });
+  const capabilities =
+    Array.isArray(account.capabilities) && account.capabilities.length === 0
+      ? base.capabilities
+      : (account.capabilities ?? base.capabilities);
 
-  return { ...base, ...account, allowFrom, groups };
+  return { ...base, ...account, allowFrom, capabilities, groups };
 }

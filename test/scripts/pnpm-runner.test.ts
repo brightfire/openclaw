@@ -3,7 +3,7 @@ import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { createPnpmRunnerSpawnSpec, resolvePnpmRunner } from "../../scripts/pnpm-runner.mjs";
+import { createPnpmRunnerSpawnSpec, resolvePnpmRunner } from "../../scripts/pnpm-runner.mts";
 import { buildCmdExeCommandLine } from "../../scripts/windows-cmd-helpers.mjs";
 
 describe("resolvePnpmRunner", () => {
@@ -323,6 +323,26 @@ describe("resolvePnpmRunner", () => {
     ).toEqual({
       command: "C:\\Windows\\System32\\cmd.exe",
       args: ["/d", "/s", "/c", 'pnpm.cmd exec vitest run -t "path with spaces"'],
+      shell: false,
+      windowsVerbatimArguments: true,
+    });
+  });
+
+  it("ignores ambient ComSpec when defaulting the Windows cmd shim launcher", () => {
+    expect(
+      resolvePnpmRunner({
+        env: {
+          ComSpec: "C:\\Users\\test\\bin\\cmd.exe",
+          PATH: "",
+          SystemRoot: "D:\\Windows",
+        },
+        npmExecPath: "",
+        pnpmArgs: ["exec", "vitest", "run"],
+        platform: "win32",
+      }),
+    ).toEqual({
+      command: "D:\\Windows\\System32\\cmd.exe",
+      args: ["/d", "/s", "/c", "pnpm.cmd exec vitest run"],
       shell: false,
       windowsVerbatimArguments: true,
     });

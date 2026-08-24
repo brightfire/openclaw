@@ -15,6 +15,36 @@ type BlockReplyPipelineLike = NonNullable<
 >;
 
 describe("createBlockReplyDeliveryHandler", () => {
+  it.each([
+    ["reasoning", { text: "internal reasoning", isReasoning: true }, "reasoningPayloadsEnabled"],
+    [
+      "commentary",
+      { text: "internal commentary", isCommentary: true },
+      "commentaryPayloadsEnabled",
+    ],
+  ] as const)("gates %s before delivery bookkeeping", async (_label, payload, enabledFlag) => {
+    const onBlockReply = vi.fn(async () => {});
+    const enqueue = vi.fn();
+    const baseParams = {
+      onBlockReply,
+      normalizeStreamingText: (reply: ReplyPayload) => ({ text: reply.text, skip: false }),
+      applyReplyToMode: (reply: ReplyPayload) => reply,
+      typingSignals: {
+        signalTextDelta: vi.fn(async () => {}),
+      } as unknown as TypingSignaler,
+      blockStreamingEnabled: true,
+      blockReplyPipeline: { enqueue } as unknown as BlockReplyPipelineLike,
+      directlySentBlockKeys: new Set<string>(),
+      directlySentBlockPayloads: [],
+    };
+
+    await createBlockReplyDeliveryHandler(baseParams)(payload);
+    expect(enqueue).not.toHaveBeenCalled();
+
+    await createBlockReplyDeliveryHandler({ ...baseParams, [enabledFlag]: true })(payload);
+    expect(enqueue).toHaveBeenCalledTimes(1);
+  });
+
   it("sends captioned media-bearing block replies when block streaming is disabled", async () => {
     const onBlockReply = vi.fn(async () => {});
     const normalizeStreamingText = vi.fn((payload: { text?: string }) => ({
@@ -281,6 +311,18 @@ describe("createBlockReplyDeliveryHandler", () => {
     expect(normalized.payload.mediaUrls).toEqual(["./report.pdf"]);
   });
 
+  it("keeps parsed media when an explicit media list is empty", () => {
+    const normalized = normalizeReplyPayloadDirectives({
+      payload: { text: "MEDIA: ./report.pdf", mediaUrls: [] },
+      trimLeadingWhitespace: true,
+      parseMode: "auto",
+    });
+
+    expect(normalized.payload.text).toBeUndefined();
+    expect(normalized.payload.mediaUrl).toBe("./report.pdf");
+    expect(normalized.payload.mediaUrls).toEqual([]);
+  });
+
   it("leaves media-looking text alone when media directive parsing is disabled", () => {
     const normalized = normalizeReplyPayloadDirectives({
       payload: { text: "Result\nMEDIA: ./image.png" },
@@ -353,7 +395,7 @@ describe("createBlockReplyDeliveryHandler", () => {
       applyReplyToMode: (payload) => payload,
       normalizeMediaPaths: async (payload) => ({
         ...payload,
-        text: "⚠️ Media failed.",
+        text: "⚠️ Media failed. Try sending a smaller supported file or a different format.",
         mediaUrl: absPath,
         mediaUrls: [absPath],
       }),

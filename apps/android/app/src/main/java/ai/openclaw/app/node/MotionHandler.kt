@@ -9,6 +9,7 @@ import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.os.SystemClock
 import androidx.core.content.ContextCompat
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.InternalCoroutinesApi
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
@@ -317,6 +318,8 @@ class MotionHandler private constructor(
       )
     } catch (err: IllegalArgumentException) {
       GatewaySession.InvokeResult.error(code = "MOTION_UNAVAILABLE", message = err.message ?: "MOTION_UNAVAILABLE")
+    } catch (err: CancellationException) {
+      throw err
     } catch (err: Throwable) {
       GatewaySession.InvokeResult.error(
         code = "MOTION_UNAVAILABLE",
@@ -353,6 +356,8 @@ class MotionHandler private constructor(
       )
     } catch (err: IllegalArgumentException) {
       GatewaySession.InvokeResult.error(code = "MOTION_UNAVAILABLE", message = err.message ?: "MOTION_UNAVAILABLE")
+    } catch (err: CancellationException) {
+      throw err
     } catch (err: Throwable) {
       GatewaySession.InvokeResult.error(
         code = "MOTION_UNAVAILABLE",
@@ -383,8 +388,8 @@ class MotionHandler private constructor(
     // one live classification sample for now.
     val limit = ((params["limit"] as? JsonPrimitive)?.content?.toIntOrNull() ?: 200).coerceIn(1, 1000)
     return MotionActivityRequest(
-      startISO = (params["startISO"] as? JsonPrimitive)?.content?.trim()?.ifEmpty { null },
-      endISO = (params["endISO"] as? JsonPrimitive)?.content?.trim()?.ifEmpty { null },
+      startISO = parseJsonString(params, "startISO")?.trim()?.ifEmpty { null },
+      endISO = parseJsonString(params, "endISO")?.trim()?.ifEmpty { null },
       limit = limit,
     )
   }
@@ -400,8 +405,8 @@ class MotionHandler private constructor(
         null
       } ?: return null
     return MotionPedometerRequest(
-      startISO = (params["startISO"] as? JsonPrimitive)?.content?.trim()?.ifEmpty { null },
-      endISO = (params["endISO"] as? JsonPrimitive)?.content?.trim()?.ifEmpty { null },
+      startISO = parseJsonString(params, "startISO")?.trim()?.ifEmpty { null },
+      endISO = parseJsonString(params, "endISO")?.trim()?.ifEmpty { null },
     )
   }
 

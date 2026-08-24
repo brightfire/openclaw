@@ -4,7 +4,7 @@ import {
   normalizeOptionalLowercaseString,
 } from "@openclaw/normalization-core/string-coerce";
 import { normalizeStringEntries } from "@openclaw/normalization-core/string-normalization";
-import { getChannelPlugin } from "../../channels/plugins/index.js";
+import { resolveConfiguredAgentId } from "../../agents/agent-scope-config.js";
 import type {
   ChannelResolveKind,
   ChannelResolveResult,
@@ -13,19 +13,15 @@ import { resolveCommandConfigWithSecrets } from "../../cli/command-config-resolu
 import { formatCliCommand } from "../../cli/command-format.js";
 import { getChannelsCommandSecretTargetIds } from "../../cli/command-secret-targets.js";
 import { formatUnsupportedChannelActionMessage } from "../../cli/error-format.js";
-import { commitConfigWithPendingPluginInstalls } from "../../cli/plugins-install-record-commit.js";
-import { refreshPluginRegistryAfterConfigMutation } from "../../cli/plugins-registry-refresh.js";
-import {
-  getRuntimeConfig,
-  readConfigFileSnapshot,
-  replaceConfigFile,
-} from "../../config/config.js";
+import { getRuntimeConfig, readConfigFileSnapshot } from "../../config/config.js";
 import { danger } from "../../globals.js";
 import { resolveMessageChannelSelection } from "../../infra/outbound/channel-selection.js";
 import { type RuntimeEnv, writeRuntimeJson } from "../../runtime.js";
 import { resolveInstallableChannelPlugin } from "../channel-setup/channel-plugin-resolution.js";
+import { persistResolvedChannelPluginConfig } from "./plugin-config-persistence.js";
 
 export type ChannelsResolveOptions = {
+  agent?: string;
   channel?: string;
   account?: string;
   kind?: "auto" | "user" | "group" | "channel";
@@ -123,16 +119,6 @@ function formatResolveResult(result: ResolveResult): string {
 
 /** Resolve user/group/channel labels into plugin-specific stable target ids. */
 export async function channelsResolveCommand(opts: ChannelsResolveOptions, runtime: RuntimeEnv) {
-  const sourceSnapshotPromise = readConfigFileSnapshot().catch(() => null);
-  const loadedRaw = getRuntimeConfig();
-  let { effectiveConfig: cfg } = await resolveCommandConfigWithSecrets({
-    config: loadedRaw,
-    commandName: "channels resolve",
-    targetIds: getChannelsCommandSecretTargetIds(),
-    mode: "read_only_operational",
-    runtime,
-    autoEnable: true,
-  });
   const entries = normalizeStringEntries(opts.entries);
   if (entries.length === 0) {
     throw new Error(
@@ -140,11 +126,29 @@ export async function channelsResolveCommand(opts: ChannelsResolveOptions, runti
     );
   }
 
+  const loadedRaw = getRuntimeConfig();
+  const requestedAgent = opts.agent?.trim();
+  if (opts.agent !== undefined && !requestedAgent) {
+    throw new Error("--agent must not be blank");
+  }
+  const agentId = requestedAgent ? resolveConfiguredAgentId(loadedRaw, requestedAgent) : undefined;
+  const sourceSnapshotPromise = readConfigFileSnapshot().catch(() => null);
+  let { effectiveConfig: cfg } = await resolveCommandConfigWithSecrets({
+    config: loadedRaw,
+    commandName: "channels resolve",
+    targetIds: getChannelsCommandSecretTargetIds(),
+    agentId,
+    mode: "read_only_operational",
+    runtime,
+    autoEnable: true,
+  });
+
   const explicitChannel = opts.channel?.trim();
   const resolvedExplicit = explicitChannel
     ? await resolveInstallableChannelPlugin({
         cfg,
         runtime,
+        agentId,
         rawChannel: explicitChannel,
         allowInstall: false,
         supports: (plugin) => Boolean(plugin.resolver?.resolveTargets),
@@ -156,48 +160,24 @@ export async function channelsResolveCommand(opts: ChannelsResolveOptions, runti
     );
   }
   if (resolvedExplicit?.configChanged) {
-    cfg = resolvedExplicit.cfg;
-    const shouldMovePluginInstalls = Boolean(
-      cfg.plugins?.installs && Object.keys(cfg.plugins.installs).length > 0,
-    );
-    if (shouldMovePluginInstalls) {
-      const committed = await commitConfigWithPendingPluginInstalls({
-        nextConfig: cfg,
-        baseHash: (await sourceSnapshotPromise)?.hash,
-      });
-      cfg = committed.config;
-      await refreshPluginRegistryAfterConfigMutation({
-        config: cfg,
-        reason: "source-changed",
-        installRecords: committed.installRecords,
-        logger: { warn: (message) => runtime.log(message) },
-      });
-    } else {
-      await replaceConfigFile({
-        nextConfig: cfg,
-        baseHash: (await sourceSnapshotPromise)?.hash,
-      });
-      if (resolvedExplicit.pluginInstalled) {
-        await refreshPluginRegistryAfterConfigMutation({
-          config: cfg,
-          reason: "source-changed",
-          logger: { warn: (message) => runtime.log(message) },
-        });
-      }
-    }
+    cfg = await persistResolvedChannelPluginConfig({
+      resolved: resolvedExplicit,
+      baseHash: (await sourceSnapshotPromise)?.hash,
+      runtime,
+    });
   }
 
   const selection = explicitChannel
     ? {
         channel: resolvedExplicit?.channelId,
+        plugin: resolvedExplicit?.plugin,
       }
     : await resolveMessageChannelSelection({
         cfg,
         channel: opts.channel ?? null,
+        agentId,
       });
-  const plugin =
-    (explicitChannel ? resolvedExplicit?.plugin : undefined) ??
-    (selection.channel ? getChannelPlugin(selection.channel) : undefined);
+  const plugin = selection.plugin;
   if (!plugin?.resolver?.resolveTargets) {
     const channelText = selection.channel ?? explicitChannel ?? "";
     throw new Error(

@@ -1,230 +1,65 @@
 // User turn transcript helpers extract user-turn text from session transcripts.
-import path from "node:path";
+import { randomUUID } from "node:crypto";
 import { mimeTypeFromFilePath } from "@openclaw/media-core/mime";
-import type { AgentMessage } from "../agents/runtime/index.js";
-import { appendSessionTranscriptMessage } from "../config/sessions/transcript-append.js";
+import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
+import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
+import type { AgentMessage } from "../../packages/agent-core/src/types.js";
 import {
-  applyInputProvenanceToUserMessage,
-  type InputProvenance,
-  normalizeInputProvenance,
-} from "./input-provenance.js";
-import { emitSessionTranscriptUpdate } from "./transcript-events.js";
-
-// User-turn transcript helpers persist the selected prompt/media as a user
-// message before or during runtime execution, preserving provenance/idempotency.
-type TranscriptAppendConfig = Parameters<typeof appendSessionTranscriptMessage>[0]["config"];
-
-type UserTurnSessionEntry = {
-  sessionId: string;
-  updatedAt: number;
-  sessionFile?: string;
-  threadId?: string | number;
-} & Record<string, unknown>;
-
-type PersistedUserTurnMediaInput = {
-  path?: string | null;
-  url?: string | null;
-  contentType?: string | null;
-  kind?: string | null;
-};
-
-type PersistedUserTurnMediaFields = {
-  MediaPath?: string;
-  MediaPaths?: string[];
-  MediaType?: string;
-  MediaTypes?: string[];
-};
-
-export type PersistedUserTurnMessage = Extract<AgentMessage, { role: "user" }>;
-
-export type UserTurnInput = {
-  text?: string | null;
-  media?: readonly PersistedUserTurnMediaInput[] | null;
-  timestamp?: number;
-  idempotencyKey?: string;
-  provenance?: InputProvenance;
-  mediaOnlyText?: string;
-};
-
-type UserTurnTranscriptUpdateMode = "inline" | "none";
-
-export type UserTurnBeforeMessageWrite = (params: {
-  message: PersistedUserTurnMessage;
-  agentId?: string;
-  sessionKey?: string;
-}) => AgentMessage | null;
-
-type AppendUserTurnTranscriptMessageParams = {
-  transcriptPath: string;
-  input?: UserTurnInput;
-  message?: PersistedUserTurnMessage;
-  sessionId?: string;
-  agentId?: string;
-  sessionKey?: string;
-  cwd?: string;
-  config?: TranscriptAppendConfig;
-  updateMode?: UserTurnTranscriptUpdateMode;
-  beforeMessageWrite?: UserTurnBeforeMessageWrite;
-};
-
-type PersistUserTurnTranscriptParams = {
-  input?: UserTurnInput;
-  message?: PersistedUserTurnMessage;
-  sessionId: string;
-  sessionKey: string;
-  sessionEntry: UserTurnSessionEntry | undefined;
-  sessionStore?: Record<string, UserTurnSessionEntry>;
-  storePath?: string;
-  agentId: string;
-  threadId?: string | number;
-  cwd?: string;
-  config?: TranscriptAppendConfig;
-  updateMode?: UserTurnTranscriptUpdateMode;
-  beforeMessageWrite?: UserTurnBeforeMessageWrite;
-};
-
-type UserTurnTranscriptPersistenceTarget = Omit<
+  persistSessionTranscriptTurn,
+  publishTranscriptUpdate,
+  readActiveTranscriptEntryAnchor,
+  rewriteTranscriptMessageAtAnchor,
+  type TranscriptEntryAnchor,
+  type SessionTranscriptTurnPersistOptions,
+} from "../config/sessions/session-accessor.js";
+import { waitForSessionTranscriptProjection } from "../config/sessions/session-transcript-reconcile.js";
+import { readPersistedMediaFacts, type MediaFact } from "../media/media-facts.js";
+import { applyInputProvenanceToUserMessage } from "./input-provenance.js";
+import { resolveUserTurnTranscriptAdmission } from "./user-turn-transcript-admission.js";
+import {
+  normalizeStructuredMediaEntryForTranscript,
+  resolveTranscriptMediaPath,
+} from "./user-turn-transcript.media-normalize.js";
+import {
+  buildPersistedUserTurnMetadata,
+  normalizePersistedSteerTargetRunId,
+  preparePersistedUserTurnMessageForTranscriptWrite,
+  restorePreparedUserTurnOperationalMetaForRuntime,
+  rewritePersistedSteerTargetRunId,
+} from "./user-turn-transcript.metadata.js";
+import type {
+  CreateUserTurnTranscriptRecorderParams,
   PersistUserTurnTranscriptParams,
-  "input" | "message" | "updateMode"
->;
+  PersistedUserTurnMediaInput,
+  PersistedUserTurnMessage,
+  UserTurnMessagePersistenceParams,
+  UserTurnInput,
+  UserTurnTranscriptAdmissionReceipt,
+  UserTurnTranscriptPersistResult,
+  UserTurnTranscriptRecorder,
+  UserTurnTranscriptTarget,
+  UserTurnTranscriptTargetResolver,
+  UserTurnTranscriptUpdateMode,
+} from "./user-turn-transcript.types.js";
 
-type UserTurnTranscriptFileTarget = {
-  transcriptPath: string;
-  sessionId?: string;
-  agentId?: string;
-  sessionKey?: string;
-  cwd?: string;
-  config?: TranscriptAppendConfig;
+export type {
+  PersistedUserTurnMessage,
+  UserTurnInput,
+  UserTurnTranscriptRecorder,
+} from "./user-turn-transcript.types.js";
+
+export {
+  preparePersistedUserTurnMessageForTranscriptWrite,
+  restorePreparedUserTurnOperationalMetaForRuntime,
 };
 
-type UserTurnTranscriptTarget = UserTurnTranscriptPersistenceTarget | UserTurnTranscriptFileTarget;
-
-type UserTurnTranscriptPersistResult = {
-  sessionFile: string;
-  sessionEntry: UserTurnSessionEntry | undefined;
-  messageId: string;
-  message: PersistedUserTurnMessage;
-};
-
-type UserTurnTranscriptTargetResolver =
-  | UserTurnTranscriptTarget
-  | (() => UserTurnTranscriptTarget | undefined | Promise<UserTurnTranscriptTarget | undefined>);
-
-type UserTurnInputResolver = () => UserTurnInput | undefined | Promise<UserTurnInput | undefined>;
-
-export type UserTurnTranscriptRecorder = {
-  readonly message: PersistedUserTurnMessage | undefined;
-  resolveMessage: () => Promise<PersistedUserTurnMessage | undefined>;
-  markRuntimePersistencePending: (pending: Promise<void>) => void;
-  markRuntimePersisted: (message?: PersistedUserTurnMessage) => void;
-  markBlocked: () => void;
-  hasPersisted: () => boolean;
-  isBlocked: () => boolean;
-  hasRuntimePersistencePending: () => boolean;
-  waitForRuntimePersistence: () => Promise<void>;
-  persistApproved: (params?: {
-    target?: UserTurnTranscriptTargetResolver;
-    updateMode?: UserTurnTranscriptUpdateMode;
-  }) => Promise<UserTurnTranscriptPersistResult | undefined>;
-  persistFallback: (params?: {
-    target?: UserTurnTranscriptTargetResolver;
-    updateMode?: UserTurnTranscriptUpdateMode;
-  }) => Promise<UserTurnTranscriptPersistResult | undefined>;
-};
-
-type CreateUserTurnTranscriptRecorderParams = {
-  input?: UserTurnInput;
-  message?: PersistedUserTurnMessage;
-  resolveInput?: UserTurnInputResolver;
-  target: UserTurnTranscriptTargetResolver;
-  updateMode?: UserTurnTranscriptUpdateMode;
-  beforeMessageWrite?: UserTurnBeforeMessageWrite;
-  errorContext?: string;
-  onPersistenceError?: (error: unknown) => void;
-};
-
-type ResolvePersistedUserTurnTextOptions = {
-  hasMedia?: boolean;
-};
-
-type PersistedUserTurnMediaFieldSource = {
-  MediaPath?: string | null;
-  MediaPaths?: readonly (string | null | undefined)[] | null;
-  MediaUrl?: string | null;
-  MediaUrls?: readonly (string | null | undefined)[] | null;
-  MediaType?: string | null;
-  MediaTypes?: readonly (string | null | undefined)[] | null;
-  MediaWorkspaceDir?: string | null;
-};
-
-function normalizeOptionalText(value: string | null | undefined): string | undefined {
-  const normalized = value?.trim();
-  return normalized ? normalized : undefined;
+export function buildRunUserTurnIdempotencyKey(runId: string): string {
+  return `${runId}:user`;
 }
 
-function normalizeTranscriptText(value: string | null | undefined): string {
-  return value ?? "";
-}
-
-const CHANNEL_MEDIA_PLACEHOLDER_PATTERN = /^<media:[a-z0-9_-]+>(?:\s+\([^)]*\))?$/i;
-
-// Select text for persisted user turns. Channel-generated media placeholders
-// are dropped only when structured media is present, keeping plain text intact.
-export function resolvePersistedUserTurnText(
-  value: string | null | undefined,
-  options: ResolvePersistedUserTurnTextOptions = {},
-): string | undefined {
-  const normalized = normalizeOptionalText(value);
-  if (!normalized) {
-    return undefined;
-  }
-  if (options.hasMedia === true && CHANNEL_MEDIA_PLACEHOLDER_PATTERN.test(normalized)) {
-    return undefined;
-  }
-  return normalized;
-}
-
-function mediaTypeForTranscript(media: PersistedUserTurnMediaInput): string {
-  return (
-    normalizeOptionalText(media.contentType) ??
-    normalizeOptionalText(media.kind) ??
-    "application/octet-stream"
-  );
-}
-
-function normalizeMediaEntryForTranscript(media: PersistedUserTurnMediaInput):
-  | {
-      path: string;
-      type: string;
-    }
-  | undefined {
-  const pathLocal = normalizeOptionalText(media.path) ?? normalizeOptionalText(media.url);
-  if (!pathLocal) {
-    return undefined;
-  }
-  return {
-    path: pathLocal,
-    type: mediaTypeForTranscript(media),
-  };
-}
-
-function normalizeOptionalTextArray(
-  values: readonly (string | null | undefined)[] | null | undefined,
-): string[] {
-  return (
-    values?.map(normalizeOptionalText).filter((value): value is string => Boolean(value)) ?? []
-  );
-}
-
-const URL_LIKE_MEDIA_PATH_PATTERN = /^[a-z][a-z0-9+.-]*:/i;
-
-function resolveTranscriptMediaPath(pathValue: string, workspaceDir: string | undefined): string {
-  // Relative staged media paths are anchored to the media workspace; absolute
-  // paths and URL-like refs are already stable transcript references.
-  if (!workspaceDir || path.isAbsolute(pathValue) || URL_LIKE_MEDIA_PATH_PATTERN.test(pathValue)) {
-    return pathValue;
-  }
-  return path.join(workspaceDir, pathValue);
+// Select normalized text for persisted user turns.
+export function resolvePersistedUserTurnText(value: string | null | undefined): string | undefined {
+  return normalizeOptionalString(value);
 }
 
 function resolveTranscriptMediaType(params: {
@@ -236,105 +71,156 @@ function resolveTranscriptMediaType(params: {
 }
 
 export function buildPersistedUserTurnMediaInputsFromFields(
-  fields: PersistedUserTurnMediaFieldSource | null | undefined,
+  fields: PersistedUserTurnMessage | null | undefined,
 ): PersistedUserTurnMediaInput[] {
-  if (!fields) {
-    return [];
-  }
-
-  const paths = normalizeOptionalTextArray(fields.MediaPaths);
-  const urls = normalizeOptionalTextArray(fields.MediaUrls);
-  const types = normalizeOptionalTextArray(fields.MediaTypes);
-  const singlePath = normalizeOptionalText(fields.MediaPath);
-  const singleUrl = normalizeOptionalText(fields.MediaUrl);
-  const singleType = normalizeOptionalText(fields.MediaType);
-  const workspaceDir = normalizeOptionalText(fields.MediaWorkspaceDir);
-  const mediaCount = Math.max(paths.length, urls.length, singlePath || singleUrl ? 1 : 0);
-  const media: PersistedUserTurnMediaInput[] = [];
-
-  for (let index = 0; index < mediaCount; index += 1) {
-    const rawPath = paths[index] ?? (index === 0 ? singlePath : undefined);
-    const mediaPath = rawPath ? resolveTranscriptMediaPath(rawPath, workspaceDir) : undefined;
-    const url = urls[index] ?? (index === 0 ? singleUrl : undefined);
+  const facts = fields ? (readPersistedMediaFacts(fields) ?? []) : [];
+  const normalizedMedia = facts.map((fact) => {
+    const rawPath = normalizeOptionalString(fact.path);
+    const mediaPath = rawPath
+      ? resolveTranscriptMediaPath(rawPath, normalizeOptionalString(fact.workspaceDir))
+      : undefined;
+    const url = normalizeOptionalString(fact.url);
     if (!mediaPath && !url) {
-      continue;
+      return {};
     }
-    media.push({
-      ...(mediaPath ? { path: mediaPath } : {}),
-      ...(url ? { url } : {}),
-      contentType: resolveTranscriptMediaType({
-        explicitType: types[index] ?? (index === 0 ? singleType : undefined),
-        mediaPath,
-        mediaUrl: url,
-      }),
+    const contentType = resolveTranscriptMediaType({
+      explicitType: normalizeOptionalString(fact.contentType),
+      mediaPath,
+      mediaUrl: url,
     });
-  }
-
-  return media;
+    const media: PersistedUserTurnMediaInput = { contentType };
+    if (mediaPath) {
+      media.path = mediaPath;
+    }
+    if (url) {
+      media.url = url;
+    }
+    if (fact.kind) {
+      media.kind = fact.kind;
+    }
+    if (fact.fileName) {
+      media.fileName = fact.fileName;
+    }
+    if (fact.sizeBytes !== undefined) {
+      media.sizeBytes = fact.sizeBytes;
+    }
+    if (fact.durationMs !== undefined) {
+      media.durationMs = fact.durationMs;
+    }
+    if (fact.width !== undefined) {
+      media.width = fact.width;
+    }
+    if (fact.height !== undefined) {
+      media.height = fact.height;
+    }
+    return media;
+  });
+  return normalizedMedia.some((entry) => entry.path || entry.url) ? normalizedMedia : [];
 }
 
-function buildPersistedUserTurnMediaFields(
-  media: readonly PersistedUserTurnMediaInput[] | null | undefined,
-): PersistedUserTurnMediaFields {
-  const entries = Array.isArray(media) ? media : [];
-  const normalized = entries
-    .map(normalizeMediaEntryForTranscript)
-    .filter((entry): entry is { path: string; type: string } => entry !== undefined);
-  const paths = normalized.map((entry) => entry.path);
-  if (paths.length === 0) {
-    return {};
-  }
-  const types = normalized.map((entry) => entry.type);
-  return {
-    MediaPath: paths[0],
-    MediaPaths: paths,
-    MediaType: types[0],
-    MediaTypes: types,
-  };
+export function buildLateMediaAttachedProjection(message: AgentMessage): {
+  text?: string;
+  media: MediaFact[];
+} {
+  const isLateMedia = readOpenClawMessageMeta(message)?.lateMedia === true;
+  const media = isLateMedia ? (readPersistedMediaFacts(message) ?? []) : [];
+  const text = media
+    .flatMap((fact) => {
+      const mediaRef = fact.path ?? fact.url;
+      return mediaRef ? [`[media attached: ${mediaRef}]`] : [];
+    })
+    .join("\n");
+  return { ...(text ? { text } : {}), media };
 }
 
-function buildPersistedUserTurnMessage(params: UserTurnInput): PersistedUserTurnMessage {
-  const mediaFields = buildPersistedUserTurnMediaFields(params.media);
-  const hasMedia = Boolean(mediaFields.MediaPath);
-  const text = normalizeTranscriptText(params.text);
+function readOpenClawMessageMeta(message: AgentMessage): Record<string, unknown> | undefined {
+  return asOptionalRecord(Reflect.get(message, "__openclaw"));
+}
+export function buildPersistedUserTurnMessage(params: UserTurnInput): PersistedUserTurnMessage {
+  const normalizedMedia = (params.media ?? []).map(normalizeStructuredMediaEntryForTranscript);
+  const text = params.text ?? "";
   // Storage is BARE (no timestamp prefix). The per-message timestamp is added
   // at the single LLM-boundary stamping site (normalizeMessagesForLlmBoundary),
   // derived from each message's own `timestamp` field, so the current turn and
   // every historical turn serialize identically on the wire. Persisting a stamp
   // here would NOT match the bare-current arrival (the gateway no longer stamps
   // the live turn) — see https://github.com/openclaw/openclaw/issues/3658.
-  const content = text || (hasMedia ? (params.mediaOnlyText ?? "") : "");
-
+  const openClawMeta = buildPersistedUserTurnMetadata(params, normalizedMedia);
   const message = {
     role: "user",
-    content,
+    content: text,
     timestamp: params.timestamp ?? Date.now(),
     ...(params.idempotencyKey ? { idempotencyKey: params.idempotencyKey } : {}),
-    ...mediaFields,
+    ...(Object.keys(openClawMeta).length > 0 ? { __openclaw: openClawMeta } : {}),
   } as PersistedUserTurnMessage;
   return applyInputProvenanceToUserMessage(message, params.provenance) as PersistedUserTurnMessage;
 }
 
 function resolvePersistedUserTurnMessage(
-  params: Pick<AppendUserTurnTranscriptMessageParams, "input" | "message">,
+  params: Pick<UserTurnMessagePersistenceParams, "input" | "message">,
 ): PersistedUserTurnMessage | undefined {
-  if (params.message) {
-    return params.message;
-  }
-  if (!params.input) {
-    return undefined;
-  }
-  return buildPersistedUserTurnMessage(params.input);
+  return params.message ?? (params.input ? buildPersistedUserTurnMessage(params.input) : undefined);
 }
 
-function isUserMessage(message: AgentMessage): message is PersistedUserTurnMessage {
-  return (message as { role?: unknown }).role === "user";
+function isUserMessage(message: unknown): message is PersistedUserTurnMessage {
+  return asOptionalRecord(message)?.role === "user";
+}
+
+function buildLateResolvedMediaMessage(params: {
+  admittedMessage?: PersistedUserTurnMessage;
+  resolvedMessage: PersistedUserTurnMessage;
+}): PersistedUserTurnMessage | undefined {
+  const admittedMedia = buildPersistedUserTurnMediaInputsFromFields(params.admittedMessage);
+  const resolvedMedia = buildPersistedUserTurnMediaInputsFromFields(params.resolvedMessage);
+  if (
+    resolvedMedia.length === 0 ||
+    JSON.stringify(resolvedMedia) === JSON.stringify(admittedMedia)
+  ) {
+    return undefined;
+  }
+  const resolvedIdempotencyKey = Reflect.get(params.resolvedMessage, "idempotencyKey");
+  const resolvedTimestamp = Reflect.get(params.resolvedMessage, "timestamp");
+  const admittedContent = params.admittedMessage?.content;
+  const resolvedContent = params.resolvedMessage.content;
+  let content = resolvedContent;
+  if (resolvedContent === admittedContent) {
+    content = "";
+  } else if (Array.isArray(resolvedContent) && typeof admittedContent === "string") {
+    content = resolvedContent.filter((block) => {
+      const textBlock = block as { type?: unknown; text?: unknown } | null;
+      return textBlock?.type !== "text" || textBlock.text !== admittedContent;
+    });
+  }
+  const idempotencyKey =
+    typeof resolvedIdempotencyKey === "string" && resolvedIdempotencyKey.length > 0
+      ? `${resolvedIdempotencyKey}:late-media`
+      : `late-media:${typeof resolvedTimestamp === "number" ? resolvedTimestamp : Date.now()}`;
+  // Like #111204, mark late-media scaffolding as wire-only so UIs never render it.
+  return {
+    ...params.resolvedMessage,
+    content,
+    idempotencyKey,
+    __openclaw: { ...readOpenClawMessageMeta(params.resolvedMessage), lateMedia: true },
+  } as PersistedUserTurnMessage;
 }
 
 function isBeforeAgentRunBlockedMessage(message: AgentMessage): boolean {
   const marker = (message as { __openclaw?: { beforeAgentRunBlocked?: unknown } })["__openclaw"]
     ?.beforeAgentRunBlocked;
   return marker !== undefined;
+}
+
+function userMessageHasImageContent(message: AgentMessage): boolean {
+  return (
+    isUserMessage(message) &&
+    Array.isArray(message.content) &&
+    message.content.some(
+      (block) =>
+        typeof block === "object" &&
+        block !== null &&
+        (block as { type?: unknown }).type === "image",
+    )
+  );
 }
 
 // Runtime messages may lack transcript metadata because channel adapters prepare
@@ -350,102 +236,21 @@ export function mergePreparedUserTurnMessageForRuntime(params: {
   ) {
     return params.runtimeMessage;
   }
+  const runtimeMeta = readOpenClawMessageMeta(params.runtimeMessage);
+  const preparedMeta = readOpenClawMessageMeta(params.preparedMessage);
   return {
-    ...(params.runtimeMessage as unknown as Record<string, unknown>),
-    ...(params.preparedMessage as unknown as Record<string, unknown>),
-  } as unknown as AgentMessage;
-}
-
-function applyBeforeMessageWriteToUserTurn(
-  message: PersistedUserTurnMessage,
-  params: Pick<
-    AppendUserTurnTranscriptMessageParams,
-    "agentId" | "sessionKey" | "beforeMessageWrite"
-  >,
-): PersistedUserTurnMessage | undefined {
-  if (!params.beforeMessageWrite) {
-    return message;
-  }
-  const originalMessage = message as unknown as { idempotencyKey?: unknown };
-  const idempotencyKey =
-    typeof originalMessage.idempotencyKey === "string" ? originalMessage.idempotencyKey : undefined;
-  const provenance = normalizeInputProvenance(
-    (message as unknown as { provenance?: unknown }).provenance,
-  );
-  const nextMessage = params.beforeMessageWrite({
-    message,
-    ...(params.agentId ? { agentId: params.agentId } : {}),
-    ...(params.sessionKey ? { sessionKey: params.sessionKey } : {}),
-  });
-  if (nextMessage?.role !== "user") {
-    return undefined;
-  }
-  const nextUserMessage = provenance
-    ? (applyInputProvenanceToUserMessage(nextMessage, provenance) as PersistedUserTurnMessage)
-    : nextMessage;
-  return idempotencyKey
-    ? ({
-        ...(nextUserMessage as unknown as Record<string, unknown>),
-        idempotencyKey,
-      } as unknown as PersistedUserTurnMessage)
-    : nextUserMessage;
-}
-
-export async function appendUserTurnTranscriptMessage(
-  params: AppendUserTurnTranscriptMessageParams,
-): Promise<
-  | {
-      sessionFile: string;
-      messageId: string;
-      message: PersistedUserTurnMessage;
-    }
-  | undefined
-> {
-  const resolvedMessage = resolvePersistedUserTurnMessage(params);
-  if (!resolvedMessage) {
-    return undefined;
-  }
-
-  const appended = await appendSessionTranscriptMessage({
-    transcriptPath: params.transcriptPath,
-    ...(params.sessionId ? { sessionId: params.sessionId } : {}),
-    ...(params.cwd ? { cwd: params.cwd } : {}),
-    ...(params.config ? { config: params.config } : {}),
-    message: resolvedMessage,
-    idempotencyLookup: "scan",
-    prepareMessageAfterIdempotencyCheck: (message) =>
-      applyBeforeMessageWriteToUserTurn(message, params),
-  });
-  if (!appended) {
-    return undefined;
-  }
-
-  switch (params.updateMode ?? "inline") {
-    case "inline":
-      if (appended.appended) {
-        emitSessionTranscriptUpdate({
-          sessionFile: params.transcriptPath,
-          ...(params.sessionKey ? { sessionKey: params.sessionKey } : {}),
-          ...(params.agentId ? { agentId: params.agentId } : {}),
-          message: appended.message,
-          messageId: appended.messageId,
-        });
-      }
-      break;
-    case "none":
-      break;
-  }
-
-  return {
-    sessionFile: params.transcriptPath,
-    messageId: appended.messageId,
-    message: appended.message,
-  };
+    ...params.runtimeMessage,
+    ...params.preparedMessage,
+    ...(preparedMeta ? { __openclaw: { ...runtimeMeta, ...preparedMeta } } : {}),
+    ...(userMessageHasImageContent(params.runtimeMessage)
+      ? { content: params.runtimeMessage.content }
+      : {}),
+  } as AgentMessage;
 }
 
 // Store-backed persistence resolves the current session transcript file lazily
 // so callers can pass a session entry/store without knowing the final path.
-export async function persistUserTurnTranscript(
+async function persistUserTurnTranscript(
   params: PersistUserTurnTranscriptParams,
 ): Promise<UserTurnTranscriptPersistResult | undefined> {
   const message = resolvePersistedUserTurnMessage(params);
@@ -453,35 +258,66 @@ export async function persistUserTurnTranscript(
     return undefined;
   }
 
-  const { resolveSessionTranscriptFile } = await import("../config/sessions/transcript.js");
-  const { sessionFile, sessionEntry } = await resolveSessionTranscriptFile({
-    sessionId: params.sessionId,
-    sessionKey: params.sessionKey,
-    sessionEntry: params.sessionEntry,
-    ...(params.sessionStore ? { sessionStore: params.sessionStore } : {}),
-    ...(params.storePath ? { storePath: params.storePath } : {}),
-    agentId: params.agentId,
-    ...(params.threadId !== undefined ? { threadId: params.threadId } : {}),
-  });
-
-  const appended = await appendUserTurnTranscriptMessage({
-    transcriptPath: sessionFile,
-    message,
-    sessionId: params.sessionId,
-    agentId: params.agentId,
-    sessionKey: params.sessionKey,
-    ...(params.cwd ? { cwd: params.cwd } : {}),
-    ...(params.config ? { config: params.config } : {}),
-    ...(params.updateMode ? { updateMode: params.updateMode } : {}),
-    ...(params.beforeMessageWrite ? { beforeMessageWrite: params.beforeMessageWrite } : {}),
-  });
-  if (!appended) {
+  const turn = await persistSessionTranscriptTurn(
+    {
+      sessionId: params.sessionId,
+      sessionKey: params.sessionKey,
+      sessionEntry: params.sessionEntry,
+      ...(params.sessionStore ? { sessionStore: params.sessionStore } : {}),
+      ...(params.storePath ? { storePath: params.storePath } : {}),
+      agentId: params.agentId,
+      ...(params.threadId !== undefined ? { threadId: params.threadId } : {}),
+    },
+    {
+      ...(params.cwd ? { cwd: params.cwd } : {}),
+      ...(params.config
+        ? { config: params.config as SessionTranscriptTurnPersistOptions["config"] }
+        : {}),
+      ...(params.expectedSessionId ? { expectedSessionId: params.expectedSessionId } : {}),
+      ...(params.expectedSessionState ? { expectedSessionState: params.expectedSessionState } : {}),
+      ...(params.sessionLifecyclePatch
+        ? { sessionLifecyclePatch: params.sessionLifecyclePatch }
+        : {}),
+      updateMode: params.updateMode ?? "inline",
+      messages: [
+        {
+          message,
+          idempotencyLookup: "scan",
+          prepareMessageAfterIdempotencyCheck: (candidate) =>
+            preparePersistedUserTurnMessageForTranscriptWrite(
+              candidate as PersistedUserTurnMessage,
+              params,
+            ),
+        },
+      ],
+    },
+  );
+  let appended = turn.messages[0] as
+    | {
+        anchor?: Omit<UserTurnTranscriptAdmissionReceipt, "logicalTurnId" | "role">;
+        appended: boolean;
+        messageId: string;
+        message: PersistedUserTurnMessage;
+      }
+    | undefined;
+  if (appended && !appended.anchor && appended.message.role === "user") {
+    await waitForSessionTranscriptProjection(params);
+    const anchor = readActiveTranscriptEntryAnchor({ ...params, entryId: appended.messageId });
+    appended = anchor ? { ...appended, anchor } : appended;
+  }
+  if (!appended?.anchor || appended.message.role !== "user") {
     return undefined;
   }
 
   return {
     ...appended,
-    sessionEntry,
+    admission: {
+      ...appended.anchor,
+      logicalTurnId: params.logicalTurnId ?? randomUUID(),
+      role: "user",
+    },
+    sessionEntry: turn.sessionEntry,
+    sessionFile: params.sessionKey,
   };
 }
 
@@ -491,22 +327,72 @@ async function resolveUserTurnTranscriptTarget(
   return typeof target === "function" ? await target() : target;
 }
 
-function isUserTurnTranscriptFileTarget(
-  target: UserTurnTranscriptTarget,
-): target is UserTurnTranscriptFileTarget {
-  return "transcriptPath" in target;
+async function confirmPersistedSteerTargetRunId(params: {
+  admission: UserTurnTranscriptAdmissionReceipt;
+  targetRunId: string;
+}): Promise<
+  | {
+      admission: UserTurnTranscriptAdmissionReceipt;
+      message: PersistedUserTurnMessage;
+    }
+  | undefined
+> {
+  const rewritten = await rewriteTranscriptMessageAtAnchor(params.admission, (message) => {
+    if (!isUserMessage(message)) {
+      return undefined;
+    }
+    const currentTarget = normalizePersistedSteerTargetRunId(
+      message["__openclaw"]?.steerTargetRunId,
+    );
+    return currentTarget === params.targetRunId
+      ? undefined
+      : rewritePersistedSteerTargetRunId(message, params.targetRunId);
+  });
+  if (!rewritten) {
+    return undefined;
+  }
+  const admission = { ...params.admission, generation: rewritten.generation };
+  await publishTranscriptUpdate(admission, {
+    message: rewritten.message,
+    messageId: admission.entryId,
+    messageSeq: admission.activeMessagePosition + 1,
+  });
+  return { admission, message: rewritten.message };
 }
 
 export function createUserTurnTranscriptRecorder(
   params: CreateUserTurnTranscriptRecorderParams,
 ): UserTurnTranscriptRecorder {
-  const message = resolvePersistedUserTurnMessage(params);
+  const logicalTurnId = randomUUID();
+  let message = resolvePersistedUserTurnMessage(params);
   let blocked = false;
   let persisted = false;
+  let runtimePersisted = false;
   let persistedResult: UserTurnTranscriptPersistResult | undefined;
+  let admissionReceipt: UserTurnTranscriptAdmissionReceipt | undefined;
+  let admittedMessage: PersistedUserTurnMessage | undefined;
   let runtimePersistencePromise: Promise<void> | undefined;
   let selfPersistencePromise: Promise<UserTurnTranscriptPersistResult | undefined> | undefined;
   let resolvedMessagePromise: Promise<PersistedUserTurnMessage | undefined> | undefined;
+  let persistedMessageNotified = false;
+  let runtimePersistedMessage: PersistedUserTurnMessage | undefined;
+  let sentToProvider = false;
+  let admissionHandler: ((admission: UserTurnTranscriptAdmissionReceipt) => void) | undefined;
+  let resolvedBeforeProvider = false;
+  let replacementText: string | undefined;
+  let confirmedSteerTargetRunId: string | undefined;
+
+  const applyReplacementText = (
+    candidate: PersistedUserTurnMessage | undefined,
+  ): PersistedUserTurnMessage | undefined => {
+    if (!candidate || replacementText === undefined) {
+      return candidate;
+    }
+    return { ...candidate, content: replacementText };
+  };
+
+  const applyMessageOverrides = (candidate: PersistedUserTurnMessage | undefined) =>
+    rewritePersistedSteerTargetRunId(applyReplacementText(candidate), confirmedSteerTargetRunId);
 
   const handlePersistenceError = (error: unknown) => {
     if (params.onPersistenceError) {
@@ -523,29 +409,54 @@ export function createUserTurnTranscriptRecorder(
   };
 
   const resolveMessageForPersistence = async (): Promise<PersistedUserTurnMessage | undefined> => {
-    if (params.message) {
-      return params.message;
-    }
-    if (!params.resolveInput) {
-      return message;
+    if (params.message || !params.resolveInput) {
+      return applyMessageOverrides(message);
     }
     if (!resolvedMessagePromise) {
       resolvedMessagePromise = (async () => {
         try {
           const resolvedInput = await params.resolveInput?.();
-          return (
+          const resolvedMessage =
             resolvePersistedUserTurnMessage({
               message: params.message,
               input: resolvedInput ?? params.input,
-            }) ?? message
-          );
+            }) ?? message;
+          resolvedBeforeProvider = !sentToProvider;
+          return applyMessageOverrides(resolvedMessage);
         } catch (error) {
           handlePersistenceError(error);
-          return message;
+          return applyMessageOverrides(message);
         }
       })();
     }
     return await resolvedMessagePromise;
+  };
+
+  const notifyMessagePersisted = (persistedMessage?: PersistedUserTurnMessage) => {
+    const notificationMessage = persistedMessage ?? persistedResult?.message ?? message;
+    if (!notificationMessage || persistedMessageNotified || !params.onMessagePersisted) {
+      return;
+    }
+    persistedMessageNotified = true;
+    try {
+      void Promise.resolve(params.onMessagePersisted(notificationMessage)).catch(
+        handlePersistenceError,
+      );
+    } catch (error) {
+      handlePersistenceError(error);
+    }
+  };
+
+  const recordAdmission = (
+    receipt: TranscriptEntryAnchor | UserTurnTranscriptAdmissionReceipt,
+    persistedMessage: PersistedUserTurnMessage,
+  ) => {
+    if (admissionReceipt) {
+      return;
+    }
+    admissionReceipt = resolveUserTurnTranscriptAdmission({ logicalTurnId, receipt });
+    admittedMessage = persistedMessage;
+    admissionHandler?.(admissionReceipt);
   };
 
   const waitForRuntimePersistence = async () => {
@@ -562,31 +473,39 @@ export function createUserTurnTranscriptRecorder(
   const persistPrepared = async (options: {
     waitForRuntime: boolean;
     skipWhenBlocked: boolean;
+    message?: PersistedUserTurnMessage;
     target?: UserTurnTranscriptTargetResolver;
     updateMode?: UserTurnTranscriptUpdateMode;
+    cwd?: string;
+    expectedSessionId?: string;
+    expectedSessionState?: SessionTranscriptTurnPersistOptions["expectedSessionState"];
+    sessionLifecyclePatch?: SessionTranscriptTurnPersistOptions["sessionLifecyclePatch"];
+    retryIfUnpersisted?: boolean;
   }): Promise<UserTurnTranscriptPersistResult | undefined> => {
-    if (persisted) {
-      return persistedResult;
-    }
     if (options.skipWhenBlocked && blocked) {
       return undefined;
     }
-    if (!message && !params.resolveInput) {
+    if (!options.message && !message && !params.resolveInput) {
       return undefined;
     }
     if (options.waitForRuntime) {
-      // Approved persistence waits for runtime-owned writes first to avoid
-      // duplicate user turns when the harness already persisted the message.
       await waitForRuntimePersistence();
-      if (persisted) {
-        return persistedResult;
-      }
     }
     if (selfPersistencePromise) {
-      return await selfPersistencePromise;
+      const existingPromise = selfPersistencePromise;
+      const existingResult = await existingPromise;
+      if (existingResult || !options.retryIfUnpersisted) {
+        return existingResult;
+      }
+      // A guarded store write can lose a session-generation race without appending.
+      // Explicit retry callers may re-resolve the target, but concurrent ownership stays shared.
+      if (selfPersistencePromise !== existingPromise) {
+        return await selfPersistencePromise;
+      }
+      selfPersistencePromise = undefined;
     }
-    selfPersistencePromise = (async () => {
-      const resolvedMessage = await resolveMessageForPersistence();
+    const persistencePromise = (async () => {
+      const resolvedMessage = options.message ?? (await resolveMessageForPersistence());
       if (!resolvedMessage) {
         return undefined;
       }
@@ -594,60 +513,162 @@ export function createUserTurnTranscriptRecorder(
       if (!target) {
         return undefined;
       }
+      const resolvedTarget = options.cwd ? { ...target, cwd: options.cwd } : target;
       const updateMode = options.updateMode ?? params.updateMode ?? "inline";
-      const result = isUserTurnTranscriptFileTarget(target)
-        ? await appendUserTurnTranscriptMessage({
-            ...target,
-            message: resolvedMessage,
-            updateMode,
-            ...(params.beforeMessageWrite ? { beforeMessageWrite: params.beforeMessageWrite } : {}),
-          }).then((appended) =>
-            appended
-              ? {
-                  ...appended,
-                  sessionEntry: undefined,
-                }
-              : undefined,
-          )
-        : await persistUserTurnTranscript({
-            ...target,
-            message: resolvedMessage,
-            updateMode,
-            ...(params.beforeMessageWrite ? { beforeMessageWrite: params.beforeMessageWrite } : {}),
-          });
+      const persistMessage = async (
+        candidate: PersistedUserTurnMessage,
+        candidateUpdateMode: UserTurnTranscriptUpdateMode,
+      ) =>
+        await persistUserTurnTranscript({
+          ...resolvedTarget,
+          logicalTurnId,
+          message: candidate,
+          ...(options.expectedSessionId ? { expectedSessionId: options.expectedSessionId } : {}),
+          ...((options.sessionLifecyclePatch ?? params.sessionLifecyclePatch)
+            ? {
+                sessionLifecyclePatch:
+                  options.sessionLifecyclePatch ?? params.sessionLifecyclePatch,
+              }
+            : {}),
+          ...((options.expectedSessionState ?? params.expectedSessionState)
+            ? {
+                expectedSessionState: options.expectedSessionState ?? params.expectedSessionState,
+              }
+            : {}),
+          updateMode: candidateUpdateMode,
+          ...(params.beforeMessageWrite ? { beforeMessageWrite: params.beforeMessageWrite } : {}),
+        });
+      const lateMediaMessage =
+        sentToProvider && !resolvedBeforeProvider
+          ? buildLateResolvedMediaMessage({
+              admittedMessage: runtimePersistedMessage ?? message,
+              resolvedMessage,
+            })
+          : undefined;
+      if (lateMediaMessage) {
+        // The admitted bytes already crossed the LLM boundary. Persisting media as a
+        // second turn preserves that prefix; inline replacement would thrash cache tail (#99495).
+        if (!runtimePersisted && !persisted && message) {
+          const admittedResult = await persistMessage(message, updateMode);
+          if (admittedResult) {
+            persisted = true;
+            persistedResult = admittedResult;
+            recordAdmission(admittedResult.admission, admittedResult.message);
+            notifyMessagePersisted(admittedResult.message);
+          }
+        }
+        const appendedMedia = await persistMessage(lateMediaMessage, "none");
+        if (appendedMedia) {
+          persisted = true;
+          persistedResult = appendedMedia;
+        }
+        return appendedMedia;
+      }
+      if (runtimePersisted) {
+        return undefined;
+      }
+      if (persisted) {
+        return persistedResult;
+      }
+      const result = await persistMessage(resolvedMessage, updateMode);
       if (result) {
         persisted = true;
         persistedResult = result;
+        recordAdmission(result.admission, result.message);
+        notifyMessagePersisted(result.message);
       }
       return result;
     })();
+    selfPersistencePromise = persistencePromise;
     try {
-      return await selfPersistencePromise;
+      const result = await persistencePromise;
+      if (!result && options.retryIfUnpersisted && selfPersistencePromise === persistencePromise) {
+        selfPersistencePromise = undefined;
+      }
+      return result;
     } catch (error) {
       handlePersistenceError(error);
       throw error;
     }
   };
-
   return {
-    message,
+    get message() {
+      return message;
+    },
     resolveMessage: resolveMessageForPersistence,
+    replaceTextBeforePersistence: (text) => {
+      if (persisted || runtimePersisted || sentToProvider) {
+        return;
+      }
+      replacementText = text;
+      message = applyMessageOverrides(message);
+      resolvedMessagePromise = undefined;
+    },
+    confirmSteerTargetRunIdForPersistence: async (targetRunId) => {
+      const normalizedTargetRunId = normalizePersistedSteerTargetRunId(targetRunId);
+      if (!normalizedTargetRunId || confirmedSteerTargetRunId === normalizedTargetRunId) {
+        return;
+      }
+      confirmedSteerTargetRunId = normalizedTargetRunId;
+      message = applyMessageOverrides(message);
+      resolvedMessagePromise = undefined;
+
+      const pendingSelfPersistence = selfPersistencePromise;
+      await waitForRuntimePersistence();
+      await pendingSelfPersistence?.catch(() => undefined);
+      if (!admissionReceipt) {
+        return;
+      }
+      try {
+        const confirmed = await confirmPersistedSteerTargetRunId({
+          admission: admissionReceipt,
+          targetRunId: normalizedTargetRunId,
+        });
+        if (!confirmed) {
+          return;
+        }
+        admissionReceipt = confirmed.admission;
+        admittedMessage = confirmed.message;
+        runtimePersistedMessage = confirmed.message;
+        if (persistedResult) {
+          persistedResult = {
+            ...persistedResult,
+            admission: confirmed.admission,
+            message: confirmed.message,
+          };
+        }
+      } catch (error) {
+        handlePersistenceError(error);
+      }
+    },
+    getPersistedMessage: () =>
+      admittedMessage ?? runtimePersistedMessage ?? persistedResult?.message,
+    getAdmissionReceipt: () => admissionReceipt,
+    setAdmissionHandler: (handler) => (admissionHandler = handler),
+    markSentToProvider: () => {
+      sentToProvider = true;
+    },
     markRuntimePersistencePending: (pending) => {
       runtimePersistencePromise = pending;
     },
-    markRuntimePersisted: (persistedMessage) => {
-      persisted = true;
+    markRuntimePersisted: (persistedMessage, receipt) => {
+      runtimePersistedMessage = persistedMessage;
+      runtimePersisted = true;
+      if (persistedMessage && receipt) {
+        recordAdmission(receipt, persistedMessage);
+      }
       if (persistedMessage && persistedResult) {
         persistedResult = {
           ...persistedResult,
           message: persistedMessage,
         };
       }
+      notifyMessagePersisted(persistedMessage);
     },
     markBlocked: () => {
       blocked = true;
     },
-    hasPersisted: () => persisted,
+    hasPersisted: () => persisted || runtimePersisted,
     isBlocked: () => blocked,
     hasRuntimePersistencePending: () => runtimePersistencePromise !== undefined,
     waitForRuntimePersistence,
@@ -657,13 +678,36 @@ export function createUserTurnTranscriptRecorder(
         skipWhenBlocked: true,
         target: options?.target,
         updateMode: options?.updateMode,
+        cwd: options?.cwd,
+        expectedSessionId: options?.expectedSessionId,
+        expectedSessionState: options?.expectedSessionState,
+        sessionLifecyclePatch: options?.sessionLifecyclePatch,
+        retryIfUnpersisted: options?.retryIfUnpersisted,
       }),
+    persistBlocked: async (blockedMessage, options) => {
+      blocked = true;
+      return await persistPrepared({
+        waitForRuntime: false,
+        skipWhenBlocked: false,
+        message: blockedMessage,
+        target: options?.target,
+        updateMode: options?.updateMode,
+        cwd: options?.cwd,
+      });
+    },
     persistFallback: async (options) =>
       await persistPrepared({
         waitForRuntime: true,
         skipWhenBlocked: true,
         target: options?.target,
         updateMode: options?.updateMode,
+        cwd: options?.cwd,
       }),
+  };
+}
+
+if (process.env.VITEST || process.env.NODE_ENV === "test") {
+  (globalThis as Record<PropertyKey, unknown>)[Symbol.for("openclaw.userTurnTranscriptTestApi")] = {
+    persistUserTurnTranscript,
   };
 }

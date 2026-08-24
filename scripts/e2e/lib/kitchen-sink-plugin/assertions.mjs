@@ -269,11 +269,20 @@ function readConfig() {
 
 function configureRuntime() {
   const pluginId = process.env.KITCHEN_SINK_ID;
+  const personality = process.env.KITCHEN_SINK_PERSONALITY?.trim();
   const { configPath, config } = readConfig();
   config.plugins = config.plugins || {};
   config.plugins.entries = config.plugins.entries || {};
   config.plugins.entries[pluginId] = {
     ...config.plugins.entries[pluginId],
+    ...(personality
+      ? {
+          config: {
+            ...config.plugins.entries[pluginId]?.config,
+            personality,
+          },
+        }
+      : {}),
     hooks: {
       ...config.plugins.entries[pluginId]?.hooks,
       allowConversationAccess: true,
@@ -317,7 +326,7 @@ const expectMissing = (listValue, expected, field) => {
   }
 };
 
-const INVALID_PROBE_DIAGNOSTIC_SURFACE_MODES = new Set(["full", "conformance", "adversarial"]);
+const INVALID_PROBE_DIAGNOSTIC_SURFACE_MODES = new Set(["full", "adversarial"]);
 const requiredFullDiagnosticCanaries = new Set([
   "agent tool result middleware must be a function",
   "trusted tool policy registration requires id, description, and evaluate()",
@@ -340,7 +349,6 @@ function assertExpectedDiagnostics(surfaceMode, errorMessages) {
     "node invoke policy registration missing commands",
     "trusted tool policy registration requires id, description, and evaluate()",
     "plugin must declare contracts.embeddingProviders for adapter: kitchen-sink-embedding-provider",
-    "plugin must own memory slot or declare contracts.memoryEmbeddingProviders for adapter: kitchen-sink-memory-embedding-provider",
     "plugin must declare contracts.tools for: kitchen-sink-tool",
     'channel "kitchen-sink-channel-probe" registration missing required config helpers',
     'agent harness "kitchen-sink-agent-harness" registration missing required runtime methods',
@@ -635,6 +643,10 @@ function assertInstalled() {
   const installPath = resolveHomePath(record.installPath);
   if (!fs.existsSync(installPath)) {
     throw new Error(`kitchen-sink install path missing: ${record.installPath}`);
+  }
+  if (source === "clawhub") {
+    const extensionsRoot = path.join(process.env.HOME, ".openclaw", "extensions");
+    assertRealPathInside(extensionsRoot, installPath, "kitchen-sink ClawHub install path");
   }
   if (source === "clawhub" && record.artifactKind === "npm-pack") {
     assertClawHubExternalInstallContract(installPath);

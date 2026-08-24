@@ -12,11 +12,9 @@ export type { AuthProfileEligibilityReasonCode } from "./auth-profiles/order.js"
 export { resolveAuthProfileDisplayLabel } from "./auth-profiles/display.js";
 export { formatAuthDoctorHint } from "./auth-profiles/doctor.js";
 export {
-  externalCliDiscoveryExisting,
   externalCliDiscoveryForConfigStatus,
   externalCliDiscoveryForProviderAuth,
   externalCliDiscoveryForProviders,
-  externalCliDiscoveryNone,
   externalCliDiscoveryScoped,
   type ExternalCliAuthDiscovery,
 } from "./auth-profiles/external-cli-discovery.js";
@@ -38,38 +36,51 @@ export {
   dedupeProfileIds,
   listProfilesForProvider,
   markAuthProfileSuccess,
+  removeAuthProfilesAcrossOwnerStores,
+  removeAuthProfilesWithLock,
   removeProviderAuthProfilesWithLock,
+  resolveSubscriptionAuthModeForProfiles,
   setAuthProfileOrder,
   upsertAuthProfile,
   upsertAuthProfileWithLock,
+  upsertAuthProfileWithLockOrThrow,
 } from "./auth-profiles/profiles.js";
+export { persistAuthProfileBatch } from "./auth-profiles/upsert-with-lock.js";
 export {
   repairOAuthProfileIdMismatch,
   suggestOAuthProfileIdForLegacyDefault,
 } from "./auth-profiles/repair.js";
 export {
-  buildPortableAuthProfileSecretsStoreForAgentCopy,
+  buildPortableAuthProfileStoreForAgentCopy,
   isAuthProfileCredentialPortableForAgentCopy,
   resolveAuthProfilePortability,
   type AuthProfilePortability,
   type AuthProfilePortabilityReason,
 } from "./auth-profiles/portability.js";
 export {
-  clearRuntimeAuthProfileStoreSnapshots,
+  clearRuntimeAuthProfileStoreSnapshot,
   ensureAuthProfileStore,
   ensureAuthProfileStoreWithoutExternalProfiles,
+  getPreparedRuntimeAuthProfileStoreSnapshot,
   getRuntimeAuthProfileStoreSnapshot,
+  getRuntimeAuthProfileStoreSnapshotRevision,
+  hasAuthProfileStoreSourceForProvider,
   hasAnyAuthProfileStoreSource,
   hasLocalAuthProfileStoreSource,
   loadAuthProfileStoreForSecretsRuntime,
   loadAuthProfileStoreWithoutExternalProfiles,
   loadAuthProfileStoreForRuntime,
-  replaceRuntimeAuthProfileStoreSnapshots,
   loadAuthProfileStore,
   saveAuthProfileStore,
   findPersistedAuthProfileCredential,
   resolvePersistedAuthProfileOwnerAgentDir,
+  withEnvOnlyAuthProfileStore,
+  withAuthProfileStoreAgentDir,
 } from "./auth-profiles/store.js";
+export {
+  clearRuntimeAuthProfileStoreSnapshots,
+  replaceRuntimeAuthProfileStoreSnapshots,
+} from "./auth-profiles/runtime-snapshots.js";
 export type {
   ApiKeyCredential,
   AuthProfileBlockedReason,
@@ -92,6 +103,9 @@ export {
   markAuthProfileCooldown,
   markAuthProfileBlockedUntil,
   markAuthProfileFailure,
+  markInlineProviderApiKeyFailure,
+  resolveInlineProviderApiKeyUnusableUntil,
+  resolveInlineProviderApiKeyUsageId,
   resolveProfilesUnavailableReason,
   resolveProfileUnusableUntilForDisplay,
   setAuthProfileFailureHook,

@@ -1,9 +1,10 @@
 // Shares web provider runtime helpers across plugin-owned providers.
 import { withActivatedPluginIds } from "./activation-context.js";
 import { getLoadedRuntimePluginRegistry } from "./active-runtime-registry.js";
+import { normalizePluginId } from "./config-state.js";
 import { isPluginRegistryLoadInFlight, loadOpenClawPlugins } from "./loader.js";
 import type { PluginLoadOptions } from "./loader.js";
-import type { PluginManifestRecord } from "./manifest-registry.js";
+import type { PluginManifestRecord, PluginManifestRegistry } from "./manifest-registry.js";
 import { hasExplicitPluginIdScope, normalizePluginIdScope } from "./plugin-scope.js";
 import type { PluginRegistry } from "./registry.js";
 import { getActivePluginRegistryWorkspaceDir } from "./runtime.js";
@@ -13,7 +14,7 @@ import {
 } from "./runtime/load-context.js";
 
 /** Shared options for resolving plugin-backed web providers. */
-export type ResolvePluginWebProvidersParams = {
+type ResolvePluginWebProvidersParams = {
   config?: PluginLoadOptions["config"];
   workspaceDir?: string;
   env?: PluginLoadOptions["env"];
@@ -22,6 +23,8 @@ export type ResolvePluginWebProvidersParams = {
   cache?: boolean;
   mode?: "runtime" | "setup";
   origin?: PluginManifestRecord["origin"];
+  sandboxed?: boolean;
+  manifestRecords?: readonly PluginManifestRecord[];
 };
 
 type ResolveWebProviderRuntimeDeps<TEntry> = {
@@ -29,10 +32,12 @@ type ResolveWebProviderRuntimeDeps<TEntry> = {
     config?: PluginLoadOptions["config"];
     workspaceDir?: string;
     env?: PluginLoadOptions["env"];
+    manifestRecords?: readonly PluginManifestRecord[];
   }) => {
     config: PluginLoadOptions["config"];
     activationSourceConfig?: PluginLoadOptions["config"];
     autoEnabledReasons: Record<string, string[]>;
+    manifestRecords?: readonly PluginManifestRecord[];
   };
   resolveCandidatePluginIds: (params: {
     config?: PluginLoadOptions["config"];
@@ -40,6 +45,8 @@ type ResolveWebProviderRuntimeDeps<TEntry> = {
     env?: PluginLoadOptions["env"];
     onlyPluginIds?: readonly string[];
     origin?: PluginManifestRecord["origin"];
+    sandboxed?: boolean;
+    manifestRecords?: readonly PluginManifestRecord[];
   }) => string[] | undefined;
   mapRegistryProviders: (params: {
     registry: PluginRegistry;
@@ -50,6 +57,14 @@ type ResolveWebProviderRuntimeDeps<TEntry> = {
     workspaceDir?: string;
     env?: PluginLoadOptions["env"];
     onlyPluginIds?: readonly string[];
+    manifestRecords?: readonly PluginManifestRecord[];
+  }) => TEntry[] | null;
+  resolveBundledRuntimeArtifactProviders?: (params: {
+    config?: PluginLoadOptions["config"];
+    workspaceDir?: string;
+    env?: PluginLoadOptions["env"];
+    onlyPluginIds: readonly string[];
+    manifestRecords?: readonly PluginManifestRecord[];
   }) => TEntry[] | null;
 };
 
@@ -59,6 +74,8 @@ type WebProviderRuntimeContext = {
   config: PluginLoadOptions["config"];
   activationSourceConfig?: PluginLoadOptions["config"];
   autoEnabledReasons: Record<string, string[]>;
+  manifestRecords?: readonly PluginManifestRecord[];
+  preparedManifestRegistry?: PluginManifestRegistry;
   loadPluginIds?: string[];
   onlyPluginIds?: string[];
 };
@@ -77,27 +94,44 @@ function resolveWebProviderRuntimeContext<TEntry>(
   const shouldFilterProviders =
     params.config !== undefined ||
     params.onlyPluginIds !== undefined ||
-    params.origin !== undefined;
-  const { config, activationSourceConfig, autoEnabledReasons } =
+    params.origin !== undefined ||
+    params.sandboxed === true;
+  const { config, activationSourceConfig, autoEnabledReasons, manifestRecords } =
     deps.resolveBundledResolutionConfig({
       ...params,
       workspaceDir,
       env,
     });
-  const candidatePluginIds = normalizePluginIdScope(
+  const discoveredPluginIds = normalizePluginIdScope(
     deps.resolveCandidatePluginIds({
-      config,
+      config: params.config,
       workspaceDir,
       env,
       onlyPluginIds: params.onlyPluginIds,
       origin: params.origin,
+      sandboxed: params.sandboxed,
+      ...(manifestRecords ? { manifestRecords } : {}),
     }),
   );
+  const allowedPluginIds = config?.plugins?.allow;
+  const allowSet = allowedPluginIds?.length
+    ? new Set(allowedPluginIds.map((pluginId) => normalizePluginId(pluginId)))
+    : undefined;
+  const allowlistedPluginIds = allowSet
+    ? discoveredPluginIds?.filter((pluginId) => allowSet.has(normalizePluginId(pluginId)))
+    : discoveredPluginIds;
+  const candidatePluginIds = allowlistedPluginIds?.length
+    ? allowlistedPluginIds
+    : discoveredPluginIds;
   return {
     activationSourceConfig,
     autoEnabledReasons,
     config,
     env,
+    manifestRecords,
+    ...(params.manifestRecords
+      ? { preparedManifestRegistry: { plugins: [...params.manifestRecords], diagnostics: [] } }
+      : {}),
     loadPluginIds: candidatePluginIds,
     onlyPluginIds: shouldFilterProviders ? candidatePluginIds : undefined,
     workspaceDir,
@@ -116,6 +150,9 @@ function resolveWebProviderLoadOptions(
       autoEnabledReasons: context.autoEnabledReasons,
       workspaceDir: context.workspaceDir,
       logger: createPluginRuntimeLoaderLogger(),
+      ...(context.preparedManifestRegistry
+        ? { manifestRegistry: context.preparedManifestRegistry }
+        : {}),
     },
     {
       cache: params.cache ?? true,
@@ -161,6 +198,8 @@ export function resolvePluginWebProviders<TEntry>(
         env,
         onlyPluginIds: params.onlyPluginIds,
         origin: params.origin,
+        sandboxed: params.sandboxed,
+        ...(params.manifestRecords ? { manifestRecords: params.manifestRecords } : {}),
       }) ?? [];
     if (pluginIds.length === 0) {
       return [];
@@ -171,6 +210,7 @@ export function resolvePluginWebProviders<TEntry>(
         workspaceDir,
         env,
         onlyPluginIds: pluginIds,
+        ...(params.manifestRecords ? { manifestRecords: params.manifestRecords } : {}),
       });
       if (bundledArtifactProviders) {
         return bundledArtifactProviders;
@@ -188,6 +228,9 @@ export function resolvePluginWebProviders<TEntry>(
           workspaceDir,
           env,
           logger: createPluginRuntimeLoaderLogger(),
+          ...(params.manifestRecords
+            ? { manifestRegistry: { plugins: [...params.manifestRecords], diagnostics: [] } }
+            : {}),
         },
         {
           onlyPluginIds: pluginIds,
@@ -232,6 +275,22 @@ export function resolvePluginWebProviders<TEntry>(
   if (hasExplicitEmptyScope) {
     return [];
   }
+  if (
+    params.activate !== true &&
+    context.loadPluginIds &&
+    deps.resolveBundledRuntimeArtifactProviders
+  ) {
+    const bundledArtifactProviders = deps.resolveBundledRuntimeArtifactProviders({
+      config: context.config,
+      workspaceDir: context.workspaceDir,
+      env: context.env,
+      onlyPluginIds: context.loadPluginIds,
+      ...(context.manifestRecords ? { manifestRecords: context.manifestRecords } : {}),
+    });
+    if (bundledArtifactProviders) {
+      return bundledArtifactProviders;
+    }
+  }
   const registry = loadOpenClawPlugins(loadOptions);
   return deps.mapRegistryProviders({
     registry,
@@ -244,21 +303,11 @@ export function resolveRuntimeWebProviders<TEntry>(
   params: Omit<ResolvePluginWebProvidersParams, "activate" | "cache" | "mode">,
   deps: ResolveWebProviderRuntimeDeps<TEntry>,
 ): TEntry[] {
-  const runtimeRegistry = getLoadedRuntimePluginRegistry({
-    env: params.env,
-    workspaceDir: params.workspaceDir,
-    requiredPluginIds: params.onlyPluginIds,
-  });
-  const hasExplicitEmptyScope =
-    params.onlyPluginIds !== undefined && params.onlyPluginIds.length === 0;
-  const runtimeProviders = resolveRuntimeRegistryWebProviders({
-    hasExplicitEmptyScope,
-    mapRegistryProviders: deps.mapRegistryProviders,
-    onlyPluginIds: params.onlyPluginIds,
-    registry: runtimeRegistry,
-  });
-  if (runtimeProviders?.shouldReturn) {
-    return runtimeProviders.providers;
-  }
+  // Do not treat the active registry's provider set as authoritative here: it can
+  // be non-empty while still missing manifest-declared candidates that never load
+  // at startup (for example an npm-installed Brave plugin with BRAVE_API_KEY set,
+  // whose manifest uses activation.onStartup=false). resolvePluginWebProviders
+  // reuses the active registry only when it covers every declared candidate, and
+  // otherwise runs the same scoped load the explicitly-configured path uses.
   return resolvePluginWebProviders(params, deps);
 }

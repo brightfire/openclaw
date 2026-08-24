@@ -7,7 +7,6 @@ import { isSilentReplyPayloadText, SILENT_REPLY_TOKEN } from "../tokens.js";
 export type ReplyDirectiveParseResult = {
   text: string;
   mediaUrls?: string[];
-  mediaUrl?: string;
   replyToId?: string;
   replyToCurrent?: boolean;
   replyToTag: boolean;
@@ -16,7 +15,7 @@ export type ReplyDirectiveParseResult = {
 };
 
 /** Options for extracting reply directives from model text. */
-export type ReplyDirectiveParseOptions = {
+type ReplyDirectiveParseOptions = {
   currentMessageId?: string;
   silentToken?: string;
   extractMarkdownImages?: boolean;
@@ -54,7 +53,6 @@ export function parseReplyDirectives(
   return {
     text,
     mediaUrls: split.mediaUrls,
-    mediaUrl: split.mediaUrl,
     replyToId: replyParsed.replyToId,
     replyToCurrent: replyParsed.replyToCurrent || undefined,
     replyToTag: replyParsed.hasReplyTag,

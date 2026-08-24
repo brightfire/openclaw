@@ -9,9 +9,11 @@ type ResolveConfigPathMock = Mock<() => string>;
 
 type StatusScanSharedMocks = {
   resolveConfigPath: ResolveConfigPathMock;
-  hasPotentialConfiguredChannels: UnknownMock;
+  resolveGatewayPort: Mock<(cfg?: OpenClawConfig) => number>;
+  hasConfiguredChannels: UnknownMock;
   hasConfiguredChannelsForReadOnlyScope: UnknownMock;
   readBestEffortConfig: UnknownMock;
+  readBestEffortConfigSnapshot: UnknownMock;
   resolveCommandSecretRefsViaGateway: UnknownMock;
   getUpdateCheckResult: UnknownMock;
   getAgentLocalStatuses: UnknownMock;
@@ -28,9 +30,11 @@ type StatusScanSharedMocks = {
 export function createStatusScanSharedMocks(configPathLabel: string): StatusScanSharedMocks {
   return {
     resolveConfigPath: vi.fn(() => `/tmp/openclaw-${configPathLabel}-missing-${process.pid}.json`),
-    hasPotentialConfiguredChannels: vi.fn(),
+    resolveGatewayPort: vi.fn((cfg?: OpenClawConfig) => cfg?.gateway?.port ?? 18789),
+    hasConfiguredChannels: vi.fn(),
     hasConfiguredChannelsForReadOnlyScope: vi.fn(),
     readBestEffortConfig: vi.fn(),
+    readBestEffortConfigSnapshot: vi.fn(),
     resolveCommandSecretRefsViaGateway: vi.fn(),
     getUpdateCheckResult: vi.fn(),
     getAgentLocalStatuses: vi.fn(),
@@ -74,7 +78,6 @@ function createStatusScanDepsRuntimeModuleMock(
 }
 
 type StatusGatewayProbeModuleMock = {
-  pickGatewaySelfPresence: Mock<() => null>;
   resolveGatewayProbeAuthResolution: StatusScanSharedMocks["resolveGatewayProbeAuthResolution"];
 };
 
@@ -82,7 +85,6 @@ function createStatusGatewayProbeModuleMock(
   mocks: Pick<StatusScanSharedMocks, "resolveGatewayProbeAuthResolution">,
 ): StatusGatewayProbeModuleMock {
   return {
-    pickGatewaySelfPresence: vi.fn(() => null),
     resolveGatewayProbeAuthResolution: mocks.resolveGatewayProbeAuthResolution,
   };
 }
@@ -181,11 +183,9 @@ export async function loadStatusScanModuleForTest(
   vi.resetModules();
   const getStatusCommandSecretTargetIds = mocks.getStatusCommandSecretTargetIds ?? vi.fn(() => []);
   const resolveMemorySearchConfig =
-    mocks.resolveMemorySearchConfig ?? vi.fn(() => ({ store: { path: "/tmp/main.sqlite" } }));
+    mocks.resolveMemorySearchConfig ??
+    vi.fn(() => ({ store: { databasePath: "/tmp/main.sqlite" } }));
 
-  vi.doMock("../channels/config-presence.js", () => ({
-    hasPotentialConfiguredChannels: mocks.hasPotentialConfiguredChannels,
-  }));
   vi.doMock("../plugins/channel-plugin-ids.js", () => ({
     hasConfiguredChannelsForReadOnlyScope: (params: {
       config: OpenClawConfig;
@@ -197,7 +197,7 @@ export async function loadStatusScanModuleForTest(
       env?: NodeJS.ProcessEnv;
       includePersistedAuthState?: boolean;
     }) =>
-      mocks.hasPotentialConfiguredChannels(
+      mocks.hasConfiguredChannels(
         params.config,
         params.env,
         params.includePersistedAuthState === undefined
@@ -210,17 +210,12 @@ export async function loadStatusScanModuleForTest(
 
   vi.doMock("../config/io.js", () => ({
     readBestEffortConfig: mocks.readBestEffortConfig,
-    readBestEffortConfigSnapshot: async () => {
-      const config = await mocks.readBestEffortConfig();
-      return { config, sourceConfig: config };
-    },
+    readBestEffortConfigSnapshot: mocks.readBestEffortConfigSnapshot,
   }));
   vi.doMock("../config/config.js", () => ({
     readBestEffortConfig: mocks.readBestEffortConfig,
-    readBestEffortConfigSnapshot: async () => {
-      const config = await mocks.readBestEffortConfig();
-      return { config, sourceConfig: config };
-    },
+    readBestEffortConfigSnapshot: mocks.readBestEffortConfigSnapshot,
+    resolveGatewayPort: mocks.resolveGatewayPort,
   }));
   vi.doMock("../cli/command-secret-targets.js", () => ({
     getStatusCommandSecretTargetIds,
@@ -260,7 +255,7 @@ export async function loadStatusScanModuleForTest(
   }));
   vi.doMock("./status.update.js", () => createStatusUpdateModuleMock(mocks));
   vi.doMock("./status.agent-local.js", () => createStatusAgentLocalModuleMock(mocks));
-  vi.doMock("./status.summary.js", () => createStatusSummaryModuleMock(mocks));
+  vi.doMock("../status/summary.js", () => createStatusSummaryModuleMock(mocks));
   vi.doMock("../infra/os-summary.js", () => createStatusOsSummaryModuleMock());
   vi.doMock("./status.scan.deps.runtime.js", () => createStatusScanDepsRuntimeModuleMock(mocks));
   vi.doMock("../gateway/call.js", () => createStatusGatewayCallModuleMock(mocks));
@@ -372,13 +367,11 @@ function createStatusGatewayProbeFailure() {
 
 export function createStatusMemorySearchConfig(): OpenClawConfig {
   return createStatusScanConfig({
-    agents: {
-      defaults: {
-        memorySearch: {
-          provider: "local",
-          local: { modelPath: "/tmp/model.gguf" },
-          fallback: "none",
-        },
+    memory: {
+      search: {
+        provider: "local",
+        local: { modelPath: "/tmp/model.gguf" },
+        fallback: "none",
       },
     },
   });
@@ -409,7 +402,7 @@ export function applyStatusScanDefaults(
   const sourceConfig = options.sourceConfig ?? createStatusScanConfig();
   const resolvedConfig = options.resolvedConfig ?? sourceConfig;
 
-  mocks.hasPotentialConfiguredChannels.mockReturnValue(options.hasConfiguredChannels ?? false);
+  mocks.hasConfiguredChannels.mockReturnValue(options.hasConfiguredChannels ?? false);
   mocks.hasConfiguredChannelsForReadOnlyScope.mockImplementation((rawParams: unknown) => {
     const params = rawParams as {
       config: OpenClawConfig;
@@ -417,7 +410,7 @@ export function applyStatusScanDefaults(
       includePersistedAuthState?: boolean;
     };
     return Boolean(
-      mocks.hasPotentialConfiguredChannels(
+      mocks.hasConfiguredChannels(
         params.config,
         params.env,
         params.includePersistedAuthState === undefined
@@ -427,6 +420,11 @@ export function applyStatusScanDefaults(
     );
   });
   mocks.readBestEffortConfig.mockResolvedValue(sourceConfig);
+  mocks.readBestEffortConfigSnapshot.mockResolvedValue({
+    config: sourceConfig,
+    sourceConfig,
+    configDiagnostics: null,
+  });
   mocks.resolveCommandSecretRefsViaGateway.mockResolvedValue({
     resolvedConfig,
     diagnostics: [],

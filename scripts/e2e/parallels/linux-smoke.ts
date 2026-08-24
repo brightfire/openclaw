@@ -6,12 +6,9 @@ import { pathToFileURL } from "node:url";
 import { posixAgentWorkspaceScript } from "./agent-workspace.ts";
 import {
   die,
-  ensureValue,
   currentRunningSnapshotInfo,
   makeTempDir,
   parseBoolEnv,
-  parseMode,
-  parseProvider,
   readPositiveIntEnv,
   modelProviderConfigBatchJson,
   posixCodexPlatformPackageRepairFunction,
@@ -46,9 +43,9 @@ import {
   extractLastOpenClawVersion,
   packAndServeSmokeArtifact,
   printSmokeTargetSummary,
+  parseSmokeCliArgs,
   SmokeRunController,
-  type SmokeHostOptions,
-  type SmokeRunOptions,
+  type SmokeCliOptions,
 } from "./smoke-common.ts";
 
 // Older published baselines predate this warning, but still need update coverage.
@@ -68,12 +65,15 @@ function compareOpenClawPackageVersions(left: string, right: string): number {
     if (!match) {
       return [0, 0, 0];
     }
-    return [Number(match[1]), Number(match[2]), Number(match[3])];
+    const [, year, month, patch] = match;
+    if (!year || !month || !patch) {
+      return [0, 0, 0];
+    }
+    return [Number(year), Number(month), Number(patch)];
   };
-  const leftParts = parse(left);
-  const rightParts = parse(right);
-  for (let index = 0; index < leftParts.length; index++) {
-    const delta = leftParts[index] - rightParts[index];
+  const [leftYear, leftMonth, leftPatch] = parse(left);
+  const [rightYear, rightMonth, rightPatch] = parse(right);
+  for (const delta of [leftYear - rightYear, leftMonth - rightMonth, leftPatch - rightPatch]) {
     if (delta !== 0) {
       return delta;
     }
@@ -81,13 +81,8 @@ function compareOpenClawPackageVersions(left: string, right: string): number {
   return 0;
 }
 
-interface LinuxOptions extends SmokeHostOptions, SmokeRunOptions {
-  vmName: string;
+interface LinuxOptions extends SmokeCliOptions {
   vmNameExplicit: boolean;
-  apiKeyEnv?: string;
-  modelId?: string;
-  installUrl: string;
-  latestVersion?: string;
 }
 
 interface LinuxSummary {
@@ -129,6 +124,7 @@ const defaultOptions = (): LinuxOptions => ({
   latestVersion: "",
   mode: "both",
   modelId: undefined,
+  npmRegistry: undefined,
   provider: "openai",
   snapshotHint: "fresh",
   targetPackageSpec: "",
@@ -156,6 +152,7 @@ Options:
   --install-version <ver>    Pin site-installer version/dist-tag for the baseline lane.
   --target-package-spec <npm-spec>
                              Install this npm package tarball instead of packing current main.
+  --npm-registry <url>       Registry used for target package installs.
   --keep-server              Leave temp host HTTP server running.
   --json                     Print machine-readable JSON summary.
   -h, --help                 Show help.
@@ -163,83 +160,16 @@ Options:
 }
 
 export function parseArgs(argv: string[]): LinuxOptions {
-  const args = stripLeadingPackageManagerSeparator(argv);
   const options = defaultOptions();
-  parseArgv: for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-    switch (arg) {
-      case "--":
-        break parseArgv;
-      case "--vm":
-        options.vmName = ensureValue(args, i, arg);
-        options.vmNameExplicit = true;
-        i++;
-        break;
-      case "--snapshot-hint":
-        options.snapshotHint = ensureValue(args, i, arg);
-        i++;
-        break;
-      case "--mode":
-        options.mode = parseMode(ensureValue(args, i, arg));
-        i++;
-        break;
-      case "--provider":
-        options.provider = parseProvider(ensureValue(args, i, arg));
-        i++;
-        break;
-      case "--model":
-        options.modelId = ensureValue(args, i, arg);
-        i++;
-        break;
-      case "--api-key-env":
-      case "--openai-api-key-env":
-        options.apiKeyEnv = ensureValue(args, i, arg);
-        i++;
-        break;
-      case "--install-url":
-        options.installUrl = ensureValue(args, i, arg);
-        i++;
-        break;
-      case "--host-port":
-        options.hostPort = Number(ensureValue(args, i, arg));
-        options.hostPortExplicit = true;
-        i++;
-        break;
-      case "--host-ip":
-        options.hostIp = ensureValue(args, i, arg);
-        i++;
-        break;
-      case "--latest-version":
-        options.latestVersion = ensureValue(args, i, arg);
-        i++;
-        break;
-      case "--install-version":
-        options.installVersion = ensureValue(args, i, arg);
-        i++;
-        break;
-      case "--target-package-spec":
-        options.targetPackageSpec = ensureValue(args, i, arg);
-        i++;
-        break;
-      case "--keep-server":
-        options.keepServer = true;
-        break;
-      case "--json":
-        options.json = true;
-        break;
-      case "-h":
-      case "--help":
-        process.stdout.write(usage());
-        process.exit(0);
-      default:
-        die(`unknown arg: ${arg}`);
-    }
-  }
-  return options;
-}
-
-function stripLeadingPackageManagerSeparator(argv: string[]): string[] {
-  return argv[0] === "--" ? argv.slice(1) : argv;
+  return parseSmokeCliArgs(argv, options, {
+    usage,
+    valueHandlers: {
+      "--vm": (parsed, value) => {
+        parsed.vmName = value;
+        parsed.vmNameExplicit = true;
+      },
+    },
+  });
 }
 
 class LinuxSmoke extends SmokeRunController<LinuxOptions> {
@@ -323,6 +253,7 @@ class LinuxSmoke extends SmokeRunController<LinuxOptions> {
     await this.phase("fresh.bootstrap-guest", BOOTSTRAP_TIMEOUT_SECONDS, () =>
       this.bootstrapGuest(),
     );
+    await this.phase("fresh.reset-state", 180, () => this.resetState());
     await this.phase("fresh.preflight", 90, () => this.logGuestPreflight());
     await this.phase("fresh.install-latest-bootstrap", 420, () => this.installLatestRelease());
     await this.phase("fresh.install-main", 420, () =>
@@ -330,7 +261,7 @@ class LinuxSmoke extends SmokeRunController<LinuxOptions> {
     );
     this.status.freshVersion = await this.extractLastVersion("fresh.install-main");
     await this.phase("fresh.verify-main-version", 90, () => this.verifyTargetVersion());
-    await this.phase("fresh.onboard-ref", 180, () => this.runRefOnboard());
+    await this.phase("fresh.onboard-ref", 420, () => this.runRefOnboard());
     await this.phase("fresh.inject-bad-plugin", 90, () =>
       this.maybeInjectBadPluginFixture("fresh"),
     );
@@ -351,6 +282,7 @@ class LinuxSmoke extends SmokeRunController<LinuxOptions> {
     await this.phase("upgrade.bootstrap-guest", BOOTSTRAP_TIMEOUT_SECONDS, () =>
       this.bootstrapGuest(),
     );
+    await this.phase("upgrade.reset-state", 180, () => this.resetState());
     await this.phase("upgrade.preflight", 90, () => this.logGuestPreflight());
     await this.phase("upgrade.install-latest", 420, () => this.installLatestRelease());
     this.status.latestInstalledVersion = await this.extractLastVersion("upgrade.install-latest");
@@ -365,7 +297,7 @@ class LinuxSmoke extends SmokeRunController<LinuxOptions> {
     await this.phase("upgrade.inject-bad-plugin", 90, () =>
       this.maybeInjectBadPluginFixture("upgrade"),
     );
-    await this.phase("upgrade.onboard-ref", 180, () => this.runRefOnboard());
+    await this.phase("upgrade.onboard-ref", 420, () => this.runRefOnboard());
     await this.phase("upgrade.gateway-start", 240, () => this.startGatewayBackground());
     await this.phase("upgrade.bad-plugin-diagnostic", 90, () =>
       this.maybeVerifyBadPluginDiagnostic("upgrade"),
@@ -481,6 +413,16 @@ run_apt_with_lock_retry apt-get -o Acquire::Check-Date=false -o DPkg::Lock::Time
 run_apt_with_lock_retry apt-get -o DPkg::Lock::Timeout=30 install -y curl ca-certificates`);
   }
 
+  private resetState(): void {
+    this.guestBash(String.raw`set -euo pipefail
+pkill -f '[o]penclaw.*gateway run' >/dev/null 2>&1 || true
+pkill -f '[o]penclaw-gateway' >/dev/null 2>&1 || true
+pkill -f '[o]penclaw.mjs gateway' >/dev/null 2>&1 || true
+npm uninstall -g openclaw >/dev/null 2>&1 || true
+rm -rf /root/.openclaw /root/.npm/_cacache
+rm -f /tmp/openclaw-parallels-linux-gateway.log`);
+  }
+
   private installLatestRelease(): void {
     this.downloadGuestFile(this.options.installUrl, "/tmp/openclaw-install.sh");
     if (this.options.installVersion) {
@@ -509,9 +451,11 @@ run_apt_with_lock_retry apt-get -o DPkg::Lock::Timeout=30 install -y curl ca-cer
     this.guest.bash(`
 set -e
 if command -v curl >/dev/null 2>&1; then
-  curl -fsSL ${shellQuote(url)} -o ${shellQuote(outputPath)}
+  curl -fsSL --connect-timeout 10 --max-time 120 --retry 2 --retry-delay 2 ${shellQuote(
+    url,
+  )} -o ${shellQuote(outputPath)}
 else
-  wget -q -O ${shellQuote(outputPath)} ${shellQuote(url)}
+  wget -q --timeout=10 --read-timeout=120 --tries=3 -O ${shellQuote(outputPath)} ${shellQuote(url)}
 fi`);
   }
 
@@ -521,7 +465,17 @@ fi`);
     }
     const tgzUrl = this.server.urlFor(this.artifact.path);
     this.downloadGuestFile(tgzUrl, `/tmp/${tempName}`);
-    this.guestExec(["npm", "install", "-g", `/tmp/${tempName}`, "--no-fund", "--no-audit"]);
+    const npmArgs = ["npm", "install", "-g", `/tmp/${tempName}`, "--no-fund", "--no-audit"];
+    this.guestExec(
+      this.options.npmRegistry
+        ? [
+            "/usr/bin/env",
+            `NPM_CONFIG_REGISTRY=${this.options.npmRegistry}`,
+            `npm_config_registry=${this.options.npmRegistry}`,
+            ...npmArgs,
+          ]
+        : npmArgs,
+    );
     this.guestExec(["openclaw", "--version"]);
   }
 
@@ -554,6 +508,7 @@ fi`);
       "local",
       "--auth-choice",
       this.auth.authChoice,
+      ...(this.auth.tokenProvider ? ["--token-provider", this.auth.tokenProvider] : []),
       "--secret-input-mode",
       "ref",
       "--gateway-port",

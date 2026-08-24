@@ -6,7 +6,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { resolvePnpmRunner } from "./pnpm-runner.mjs";
+import { resolvePnpmRunner } from "./pnpm-runner.mts";
 
 type RunResult = {
   code: number | null;
@@ -52,11 +52,6 @@ type RunZaiFallbackReproDeps = {
   runCommand?: RunCommand;
   writeFile?: typeof fs.writeFile;
 };
-
-function resolveEnvValue(env: NodeJS.ProcessEnv, name: string): string | undefined {
-  const key = Object.keys(env).find((candidate) => candidate.toLowerCase() === name.toLowerCase());
-  return key === undefined ? undefined : env[key];
-}
 
 export function appendBoundedReproOutput(
   capture: OutputCapture,
@@ -124,15 +119,15 @@ export function resolveZaiFallbackPnpmCommand(
 ): PnpmCommand {
   const env = options.env ?? process.env;
   const command = resolvePnpmRunner({
-    comSpec: options.comSpec ?? resolveEnvValue(env, "ComSpec"),
+    comSpec: options.comSpec,
     env,
     npmExecPath: options.npmExecPath ?? env.npm_execpath,
     nodeExecPath: options.execPath ?? process.execPath,
     platform: options.platform,
     pnpmArgs: args,
-  });
+  }) as PnpmCommand;
   if (command.env === undefined) {
-    const invocation = { ...command };
+    const invocation: PnpmCommand = { ...command };
     delete invocation.env;
     return invocation;
   }

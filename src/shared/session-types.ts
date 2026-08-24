@@ -1,5 +1,12 @@
+import type {
+  GatewayAgentRuntime as ProtocolGatewayAgentRuntime,
+  SessionCreatedActor,
+  SessionsAssignOwnerParams,
+  WorkerExecutionMode,
+} from "../../packages/gateway-protocol/src/index.js";
+
 /** Agent identity fields returned by gateway session listing APIs. */
-export type GatewayAgentIdentity = {
+type GatewayAgentIdentity = {
   name?: string;
   theme?: string;
   emoji?: string;
@@ -8,7 +15,7 @@ export type GatewayAgentIdentity = {
 };
 
 /** Model summary returned for an agent/session row. */
-export type GatewayAgentModel = {
+type GatewayAgentModel = {
   primary?: string;
   fallbacks?: string[];
 };
@@ -17,7 +24,19 @@ export type GatewayAgentModel = {
 export type GatewayAgentRuntime = {
   id: string;
   fallback?: "openclaw" | "none";
-  source: "env" | "agent" | "defaults" | "model" | "provider" | "implicit" | "session-key";
+  cloudPlacementSupported?: boolean;
+  cloudPlacementExecutionMode?: WorkerExecutionMode;
+  devicePlacement?: ProtocolGatewayAgentRuntime["devicePlacement"];
+  devicePlacementSupported?: boolean;
+  source:
+    | "env"
+    | "agent"
+    | "defaults"
+    | "model"
+    | "provider"
+    | "implicit"
+    | "session"
+    | "session-key";
 };
 
 /** Thinking-level option exposed to UI clients. */
@@ -26,12 +45,29 @@ export type GatewayThinkingLevelOption = {
   label: string;
 };
 
+export type GatewayContextWindowOption = {
+  id: string;
+  label: string;
+  contextWindow: number;
+};
+
+export type GatewayAgentKind = "agent" | "system";
+
+/** Assignable identity returned by the complete session-owner facet. */
+export type SessionOwnerFacetIdentity = SessionsAssignOwnerParams["owner"] &
+  Pick<SessionCreatedActor, "label" | "avatarUrl">;
+
+/** Per-session Control UI face preference carried by session list rows. */
+export type SessionBoardFace = "chat" | "dashboard";
+
 /** Common agent row shape used by session list responses. */
 export type GatewayAgentRow = {
   id: string;
+  kind?: GatewayAgentKind;
   name?: string;
   identity?: GatewayAgentIdentity;
   workspace?: string;
+  workspaceGit?: boolean;
   model?: GatewayAgentModel;
   agentRuntime?: GatewayAgentRuntime;
   thinkingLevels?: GatewayThinkingLevelOption[];
@@ -49,6 +85,8 @@ export type SessionsListResultBase<TDefaults, TRow> = {
   offset?: number;
   nextOffset?: number | null;
   hasMore?: boolean;
+  /** Complete owner facet for the filtered result, independent of pagination. */
+  owners?: SessionOwnerFacetIdentity[];
   defaults: TDefaults;
   sessions: TRow[];
 };

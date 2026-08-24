@@ -1,5 +1,6 @@
 /** Timeout wrapper for node-host operations using AbortSignal cancellation. */
 import { resolveTimerTimeoutMs } from "@openclaw/normalization-core/number-coercion";
+import { toErrorObject } from "../infra/errors.js";
 
 /**
  * AbortSignal-based timeout wrapper for node-host operations.
@@ -8,7 +9,7 @@ import { resolveTimerTimeoutMs } from "@openclaw/normalization-core/number-coerc
  * completion, and preserves object-shaped abort reasons as Error properties.
  */
 /** Run work with an optional timeout and AbortSignal. */
-export async function withTimeout<T>(
+export async function runAbortableTimeout<T>(
   work: (signal: AbortSignal | undefined) => Promise<T>,
   timeoutMs?: number,
   label?: string,
@@ -25,12 +26,10 @@ export async function withTimeout<T>(
 
   let abortListener: (() => void) | undefined;
   const abortPromise: Promise<never> = abortCtrl.signal.aborted
-    ? Promise.reject(
-        toLintErrorObject(abortCtrl.signal.reason ?? timeoutError, "Non-Error rejection"),
-      )
+    ? Promise.reject(toErrorObject(abortCtrl.signal.reason ?? timeoutError, "Non-Error rejection"))
     : new Promise((_, reject) => {
         abortListener = () =>
-          reject(toLintErrorObject(abortCtrl.signal.reason ?? timeoutError, "Non-Error rejection"));
+          reject(toErrorObject(abortCtrl.signal.reason ?? timeoutError, "Non-Error rejection"));
         abortCtrl.signal.addEventListener("abort", abortListener, { once: true });
       });
 
@@ -43,18 +42,4 @@ export async function withTimeout<T>(
       abortCtrl.signal.removeEventListener("abort", abortListener);
     }
   }
-}
-
-function toLintErrorObject(value: unknown, fallbackMessage: string): Error {
-  if (value instanceof Error) {
-    return value;
-  }
-  if (typeof value === "string") {
-    return new Error(value);
-  }
-  const error = new Error(fallbackMessage, { cause: value });
-  if ((typeof value === "object" && value !== null) || typeof value === "function") {
-    Object.assign(error, value);
-  }
-  return error;
 }

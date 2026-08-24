@@ -1,15 +1,24 @@
 /**
  * Estimates prompt pressure and decides pre-prompt compaction routing.
  */
+import { estimateStringChars } from "@openclaw/normalization-core/cjk-chars";
 import { isRecord } from "@openclaw/normalization-core/record-coerce";
 import type { SessionContextBudgetStatus } from "../../../config/sessions.js";
-import { estimateStringChars } from "../../../utils/cjk-chars.js";
 import {
   MIN_PROMPT_BUDGET_RATIO,
   MIN_PROMPT_BUDGET_TOKENS,
 } from "../../agent-compaction-constants.js";
 import { SAFETY_MARGIN } from "../../compaction.js";
-import type { AgentMessage } from "../../runtime/index.js";
+import type { AgentMessage, BashExecutionMessage } from "../../runtime/index.js";
+import {
+  BRANCH_SUMMARY_PREFIX,
+  BRANCH_SUMMARY_SUFFIX,
+  bashExecutionToText,
+  calculateContextTokens,
+  COMPACTION_SUMMARY_PREFIX,
+  COMPACTION_SUMMARY_SUFFIX,
+  IMAGE_BLOCK_TOKENS,
+} from "../../runtime/index.js";
 import { estimateToolResultReductionPotential } from "../tool-result-truncation.js";
 import type { PreemptiveCompactionRoute } from "./preemptive-compaction.types.js";
 
@@ -21,10 +30,7 @@ const TOOL_RESULT_CHARS_PER_TOKEN = 2;
 const JSON_PAYLOAD_CHARS_PER_TOKEN = 3;
 const MESSAGE_BOUNDARY_OVERHEAD_TOKENS = 12;
 const CONTENT_BLOCK_OVERHEAD_TOKENS = 6;
-const IMAGE_BLOCK_TOKENS = 2_000;
 const TRUNCATION_ROUTE_BUFFER_TOKENS = 512;
-
-export type { PreemptiveCompactionRoute } from "./preemptive-compaction.types.js";
 
 /** Pre-prompt routing decision plus the budget facts used to explain it in logs and session state. */
 export type PreemptiveCompactionDecision = {
@@ -45,18 +51,28 @@ export type LlmBoundaryTokenPressure = {
   renderedChars?: number;
 };
 
-function estimateStringTokenPressure(text: string, charsPerToken = ESTIMATED_CHARS_PER_TOKEN) {
-  return Math.ceil(estimateStringChars(text) / charsPerToken);
+type TokenPressureMode = "general" | "tool-result";
+
+function estimateStringTokenPressure(
+  text: string,
+  charsPerToken = ESTIMATED_CHARS_PER_TOKEN,
+  mode: TokenPressureMode = "general",
+) {
+  const estimatedTokens = Math.ceil(estimateStringChars(text) / charsPerToken);
+  return mode === "tool-result"
+    ? Math.max(Math.ceil(text.length / TOOL_RESULT_CHARS_PER_TOKEN), estimatedTokens)
+    : estimatedTokens;
 }
 
 function estimateJsonPayloadTokenPressure(
   value: unknown,
   charsPerToken = JSON_PAYLOAD_CHARS_PER_TOKEN,
+  mode: TokenPressureMode = "general",
 ): number {
   try {
     const serialized = JSON.stringify(value);
     return typeof serialized === "string"
-      ? Math.ceil(estimateStringChars(serialized) / charsPerToken)
+      ? estimateStringTokenPressure(serialized, charsPerToken, mode)
       : 1;
   } catch {
     return 256;
@@ -84,43 +100,26 @@ function estimateIdentifierTokenPressure(
 function estimateContentBlockTokenPressure(
   block: unknown,
   charsPerToken = ESTIMATED_CHARS_PER_TOKEN,
+  mode: TokenPressureMode = "general",
 ): number {
   if (typeof block === "string") {
-    return estimateStringTokenPressure(block, charsPerToken);
+    return estimateStringTokenPressure(block, charsPerToken, mode);
   }
   if (!isRecord(block)) {
-    return estimateJsonPayloadTokenPressure(block, charsPerToken);
+    return estimateJsonPayloadTokenPressure(block, charsPerToken, mode);
   }
 
   const type = block.type;
-  if (type === "text" && typeof block.text === "string") {
-    return CONTENT_BLOCK_OVERHEAD_TOKENS + estimateStringTokenPressure(block.text, charsPerToken);
-  }
-  if (type === "thinking" && typeof block.thinking === "string") {
-    return (
-      CONTENT_BLOCK_OVERHEAD_TOKENS + estimateStringTokenPressure(block.thinking, charsPerToken)
-    );
+  const text = type === "text" ? block.text : type === "thinking" ? block.thinking : undefined;
+  if (typeof text === "string") {
+    return CONTENT_BLOCK_OVERHEAD_TOKENS + estimateStringTokenPressure(text, charsPerToken, mode);
   }
   if (type === "image") {
     return IMAGE_BLOCK_TOKENS;
   }
-  return CONTENT_BLOCK_OVERHEAD_TOKENS + estimateJsonPayloadTokenPressure(block, charsPerToken);
-}
-
-function estimateToolResultContentTokenPressure(content: unknown): number {
-  if (typeof content === "string") {
-    return estimateStringTokenPressure(content, TOOL_RESULT_CHARS_PER_TOKEN);
-  }
-  if (Array.isArray(content)) {
-    return content.reduce(
-      (sum, block) => sum + estimateContentBlockTokenPressure(block, TOOL_RESULT_CHARS_PER_TOKEN),
-      0,
-    );
-  }
-  if (content !== undefined) {
-    return estimateJsonPayloadTokenPressure(content, TOOL_RESULT_CHARS_PER_TOKEN);
-  }
-  return 0;
+  return (
+    CONTENT_BLOCK_OVERHEAD_TOKENS + estimateJsonPayloadTokenPressure(block, charsPerToken, mode)
+  );
 }
 
 function estimateAssistantToolCallTokenPressure(block: Record<string, unknown>): number {
@@ -132,49 +131,77 @@ function estimateAssistantToolCallTokenPressure(block: Record<string, unknown>):
   );
 }
 
-function estimateContentTokenPressure(content: unknown): number {
+function estimateContentTokenPressure(
+  content: unknown,
+  mode: TokenPressureMode = "general",
+): number {
   if (typeof content === "string") {
-    return estimateStringTokenPressure(content);
+    return estimateStringTokenPressure(content, ESTIMATED_CHARS_PER_TOKEN, mode);
   }
   if (Array.isArray(content)) {
-    return content.reduce((sum, block) => sum + estimateContentBlockTokenPressure(block), 0);
+    return content.reduce(
+      (sum, block) =>
+        sum + estimateContentBlockTokenPressure(block, ESTIMATED_CHARS_PER_TOKEN, mode),
+      0,
+    );
   }
   if (content !== undefined) {
-    return estimateJsonPayloadTokenPressure(content);
+    return estimateJsonPayloadTokenPressure(
+      content,
+      mode === "tool-result" ? ESTIMATED_CHARS_PER_TOKEN : JSON_PAYLOAD_CHARS_PER_TOKEN,
+      mode,
+    );
   }
   return 0;
 }
 
-function isToolResultMessage(message: AgentMessage): boolean {
-  const record = message as unknown as { role?: unknown; type?: unknown };
-  return record.role === "toolResult" || record.role === "tool" || record.type === "toolResult";
-}
-
 function estimateMessageTokenPressure(message: AgentMessage): number {
-  const record = message as unknown as Record<string, unknown>;
+  if ("excludeFromContext" in message && message.excludeFromContext === true) {
+    return 0;
+  }
+  // Provider replay can carry legacy aliases outside the canonical AgentMessage union.
+  const legacy: Record<string, unknown> = isRecord(message) ? message : {};
   let tokens = MESSAGE_BOUNDARY_OVERHEAD_TOKENS;
 
-  if (isToolResultMessage(message)) {
-    tokens += estimateToolResultContentTokenPressure(record.content);
-    tokens += estimateIdentifierTokenPressure(record.toolName ?? record.tool_name);
+  if (message.role === "toolResult" || legacy.role === "tool" || legacy.type === "toolResult") {
+    const content = message.role === "toolResult" ? message.content : legacy.content;
+    const toolName = message.role === "toolResult" ? message.toolName : legacy.toolName;
+    tokens += estimateContentTokenPressure(content, "tool-result");
+    tokens += estimateIdentifierTokenPressure(toolName ?? legacy.tool_name);
     return tokens;
   }
 
-  if (record.role === "assistant") {
-    const content = record.content;
-    if (Array.isArray(content)) {
-      for (const block of content) {
-        if (isRecord(block) && (block.type === "toolCall" || block.type === "tool_use")) {
-          tokens += estimateAssistantToolCallTokenPressure(block);
-        } else {
-          tokens += estimateContentBlockTokenPressure(block);
+  if (message.role === "bashExecution") {
+    const bashMessage: BashExecutionMessage = message;
+    tokens += estimateStringTokenPressure(bashExecutionToText(bashMessage));
+    return tokens;
+  }
+
+  if (message.role === "branchSummary" || message.role === "compactionSummary") {
+    const [prefix, suffix] =
+      message.role === "branchSummary"
+        ? [BRANCH_SUMMARY_PREFIX, BRANCH_SUMMARY_SUFFIX]
+        : [COMPACTION_SUMMARY_PREFIX, COMPACTION_SUMMARY_SUFFIX];
+    return tokens + estimateStringTokenPressure(prefix + message.summary + suffix);
+  }
+
+  if (message.role === "assistant") {
+    if (Array.isArray(message.content)) {
+      for (const block of message.content) {
+        if (isRecord(block)) {
+          const blockType: unknown = block.type;
+          if (blockType === "toolCall" || blockType === "tool_use") {
+            tokens += estimateAssistantToolCallTokenPressure(block);
+            continue;
+          }
         }
+        tokens += estimateContentBlockTokenPressure(block);
       }
     } else {
-      tokens += estimateContentTokenPressure(content);
+      tokens += estimateContentTokenPressure(message.content);
     }
 
-    const toolCalls = record.toolCalls ?? record.tool_calls;
+    const toolCalls = legacy.toolCalls ?? legacy.tool_calls;
     if (Array.isArray(toolCalls)) {
       for (const toolCall of toolCalls) {
         tokens += isRecord(toolCall)
@@ -185,7 +212,7 @@ function estimateMessageTokenPressure(message: AgentMessage): number {
     return tokens;
   }
 
-  tokens += estimateContentTokenPressure(record.content);
+  tokens += estimateContentTokenPressure(legacy.content);
   return tokens;
 }
 
@@ -194,22 +221,82 @@ function estimateMessageTokenPressure(message: AgentMessage): number {
  * optional system prompt, and current prompt text. The result intentionally
  * includes a safety margin because this path runs before provider tokenization.
  */
+function estimateRenderedPromptTokens(params: { systemPrompt?: string; prompt: string }): number {
+  const systemTokens =
+    typeof params.systemPrompt === "string" && params.systemPrompt.trim().length > 0
+      ? MESSAGE_BOUNDARY_OVERHEAD_TOKENS + estimateStringTokenPressure(params.systemPrompt)
+      : 0;
+  return (
+    systemTokens + MESSAGE_BOUNDARY_OVERHEAD_TOKENS + estimateStringTokenPressure(params.prompt)
+  );
+}
+
+type TranscriptBoundaryTokenPressure = {
+  estimatedPromptTokens: number;
+  source: "provider_context_usage" | "transcript_estimate";
+};
+
+function isProviderContextUsageBarrier(message: AgentMessage): boolean {
+  if (message.role !== "assistant" || !message.usage) {
+    return false;
+  }
+  // Zero unavailable and legacy CLI records describe a newer context without
+  // provider provenance; scanning past them can undercount the active transcript.
+  return (
+    (message.api === "cli" && message.usage.contextUsage === undefined) ||
+    (message.usage.contextUsage?.state === "unavailable" &&
+      calculateContextTokens(message.usage) === 0)
+  );
+}
+
+function resolveProviderContextBoundary(
+  messages: AgentMessage[],
+): { index: number; totalTokens: number } | undefined {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message && isProviderContextUsageBarrier(message)) {
+      return undefined;
+    }
+    const contextUsage = message?.role === "assistant" ? message.usage?.contextUsage : undefined;
+    if (
+      contextUsage?.state === "available" &&
+      Number.isFinite(contextUsage.totalTokens) &&
+      contextUsage.totalTokens > 0
+    ) {
+      return { index, totalTokens: Math.ceil(contextUsage.totalTokens) };
+    }
+  }
+  return undefined;
+}
+
+function estimateTranscriptBoundaryTokenPressure(params: {
+  messages: AgentMessage[];
+  systemPrompt?: string;
+  prompt: string;
+}): TranscriptBoundaryTokenPressure {
+  const boundary = resolveProviderContextBoundary(params.messages);
+  // The provider total owns transcript items through its assistant record. It has
+  // no system-prompt provenance, so the current rendered prompt stays local too.
+  const messagesForPressure = boundary
+    ? params.messages.slice(boundary.index + 1)
+    : params.messages;
+  const locallyEstimatedTokens = messagesForPressure.reduce(
+    (sum, message) => sum + estimateMessageTokenPressure(message),
+    estimateRenderedPromptTokens(params),
+  );
+  return {
+    estimatedPromptTokens:
+      (boundary?.totalTokens ?? 0) + Math.ceil(locallyEstimatedTokens * SAFETY_MARGIN),
+    source: boundary ? "provider_context_usage" : "transcript_estimate",
+  };
+}
+
 export function estimateLlmBoundaryTokenPressure(params: {
   messages: AgentMessage[];
   systemPrompt?: string;
   prompt: string;
 }): number {
-  const historyTokens = params.messages.reduce(
-    (sum, message) => sum + estimateMessageTokenPressure(message),
-    0,
-  );
-  const systemTokens =
-    typeof params.systemPrompt === "string" && params.systemPrompt.trim().length > 0
-      ? MESSAGE_BOUNDARY_OVERHEAD_TOKENS + estimateStringTokenPressure(params.systemPrompt)
-      : 0;
-  const promptTokens =
-    MESSAGE_BOUNDARY_OVERHEAD_TOKENS + estimateStringTokenPressure(params.prompt);
-  return Math.max(0, Math.ceil((historyTokens + systemTokens + promptTokens) * SAFETY_MARGIN));
+  return estimateTranscriptBoundaryTokenPressure(params).estimatedPromptTokens;
 }
 
 /** Estimates only the rendered prompt/system portion when history has already been accounted for. */
@@ -217,26 +304,7 @@ export function estimateRenderedLlmBoundaryTokenPressure(params: {
   systemPrompt?: string;
   prompt: string;
 }): number {
-  const systemTokens =
-    typeof params.systemPrompt === "string" && params.systemPrompt.trim().length > 0
-      ? MESSAGE_BOUNDARY_OVERHEAD_TOKENS + estimateStringTokenPressure(params.systemPrompt)
-      : 0;
-  const promptTokens =
-    MESSAGE_BOUNDARY_OVERHEAD_TOKENS + estimateStringTokenPressure(params.prompt);
-  return Math.max(0, Math.ceil((systemTokens + promptTokens) * SAFETY_MARGIN));
-}
-
-/**
- * Backward-compatible alias for callers that still name this a pre-prompt estimate.
- *
- * @deprecated Use estimateLlmBoundaryTokenPressure.
- */
-export function estimatePrePromptTokens(params: {
-  messages: AgentMessage[];
-  systemPrompt?: string;
-  prompt: string;
-}): number {
-  return estimateLlmBoundaryTokenPressure(params);
+  return Math.max(0, Math.ceil(estimateRenderedPromptTokens(params) * SAFETY_MARGIN));
 }
 
 function normalizeLlmBoundaryTokenPressure(
@@ -274,24 +342,29 @@ export function shouldPreemptivelyCompactBeforePrompt(params: {
   const llmBoundaryTokenPressure = normalizeLlmBoundaryTokenPressure(
     params.llmBoundaryTokenPressure,
   );
+  const transcriptTokenPressure = llmBoundaryTokenPressure
+    ? undefined
+    : estimateTranscriptBoundaryTokenPressure({
+        messages: params.messages,
+        systemPrompt: params.systemPrompt,
+        prompt: params.prompt,
+      });
   let estimatedPromptTokens =
     llmBoundaryTokenPressure?.estimatedPromptTokens ??
-    estimatePrePromptTokens({
-      messages: params.messages,
-      systemPrompt: params.systemPrompt,
-      prompt: params.prompt,
-    });
-  let pressureSource = llmBoundaryTokenPressure?.source ?? "transcript_estimate";
+    transcriptTokenPressure?.estimatedPromptTokens ??
+    0;
+  let pressureSource =
+    llmBoundaryTokenPressure?.source ?? transcriptTokenPressure?.source ?? "transcript_estimate";
   if (params.unwindowedMessages && params.unwindowedMessages !== params.messages) {
-    const unwindowedEstimatedPromptTokens = estimatePrePromptTokens({
+    const unwindowedTokenPressure = estimateTranscriptBoundaryTokenPressure({
       messages: params.unwindowedMessages,
       systemPrompt: params.systemPrompt,
       prompt: params.prompt,
     });
-    if (unwindowedEstimatedPromptTokens > estimatedPromptTokens) {
-      estimatedPromptTokens = unwindowedEstimatedPromptTokens;
+    if (unwindowedTokenPressure.estimatedPromptTokens > estimatedPromptTokens) {
+      estimatedPromptTokens = unwindowedTokenPressure.estimatedPromptTokens;
       messagesForPressure = params.unwindowedMessages;
-      pressureSource = "unwindowed_transcript_estimate";
+      pressureSource = `unwindowed_${unwindowedTokenPressure.source}`;
     }
   }
   const contextTokenBudget = Math.max(1, Math.floor(params.contextTokenBudget));

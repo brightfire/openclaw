@@ -1,22 +1,39 @@
-// Covers CLI session transcript loading and reseeding boundaries.
 import fs from "node:fs";
+import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { CURRENT_SESSION_VERSION } from "openclaw/plugin-sdk/agent-sessions";
-import { describe, expect, it } from "vitest";
+// Covers CLI session transcript loading and reseeding boundaries.
+import { createRequireRecord } from "openclaw/plugin-sdk/test-fixtures";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { useAutoCleanupTempDirTracker } from "../../../test/helpers/temp-dir.js";
 import { withEnvAsync } from "../../test-utils/env.js";
+import { MAX_AGENT_HOOK_HISTORY_MESSAGES } from "../harness/hook-history.js";
+import { cliBackendLog } from "./log.js";
 import {
   buildCliSessionHistoryPrompt,
   hasCliSessionTranscript,
   loadCliSessionContextEngineMessages,
   loadCliSessionHistoryMessages,
   loadCliSessionReseedMessages,
-  MAX_AUTO_CLI_SESSION_RESEED_HISTORY_CHARS,
-  MAX_CLI_SESSION_HISTORY_FILE_BYTES,
-  MAX_CLI_SESSION_HISTORY_MESSAGES,
-  MAX_CLI_SESSION_RESEED_HISTORY_CHARS,
   resolveAutoCliSessionReseedHistoryChars,
 } from "./session-history.js";
+
+const MAX_CLI_SESSION_HISTORY_FILE_BYTES = 5 * 1024 * 1024;
+const MAX_CLI_SESSION_HISTORY_MESSAGES = MAX_AGENT_HOOK_HISTORY_MESSAGES;
+const MAX_CLI_SESSION_RESEED_HISTORY_CHARS = 12 * 1024;
+const MAX_AUTO_CLI_SESSION_RESEED_HISTORY_CHARS = 256 * 1024;
+const RESEED_CURRENCY_GUIDANCE =
+  "[Recovered history may be stale; verify current and time-sensitive facts before acting.]";
+const tempDirs = useAutoCleanupTempDirTracker(afterEach);
+
+function withReseedGuidanceBudget(historyChars: number): number {
+  return RESEED_CURRENCY_GUIDANCE.length + "\n".length + historyChars;
+}
+
+function extractReseedHistory(prompt: string | undefined): string {
+  return prompt?.match(/<conversation_history>\n([\s\S]*?)\n<\/conversation_history>/)?.[1] ?? "";
+}
 
 function createSessionTranscript(params: {
   rootDir: string;
@@ -68,18 +85,21 @@ function createSessionTranscript(params: {
   return sessionFile;
 }
 
-function requireRecord(value: unknown, label: string): Record<string, unknown> {
-  if (!value || typeof value !== "object") {
-    throw new Error(`expected ${label}`);
-  }
-  return value as Record<string, unknown>;
+function createOversizedSessionTranscript(rootDir: string, sessionId: string): string {
+  return createSessionTranscript({
+    rootDir,
+    sessionId,
+    messages: ["x".repeat(MAX_CLI_SESSION_HISTORY_FILE_BYTES), "tail history"],
+  });
 }
 
-function expectMessageFields(value: unknown, expected: { role: string; content?: string }) {
+const requireRecord = createRequireRecord("object", "expected-label");
+
+function expectMessageFields(value: unknown, expected: { role: string; content?: unknown }) {
   const message = requireRecord(value, "message");
   expect(message.role).toBe(expected.role);
   if ("content" in expected) {
-    expect(message.content).toBe(expected.content);
+    expect(message.content).toEqual(expected.content);
   }
 }
 
@@ -204,6 +224,68 @@ describe("loadCliSessionHistoryMessages", () => {
     }
   });
 
+  it("loads only the branch selected by transcript leaf controls", async () => {
+    const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-cli-state-"));
+    const sessionFile = createSessionTranscript({
+      rootDir: stateDir,
+      sessionId: "session-leaf-control",
+      messages: ["active root"],
+    });
+    fs.appendFileSync(
+      sessionFile,
+      [
+        {
+          type: "message",
+          id: "side-entry",
+          parentId: "msg-0",
+          timestamp: new Date(2).toISOString(),
+          message: { role: "assistant", content: "side delivery", timestamp: 2 },
+        },
+        {
+          type: "leaf",
+          id: "active-leaf",
+          parentId: "side-entry",
+          timestamp: new Date(3).toISOString(),
+          targetId: "msg-0",
+        },
+        {
+          type: "message",
+          id: "active-tail",
+          parentId: "msg-0",
+          timestamp: new Date(4).toISOString(),
+          message: { role: "assistant", content: "active tail", timestamp: 4 },
+        },
+        {
+          type: "metadata",
+          id: "opaque-after-active-tail",
+          parentId: "side-entry",
+        },
+      ]
+        .map((entry) => JSON.stringify(entry))
+        .join("\n") + "\n",
+      "utf-8",
+    );
+
+    try {
+      await withCliSessionState(stateDir, async () => {
+        const history = await loadCliSessionHistoryMessages({
+          sessionId: "session-leaf-control",
+          sessionFile,
+          sessionKey: "agent:main:main",
+          agentId: "main",
+        });
+        expect(history).toHaveLength(2);
+        expectMessageFields(history[0], { role: "user", content: "active root" });
+        expectMessageFields(history[1], {
+          role: "assistant",
+          content: [{ type: "text", text: "active tail" }],
+        });
+      });
+    } finally {
+      fs.rmSync(stateDir, { recursive: true, force: true });
+    }
+  });
+
   it("keeps complete history for context-engine snapshots", async () => {
     const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-cli-state-"));
     const sessionFile = createSessionTranscript({
@@ -310,7 +392,10 @@ describe("loadCliSessionHistoryMessages", () => {
           content: "tail custom context",
         });
         expectBranchSummary(history[2], "tail branch context");
-        expectMessageFields(history[3], { role: "assistant", content: "tail answer" });
+        expectMessageFields(history[3], {
+          role: "assistant",
+          content: [{ type: "text", text: "tail answer" }],
+        });
       });
     } finally {
       fs.rmSync(stateDir, { recursive: true, force: true });
@@ -355,30 +440,186 @@ describe("loadCliSessionHistoryMessages", () => {
     }
   });
 
-  it("drops oversized transcript files instead of loading them into hook payloads", async () => {
+  it("loads a bounded tail from oversized transcript files", async () => {
+    const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-cli-state-"));
+    const sessionFile = createOversizedSessionTranscript(stateDir, "session-oversized");
+    const warnSpy = vi.spyOn(cliBackendLog, "warn").mockImplementation(() => undefined);
+
+    try {
+      await withCliSessionState(stateDir, async () => {
+        const history = await loadCliSessionHistoryMessages({
+          sessionId: "session-oversized",
+          sessionFile,
+          sessionKey: "agent:main:main",
+          agentId: "main",
+        });
+        expect(history).toHaveLength(1);
+        expectMessageFields(history[0], { role: "user", content: "tail history" });
+        expect(warnSpy).toHaveBeenCalledWith(
+          expect.stringContaining("cli session history truncated to last"),
+        );
+      });
+    } finally {
+      warnSpy.mockRestore();
+      fs.rmSync(stateDir, { recursive: true, force: true });
+    }
+  });
+
+  it("uses the opened file size when the transcript shrinks after stat", async () => {
+    const stateDir = tempDirs.make("openclaw-cli-state-");
+    const sessionFile = createOversizedSessionTranscript(stateDir, "session-oversized-shrink");
+    const warnSpy = vi.spyOn(cliBackendLog, "warn").mockImplementation(() => undefined);
+    // Report a stale size whose bounded-read offset is beyond the real EOF,
+    // as when the CLI compacts the transcript between the path stat and open.
+    const realFspStat = fsp.stat;
+    const statSpy = vi.spyOn(fsp, "stat").mockImplementation(async (target, ...rest) => {
+      if (String(target).endsWith("session-oversized-shrink.jsonl")) {
+        const stats = await realFspStat(target as Parameters<typeof realFspStat>[0]);
+        // Proxy keeps the Stats prototype (isFile etc.) and only inflates the
+        // reported size past EOF; spreading a Stats instance would drop both.
+        return new Proxy(stats, {
+          get: (obj, prop, receiver) =>
+            prop === "size"
+              ? obj.size + MAX_CLI_SESSION_HISTORY_FILE_BYTES + 4096
+              : Reflect.get(obj, prop, receiver),
+        });
+      }
+      return realFspStat(target as Parameters<typeof realFspStat>[0], ...rest);
+    });
+
+    try {
+      await withCliSessionState(stateDir, async () => {
+        const history = await loadCliSessionHistoryMessages({
+          sessionId: "session-oversized-shrink",
+          sessionFile,
+          sessionKey: "agent:main:main",
+          agentId: "main",
+        });
+        expect(history).toHaveLength(1);
+        expectMessageFields(history[0], { role: "user", content: "tail history" });
+        expect(warnSpy).not.toHaveBeenCalledWith(
+          expect.stringContaining("cli session history parse failed"),
+        );
+      });
+    } finally {
+      statSpy.mockRestore();
+      warnSpy.mockRestore();
+    }
+  });
+
+  it("skips oversized transcript tails when branch controls were dropped", async () => {
     const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-cli-state-"));
     const sessionFile = path.join(
       stateDir,
       "agents",
       "main",
       "sessions",
-      "session-oversized.jsonl",
+      "session-oversized-branch.jsonl",
     );
+    const warnSpy = vi.spyOn(cliBackendLog, "warn").mockImplementation(() => undefined);
     fs.mkdirSync(path.dirname(sessionFile), { recursive: true });
-    fs.writeFileSync(sessionFile, "x".repeat(MAX_CLI_SESSION_HISTORY_FILE_BYTES + 1), "utf-8");
+    fs.writeFileSync(
+      sessionFile,
+      [
+        JSON.stringify({
+          type: "session",
+          version: CURRENT_SESSION_VERSION,
+          id: "session-oversized-branch",
+          timestamp: new Date(0).toISOString(),
+          cwd: stateDir,
+        }),
+        JSON.stringify({
+          type: "message",
+          id: "root",
+          parentId: null,
+          timestamp: new Date(1).toISOString(),
+          message: { role: "user", content: "root", timestamp: 1 },
+        }),
+        JSON.stringify({
+          type: "leaf",
+          id: "active-leaf",
+          parentId: "side-entry",
+          timestamp: new Date(2).toISOString(),
+          targetId: "root",
+        }),
+        JSON.stringify({
+          type: "message",
+          id: "filler",
+          parentId: "root",
+          timestamp: new Date(3).toISOString(),
+          message: {
+            role: "assistant",
+            content: "x".repeat(MAX_CLI_SESSION_HISTORY_FILE_BYTES),
+            timestamp: 3,
+          },
+        }),
+        JSON.stringify({
+          type: "message",
+          id: "side-entry",
+          parentId: "root",
+          timestamp: new Date(4).toISOString(),
+          message: { role: "assistant", content: "side history", timestamp: 4 },
+        }),
+        JSON.stringify({
+          type: "message",
+          id: "active-tail",
+          parentId: "root",
+          timestamp: new Date(5).toISOString(),
+          message: { role: "assistant", content: "active history", timestamp: 5 },
+        }),
+      ].join("\n") + "\n",
+      "utf-8",
+    );
 
     try {
       await withCliSessionState(stateDir, async () => {
-        expect(
-          await loadCliSessionHistoryMessages({
-            sessionId: "session-oversized",
+        await expect(
+          loadCliSessionHistoryMessages({
+            sessionId: "session-oversized-branch",
             sessionFile,
             sessionKey: "agent:main:main",
             agentId: "main",
           }),
-        ).toStrictEqual([]);
+        ).resolves.toStrictEqual([]);
+        expect(warnSpy).toHaveBeenCalledWith(
+          expect.stringContaining("cli session history truncated tail skipped"),
+        );
       });
     } finally {
+      warnSpy.mockRestore();
+      fs.rmSync(stateDir, { recursive: true, force: true });
+    }
+  });
+
+  it("warns when transcript parsing fails", async () => {
+    const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-cli-state-"));
+    const sessionFile = path.join(
+      stateDir,
+      "agents",
+      "main",
+      "sessions",
+      "session-invalid-jsonl.jsonl",
+    );
+    const warnSpy = vi.spyOn(cliBackendLog, "warn").mockImplementation(() => undefined);
+    fs.mkdirSync(path.dirname(sessionFile), { recursive: true });
+    fs.writeFileSync(sessionFile, "{not-json}\n", "utf-8");
+
+    try {
+      await withCliSessionState(stateDir, async () => {
+        await expect(
+          loadCliSessionHistoryMessages({
+            sessionId: "session-invalid-jsonl",
+            sessionFile,
+            sessionKey: "agent:main:main",
+            agentId: "main",
+          }),
+        ).resolves.toStrictEqual([]);
+        expect(warnSpy).toHaveBeenCalledWith(
+          expect.stringContaining("cli session history parse failed:"),
+        );
+      });
+    } finally {
+      warnSpy.mockRestore();
       fs.rmSync(stateDir, { recursive: true, force: true });
     }
   });
@@ -472,9 +713,41 @@ describe("loadCliSessionReseedMessages", () => {
           role: "user",
           content: `raw-${MAX_CLI_SESSION_HISTORY_MESSAGES + 24}`,
         });
-        expect(buildCliSessionHistoryPrompt({ messages: reseed, prompt: "next" })).toContain(
-          "raw-25",
+        expect(requireRecord(reseed[0], "first raw reseed message").timestamp).toBe(
+          "1970-01-01T00:00:00.026Z",
         );
+        const prompt = buildCliSessionHistoryPrompt({ messages: reseed, prompt: "next" });
+        expect(prompt).toContain("[1970-01-01T00:00:00.026Z] User: raw-25");
+        expect(prompt).toContain(RESEED_CURRENCY_GUIDANCE);
+      });
+    } finally {
+      fs.rmSync(stateDir, { recursive: true, force: true });
+    }
+  });
+
+  it("raw-reseeds consecutive ambient user rows", async () => {
+    const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-cli-state-"));
+    const sessionFile = createSessionTranscript({
+      rootDir: stateDir,
+      sessionId: "session-consecutive-ambient",
+      messages: ["#10 Sam: first ambient", "#11 Lee: second ambient", "#12 Pat: @bot what now?"],
+    });
+
+    try {
+      await withCliSessionState(stateDir, async () => {
+        const reseed = await loadCliSessionReseedMessages({
+          sessionId: "session-consecutive-ambient",
+          sessionFile,
+          sessionKey: "agent:main:main",
+          agentId: "main",
+          allowRawTranscriptReseed: true,
+          rawTranscriptReseedReason: "missing-transcript",
+        });
+
+        expect(reseed).toHaveLength(3);
+        expectMessageFields(reseed[0], { role: "user", content: "#10 Sam: first ambient" });
+        expectMessageFields(reseed[1], { role: "user", content: "#11 Lee: second ambient" });
+        expectMessageFields(reseed[2], { role: "user", content: "#12 Pat: @bot what now?" });
       });
     } finally {
       fs.rmSync(stateDir, { recursive: true, force: true });
@@ -563,12 +836,17 @@ describe("loadCliSessionReseedMessages", () => {
           sessionKey: "agent:main:main",
           agentId: "main",
         });
-        expect(reseed).toHaveLength(2);
         expectCompactionSummary(reseed[0], "safe compacted summary");
         expectMessageFields(reseed[1], { role: "user", content: "post-compaction ask" });
-        expect(buildCliSessionHistoryPrompt({ messages: reseed, prompt: "next" })).toContain(
-          "Compaction summary: safe compacted summary",
+        expect(reseed.map((message) => requireRecord(message, "reseed message").timestamp)).toEqual(
+          ["1970-01-01T00:00:00.002Z", "1970-01-01T00:00:00.003Z"],
         );
+        const prompt = buildCliSessionHistoryPrompt({ messages: reseed, prompt: "next" });
+        expect(prompt).toContain(
+          "[1970-01-01T00:00:00.002Z] Compaction summary: safe compacted summary",
+        );
+        expect(prompt).toContain("[1970-01-01T00:00:00.003Z] User: post-compaction ask");
+        expect(prompt).toContain(RESEED_CURRENCY_GUIDANCE);
       });
     } finally {
       fs.rmSync(stateDir, { recursive: true, force: true });
@@ -591,6 +869,29 @@ describe("buildCliSessionHistoryPrompt", () => {
     expect(prompt).toContain("<next_user_message>\nnew ask\n</next_user_message>");
   });
 
+  it("renders canonical saved timestamps and omits invalid or noncanonical timestamps", () => {
+    const prompt = buildCliSessionHistoryPrompt({
+      messages: [
+        { role: "user", content: "dated ask", timestamp: "2026-06-17T16:00:00.000Z" },
+        { role: "assistant", content: "zero date answer", timestamp: "0" },
+        { role: "user", content: "year-only ask", timestamp: "2026" },
+        { role: "assistant", content: "invalid date answer", timestamp: "not-a-date" },
+        { role: "user", content: "offset date ask", timestamp: "2026-06-17T12:00:00-04:00" },
+        { role: "assistant", content: "undated answer" },
+      ],
+      prompt: "new ask",
+    });
+
+    expect(prompt).toContain("[2026-06-17T16:00:00.000Z] User: dated ask");
+    expect(prompt).toMatch(
+      /Assistant: zero date answer[\s\S]*User: year-only ask[\s\S]*Assistant: invalid date answer[\s\S]*User: offset date ask[\s\S]*Assistant: undated answer/u,
+    );
+    expect(prompt).not.toMatch(
+      /\[(?:2000-01-01T00:00:00\.000Z|2026-01-01T00:00:00\.000Z|not-a-date|2026-06-17T12:00:00-04:00)\]/u,
+    );
+    expect(prompt).toContain(RESEED_CURRENCY_GUIDANCE);
+  });
+
   it("skips reseed text when the transcript has no renderable conversation", () => {
     expect(
       buildCliSessionHistoryPrompt({
@@ -601,13 +902,14 @@ describe("buildCliSessionHistoryPrompt", () => {
   });
 
   it("caps rendered reseed history before adding the next user message", () => {
+    const maxHistoryChars = withReseedGuidanceBudget(80);
     const prompt = buildCliSessionHistoryPrompt({
       messages: [
         { role: "user", content: "x".repeat(100) },
         { role: "assistant", content: "y".repeat(100) },
       ],
       prompt: "current ask must survive",
-      maxHistoryChars: 20,
+      maxHistoryChars,
     });
 
     expect(prompt).toContain("[OpenClaw reseed history truncated; older turns dropped]");
@@ -615,6 +917,19 @@ describe("buildCliSessionHistoryPrompt", () => {
     // Older 100-char prefix must be dropped by the tail slice; the
     // post-cap rendered tail is shorter than the dropped prefix.
     expect(prompt).not.toContain("x".repeat(80));
+    expect(extractReseedHistory(prompt).length).toBeLessThanOrEqual(maxHistoryChars);
+  });
+
+  it("keeps a whole code point when the retained history tail starts inside an emoji", () => {
+    const prompt = buildCliSessionHistoryPrompt({
+      messages: [{ role: "user", content: "prefix😀tail" }],
+      prompt: "next",
+      maxHistoryChars: withReseedGuidanceBudget(5),
+    });
+
+    expect(prompt).toContain(
+      `<conversation_history>\n${RESEED_CURRENCY_GUIDANCE}\ntail\n</conversation_history>`,
+    );
   });
 
   it("scales automatic reseed history caps from Claude context tiers", () => {
@@ -681,6 +996,9 @@ describe("buildCliSessionHistoryPrompt", () => {
     // dropped so the cap is honored.
     expect(prompt).not.toContain("z".repeat(8000));
     expect(prompt).toContain("<next_user_message>\nnext ask\n</next_user_message>");
+    expect(extractReseedHistory(prompt).length).toBeLessThanOrEqual(
+      MAX_CLI_SESSION_RESEED_HISTORY_CHARS,
+    );
   });
 
   it("caps oversize compaction summary while preserving recent post-summary tail", () => {
@@ -694,7 +1012,8 @@ describe("buildCliSessionHistoryPrompt", () => {
     //    The summary must itself be truncated to fit the budget while still
     //    preserving the recent post-summary exact turns.
     const summaryText = "OVERSIZE_SUMMARY_MARKER ".repeat(50).trim();
-    const maxHistoryChars = 200;
+    const historyBudget = 200;
+    const maxHistoryChars = withReseedGuidanceBudget(historyBudget);
     const prompt = buildCliSessionHistoryPrompt({
       messages: [
         { role: "compactionSummary", summary: summaryText },
@@ -733,22 +1052,29 @@ describe("buildCliSessionHistoryPrompt", () => {
     expect(prompt).toContain("<next_user_message>\nnext ask\n</next_user_message>");
   });
 
+  it("keeps a whole code point at an oversize compaction-summary boundary", () => {
+    const prompt = buildCliSessionHistoryPrompt({
+      messages: [{ role: "compactionSummary", summary: `aa😀${"z".repeat(100)}` }],
+      prompt: "next",
+      maxHistoryChars: withReseedGuidanceBudget(80),
+    });
+
+    expect(prompt).toContain(
+      `<conversation_history>\n${RESEED_CURRENCY_GUIDANCE}\n[OpenClaw reseed history truncated; older turns dropped]\nCompaction summary: aa\n</conversation_history>`,
+    );
+  });
+
   it("honors the cap when the summary block plus marker crosses it", () => {
-    // Edge case: `summaryRendered.length < maxHistoryChars` (the gate that
-    // routes to the oversize-summary branch is not taken) BUT
-    // `summaryBlock.length >= maxHistoryChars` once the `\n\n` separator
-    // is appended, making `remainingBudget <= 0`. Without summary
-    // truncation in that branch, the rendered history block is
-    // `summary + separator + marker` — well over `maxHistoryChars`. A
-    // 199-char rendered summary under a 200-char cap would otherwise
-    // produce a 257-char history block.
-    const maxHistoryChars = 200;
-    // `renderHistoryMessage` prefixes "Compaction summary: " (20 chars)
-    // before the summary text, so a 179-char summary renders to 199 chars
-    // — strictly less than the cap, but `summaryBlock = rendered + "\n\n"`
-    // is 201 chars and `remainingBudget` is negative.
+    // Edge case: the summary fits but leaves too little room for the
+    // truncation marker plus a useful exact tail. Rebalance the summary and
+    // tail instead of exceeding the cap or silently dropping the marker.
+    const historyBudget = 200;
+    const maxHistoryChars = withReseedGuidanceBudget(historyBudget);
+    const remainingBudget = 10;
     const summaryPrefix = "Compaction summary: ";
-    const summaryText = "S".repeat(maxHistoryChars - 1 - summaryPrefix.length);
+    const summaryText = "S".repeat(
+      historyBudget - remainingBudget - "\n\n".length - summaryPrefix.length,
+    );
     const prompt = buildCliSessionHistoryPrompt({
       messages: [
         { role: "compactionSummary", summary: summaryText },
@@ -771,5 +1097,26 @@ describe("buildCliSessionHistoryPrompt", () => {
     // Near-cap summaries still reserve room for the newest exact turns.
     expect(prompt).toContain("POST_SUMMARY_TAIL_USER");
     expect(prompt).toContain("POST_SUMMARY_TAIL_ASSISTANT");
+  });
+
+  it("keeps fitting post-summary history without a false truncation marker", () => {
+    const historyBudget = 200;
+    const remainingBudget = 10;
+    const summaryPrefix = "Compaction summary: ";
+    const summaryText = "S".repeat(
+      historyBudget - remainingBudget - "\n\n".length - summaryPrefix.length,
+    );
+    const prompt = buildCliSessionHistoryPrompt({
+      messages: [
+        { role: "compactionSummary", summary: summaryText },
+        { role: "user", content: "tail" },
+      ],
+      prompt: "next ask",
+      maxHistoryChars: withReseedGuidanceBudget(historyBudget),
+    });
+
+    expect(prompt).toContain(`Compaction summary: ${summaryText}`);
+    expect(prompt).toContain("User: tail");
+    expect(prompt).not.toContain("[OpenClaw reseed history truncated; older turns dropped]");
   });
 });

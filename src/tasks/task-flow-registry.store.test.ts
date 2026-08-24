@@ -6,18 +6,16 @@ import { executeSqliteQuerySync, getNodeSqliteKysely } from "../infra/kysely-syn
 import type { DB as OpenClawStateKyselyDatabase } from "../state/openclaw-state-db.generated.js";
 import { openOpenClawStateDatabase } from "../state/openclaw-state-db.js";
 import { resolveOpenClawStateSqlitePath } from "../state/openclaw-state-db.paths.js";
-import { withEnvAsync } from "../test-utils/env.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
 import {
   createManagedTaskFlow as createManagedTaskFlowOrNull,
   getTaskFlowById,
   requestFlowCancel,
-  resetTaskFlowRegistryForTests,
   setFlowWaiting,
 } from "./task-flow-registry.js";
-import { configureTaskFlowRegistryRuntime } from "./task-flow-registry.store.js";
 import {
   loadTaskFlowRegistryStateFromSqlite,
+  loadTaskFlowRegistryStateFromSqliteReadOnly,
   saveTaskFlowRegistryStateToSqlite,
 } from "./task-flow-registry.store.sqlite.js";
 import {
@@ -26,6 +24,10 @@ import {
   type TaskFlowRecord,
 } from "./task-flow-registry.types.js";
 import { parseTaskNotifyPolicy } from "./task-registry.types.js";
+import {
+  configureTaskFlowRegistryRuntime,
+  resetTaskFlowRegistryForTests,
+} from "./task-runtime.test-helpers.js";
 
 function createManagedTaskFlow(
   params: Parameters<typeof createManagedTaskFlowOrNull>[0],
@@ -69,14 +71,25 @@ async function withFlowRegistryTempDir<T>(run: (root: string) => Promise<T>): Pr
     },
     async (state) => {
       const root = state.stateDir;
+      process.env.OPENCLAW_STATE_DIR = root;
       resetTaskFlowRegistryForTests();
       try {
-        return await withEnvAsync({ OPENCLAW_STATE_DIR: root }, async () => await run(root));
+        return await run(root);
       } finally {
         resetTaskFlowRegistryForTests();
       }
     },
   );
+}
+
+const ORIGINAL_STATE_DIR = process.env.OPENCLAW_STATE_DIR;
+
+function restoreOriginalStateDir(): void {
+  if (ORIGINAL_STATE_DIR === undefined) {
+    delete process.env.OPENCLAW_STATE_DIR;
+  } else {
+    process.env.OPENCLAW_STATE_DIR = ORIGINAL_STATE_DIR;
+  }
 }
 
 describe("task-flow-registry store runtime", () => {
@@ -86,7 +99,23 @@ describe("task-flow-registry store runtime", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    restoreOriginalStateDir();
     resetTaskFlowRegistryForTests();
+  });
+
+  it("does not create shared state for a read-only flow snapshot", async () => {
+    await withOpenClawTestState(
+      { layout: "state-only", prefix: "openclaw-task-flow-store-readonly-" },
+      async (state) => {
+        process.env.OPENCLAW_STATE_DIR = state.stateDir;
+        resetTaskFlowRegistryForTests({ persist: false });
+        const statePath = resolveOpenClawStateSqlitePath();
+        expect(() => statSync(statePath)).toThrow();
+
+        expect(loadTaskFlowRegistryStateFromSqliteReadOnly().flows.size).toBe(0);
+        expect(() => statSync(statePath)).toThrow();
+      },
+    );
   });
 
   it("uses the configured flow store for restore and save", () => {

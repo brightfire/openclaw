@@ -1,7 +1,9 @@
 // Memory Core plugin module implements manager reindex state behavior.
 import {
   hashText,
-  normalizeExtraMemoryPaths,
+  MEMORY_CHUNKING_VERSION,
+  normalizeExtraMemoryPathEntries,
+  type MemoryExtraPath,
   type MemorySource,
 } from "openclaw/plugin-sdk/memory-core-host-engine-storage";
 
@@ -13,9 +15,13 @@ export type MemoryIndexMeta = {
   scopeHash?: string;
   chunkTokens: number;
   chunkOverlap: number;
+  chunkingVersion?: number;
   vectorDims?: number;
   ftsTokenizer?: string;
+  provenanceVersion?: number;
 };
+
+export const MEMORY_INDEX_PROVENANCE_VERSION = 1;
 
 export type MemoryIndexIdentityState =
   | {
@@ -29,6 +35,43 @@ export type MemoryIndexIdentityState =
       status: "mismatched";
       reason: string;
     };
+
+export type MemoryIndexProviderIdentity = {
+  provider: string;
+  model: string;
+  providerKey: string;
+};
+
+export function resolveMemoryIndexProviderIdentities(params: {
+  provider: { id: string; model: string } | null;
+  cacheKeyData?: Record<string, unknown>;
+  aliases?: Array<{ model: string; cacheKeyData: Record<string, unknown> }>;
+}): MemoryIndexProviderIdentity[] {
+  const provider = params.provider ?? { id: "none", model: "fts-only" };
+  const candidates = [
+    {
+      model: provider.model,
+      cacheKeyData: params.cacheKeyData ?? { provider: provider.id, model: provider.model },
+    },
+    ...(params.provider ? (params.aliases ?? []) : []),
+  ];
+  const seen = new Set<string>();
+  const identities: MemoryIndexProviderIdentity[] = [];
+  for (const [index, candidate] of candidates.entries()) {
+    const providerKey = hashText(JSON.stringify(candidate.cacheKeyData));
+    const key = `${candidate.model}\u0000${providerKey}`;
+    if ((index > 0 && !candidate.model) || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    identities.push({
+      provider: provider.id,
+      model: candidate.model,
+      providerKey,
+    });
+  }
+  return identities;
+}
 
 export function resolveConfiguredSourcesForMeta(sources: Iterable<MemorySource>): MemorySource[] {
   const normalized = Array.from(sources)
@@ -65,16 +108,19 @@ function configuredMetaSourcesDiffer(params: {
 
 export function resolveConfiguredScopeHash(params: {
   workspaceDir: string;
-  extraPaths?: string[];
+  extraPaths?: MemoryExtraPath[];
   multimodal: {
     enabled: boolean;
     modalities: string[];
     maxFileBytes: number;
   };
 }): string {
-  const extraPaths = normalizeExtraMemoryPaths(params.workspaceDir, params.extraPaths)
-    .map((value) => value.replace(/\\/g, "/"))
-    .toSorted();
+  const extraPaths = normalizeExtraMemoryPathEntries(params.workspaceDir, params.extraPaths)
+    .map((entry) => {
+      const path = entry.path.replaceAll("\\", "/");
+      return entry.pattern ? { path, pattern: entry.pattern } : path;
+    })
+    .toSorted((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
   return hashText(
     JSON.stringify({
       extraPaths,
@@ -87,26 +133,11 @@ export function resolveConfiguredScopeHash(params: {
   );
 }
 
-export function isMemoryIndexIdentityDirty(params: {
-  meta: MemoryIndexMeta | null;
-  provider: { id: string; model: string } | null;
-  providerKey?: string;
-  providerKeyKnown?: boolean;
-  configuredSources: MemorySource[];
-  configuredScopeHash: string;
-  chunkTokens: number;
-  chunkOverlap: number;
-  vectorReady: boolean;
-  hasIndexedChunks?: boolean;
-  ftsTokenizer: string;
-}): boolean {
-  return resolveMemoryIndexIdentityState(params).status !== "valid";
-}
-
 export function resolveMemoryIndexIdentityState(params: {
   meta: MemoryIndexMeta | null;
   provider: { id: string; model: string } | null;
   providerKey?: string;
+  providerAliases?: Array<Pick<MemoryIndexProviderIdentity, "model" | "providerKey">>;
   providerKeyKnown?: boolean;
   configuredSources: MemorySource[];
   configuredScopeHash: string;
@@ -120,8 +151,24 @@ export function resolveMemoryIndexIdentityState(params: {
   if (!meta) {
     return { status: "missing", reason: "index metadata is missing" };
   }
-  const expectedModel = params.provider ? params.provider.model : "fts-only";
-  if (meta.model !== expectedModel) {
+  if (meta.provenanceVersion !== MEMORY_INDEX_PROVENANCE_VERSION) {
+    return {
+      status: "mismatched",
+      reason: "index provenance classifier changed",
+    };
+  }
+  if (meta.chunkingVersion !== MEMORY_CHUNKING_VERSION) {
+    return {
+      status: "mismatched",
+      reason: "index chunking implementation changed",
+    };
+  }
+  const expectedModel = params.provider?.model?.trim() || "fts-only";
+  const matchingModelIdentities = [
+    { model: expectedModel, providerKey: params.providerKey },
+    ...(params.providerAliases ?? []),
+  ].filter((identity) => identity.model === meta.model);
+  if (matchingModelIdentities.length === 0) {
     return {
       status: "mismatched",
       reason: `index was built for model ${meta.model}, expected ${expectedModel}`,
@@ -134,7 +181,10 @@ export function resolveMemoryIndexIdentityState(params: {
       reason: `index was built for provider ${meta.provider}, expected ${expectedProvider}`,
     };
   }
-  if (params.providerKeyKnown !== false && meta.providerKey !== params.providerKey) {
+  if (
+    params.providerKeyKnown !== false &&
+    !matchingModelIdentities.some((identity) => identity.providerKey === meta.providerKey)
+  ) {
     return {
       status: "mismatched",
       reason: "index provider settings changed",

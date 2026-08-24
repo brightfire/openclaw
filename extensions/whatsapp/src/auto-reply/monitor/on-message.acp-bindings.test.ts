@@ -263,12 +263,6 @@ function createHandler(warn = vi.fn(), cfg: Record<string, unknown> = createCfg(
       groupHistoryLimit: 20,
       groupHistories,
       groupMemberNames: new Map(),
-      echoTracker: {
-        has: () => false,
-        forget: () => {},
-        rememberText: () => {},
-        buildCombinedKey: ({ combinedBody }: { combinedBody: string }) => combinedBody,
-      },
       backgroundTasks: new Set(),
       replyResolver: vi.fn() as never,
       replyLogger: {
@@ -285,9 +279,16 @@ function createHandler(warn = vi.fn(), cfg: Record<string, unknown> = createCfg(
 
 function createMessage() {
   return createTestWebInboundMessage({
-    accountId: "work",
-    from: "15551234567@s.whatsapp.net",
-    conversationId: "15551234567@s.whatsapp.net",
+    admission: {
+      accountId: "work",
+      conversation: {
+        kind: "direct",
+        id: "15551234567@s.whatsapp.net",
+      },
+      sender: {
+        id: "15551234567@s.whatsapp.net",
+      },
+    },
     platform: {
       chatJid: "15551234567@s.whatsapp.net",
       recipientJid: "15559876543@s.whatsapp.net",
@@ -295,30 +296,51 @@ function createMessage() {
   });
 }
 
-function createGroupMessage() {
+type TestMessageOverrides = NonNullable<Parameters<typeof createTestWebInboundMessage>[0]>;
+
+function createGroupMessage(overrides: TestMessageOverrides = {}) {
+  const { admission, platform, ...message } = overrides;
   return createTestWebInboundMessage({
-    accountId: "work",
-    chatType: "group",
-    from: "120363001234567890@g.us",
-    conversationId: "120363001234567890@g.us",
+    ...message,
+    admission: {
+      ...admission,
+      accountId: "work",
+      conversation: {
+        kind: "group",
+        id: "120363001234567890@g.us",
+        ...admission?.conversation,
+      },
+      senderAccess: {
+        reasonCode: "group_policy_allowed",
+        ...admission?.senderAccess,
+      },
+    },
     platform: {
       chatJid: "120363001234567890@g.us",
       recipientJid: "15559876543@s.whatsapp.net",
+      ...platform,
     },
   });
 }
 
 function createGroupAudioMessage() {
   return createTestWebInboundMessage({
-    accountId: "work",
-    chatType: "group",
-    from: "120363001234567890@g.us",
-    conversationId: "120363001234567890@g.us",
+    admission: {
+      accountId: "work",
+      conversation: {
+        kind: "group",
+        id: "120363001234567890@g.us",
+      },
+      senderAccess: {
+        reasonCode: "group_policy_allowed",
+      },
+    },
     payload: {
-      body: "<media:audio>",
+      body: "",
       media: {
         type: "audio/ogg; codecs=opus",
         path: "/tmp/voice.ogg",
+        kind: "audio",
       },
     },
     platform: {
@@ -349,6 +371,108 @@ describe("createWebOnMessageHandler configured ACP bindings", () => {
     ensureConfiguredBindingRouteReadyMock.mockResolvedValue({ ok: true });
     resolveConfiguredBindingRouteMock.mockReset();
     resolveConfiguredBindingRouteMock.mockImplementation(resolvedConfiguredRoute());
+  });
+
+  it.each([
+    {
+      name: "remote message with media and quote context",
+      message: createTestWebInboundMessage({
+        admission: {
+          accountId: "work",
+          conversation: { kind: "direct", id: directConversationId },
+          sender: { id: directConversationId },
+        },
+        event: { id: "in-2" },
+        payload: {
+          body: "Done.",
+          media: { kind: "image", path: "/tmp/collision.jpg", type: "image/jpeg" },
+        },
+        platform: {
+          chatJid: directConversationId,
+          recipientJid: "15559876543@s.whatsapp.net",
+        },
+        quote: {
+          id: "quoted-1",
+          body: "Earlier message",
+        },
+      }),
+      cfg: createCfg(),
+    },
+    {
+      name: "linked-device self-chat message",
+      message: createTestWebInboundMessage({
+        admission: {
+          accountId: "work",
+          isSelfChat: true,
+          conversation: { kind: "direct", id: directConversationId },
+          sender: { id: directConversationId, isSamePhone: true },
+        },
+        event: { id: "in-2" },
+        payload: { body: "Done." },
+        platform: {
+          chatJid: directConversationId,
+          recipientJid: "15559876543@s.whatsapp.net",
+          fromMe: true,
+        },
+      }),
+      cfg: createCfg(),
+    },
+    {
+      name: "owner group message",
+      message: createGroupMessage({
+        event: { id: "in-2" },
+        payload: { body: "Done." },
+        platform: { fromMe: true },
+      }),
+      cfg: createGroupCfg(),
+    },
+  ])("dispatches a distinct-ID $name with identical text", async ({ message, cfg }) => {
+    resolveConfiguredBindingRouteMock.mockImplementation(({ route }) => ({
+      bindingResolution: null,
+      route,
+    }));
+    const { handler } = createHandler(vi.fn(), cfg);
+
+    await handler(message);
+
+    expect(processMessageMock).toHaveBeenCalledTimes(1);
+    const dispatchedMessage = processMessageMock.mock.calls[0]?.[0]?.msg;
+    expect(dispatchedMessage?.event.id).toBe(message.event.id);
+    expect(dispatchedMessage?.payload).toMatchObject(message.payload);
+    expect(dispatchedMessage?.quote).toEqual(message.quote);
+    expect(dispatchedMessage?.platform.fromMe).toBe(message.platform.fromMe);
+  });
+
+  it("dispatches two same-content messages with distinct native ids in order", async () => {
+    const sentConversation = "15550001111@s.whatsapp.net";
+    resolveConfiguredBindingRouteMock.mockImplementation(({ route }) => ({
+      bindingResolution: null,
+      route,
+    }));
+    const { handler } = createHandler(vi.fn(), createCfg());
+
+    const messageForId = (id: string) =>
+      createTestWebInboundMessage({
+        admission: {
+          accountId: "work",
+          conversation: { kind: "direct", id: sentConversation },
+          sender: { id: sentConversation },
+        },
+        event: { id },
+        payload: { body: "Done." },
+        platform: {
+          chatJid: sentConversation,
+          recipientJid: "15559876543@s.whatsapp.net",
+        },
+      });
+
+    await handler(messageForId("in-2"));
+    await handler(messageForId("in-3"));
+
+    expect(processMessageMock.mock.calls.map(([params]) => params.msg.event.id)).toEqual([
+      "in-2",
+      "in-3",
+    ]);
   });
 
   it("rewrites matching WhatsApp inbound turns to the configured ACP session key", async () => {
@@ -467,6 +591,53 @@ describe("createWebOnMessageHandler configured ACP bindings", () => {
     expect(maybeBroadcastMessageMock).not.toHaveBeenCalled();
     expect(processMessageMock).not.toHaveBeenCalled();
     expect(groupHistories.get("group-key")).toEqual([pendingEntry]);
+  });
+
+  it("does not record ordinary group routes before group admission", async () => {
+    resolveConfiguredBindingRouteMock.mockImplementationOnce(({ route }) => ({
+      bindingResolution: null,
+      route,
+    }));
+    applyGroupGatingMock.mockResolvedValueOnce({ shouldProcess: false });
+    const { handler } = createHandler(vi.fn(), { channels: { whatsapp: {} } });
+
+    await handler(createGroupMessage());
+
+    expect(applyGroupGatingMock).toHaveBeenCalledTimes(1);
+    expect(updateLastRouteInBackgroundMock).not.toHaveBeenCalled();
+    expect(maybeBroadcastMessageMock).not.toHaveBeenCalled();
+    expect(processMessageMock).not.toHaveBeenCalled();
+  });
+
+  it("does not record group routes when admission blocks dispatch", async () => {
+    const { handler } = createHandler(vi.fn(), { channels: { whatsapp: {} } });
+
+    await handler(
+      createGroupMessage({
+        admission: {
+          ingress: {
+            admission: "drop",
+            decision: "block",
+            reasonCode: "group_policy_not_allowlisted",
+          },
+          senderAccess: {
+            allowed: false,
+            decision: "block",
+            reasonCode: "group_policy_not_allowlisted",
+          },
+          activationAccess: {
+            allowed: false,
+            shouldSkip: true,
+            reasonCode: "group_policy_not_allowlisted",
+          },
+        },
+      }),
+    );
+
+    expect(applyGroupGatingMock).not.toHaveBeenCalled();
+    expect(updateLastRouteInBackgroundMock).not.toHaveBeenCalled();
+    expect(maybeBroadcastMessageMock).not.toHaveBeenCalled();
+    expect(processMessageMock).not.toHaveBeenCalled();
   });
 
   it("does not record configured ACP group routes when readiness fails", async () => {

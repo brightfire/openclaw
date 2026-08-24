@@ -4,8 +4,29 @@ import os from "node:os";
 import path from "node:path";
 import { PassThrough } from "node:stream";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { installScheduledTask, readScheduledTaskCommand } from "./schtasks.js";
+import { decodeWindowsLauncherScript } from "../infra/windows-launcher-encoding.js";
+import {
+  installScheduledTask,
+  readScheduledTaskCommand,
+  resolveTaskScriptPath,
+  uninstallScheduledTask,
+} from "./schtasks.js";
 import { auditGatewayServiceConfig, SERVICE_AUDIT_CODES } from "./service-audit.js";
+import { buildServiceEnvironment } from "./service-env.js";
+
+const resolveWindowsOemEncodingMock = vi.hoisted(() => vi.fn((): string | null => null));
+
+// Pin code page detection so launcher encoding never depends on the host ACP.
+vi.mock("../infra/windows-encoding.js", async () => {
+  const actual = await vi.importActual<typeof import("../infra/windows-encoding.js")>(
+    "../infra/windows-encoding.js",
+  );
+  return {
+    ...actual,
+    resolveWindowsOemCodePage: () => 437,
+    resolveWindowsOemEncoding: () => resolveWindowsOemEncodingMock(),
+  };
+});
 
 const schtasksCalls: string[][] = [];
 const schtasksResponses: { code: number; stdout: string; stderr: string }[] = [];
@@ -39,6 +60,8 @@ beforeEach(() => {
   schtasksCalls.length = 0;
   schtasksResponses.length = 0;
   xmlPayloadCaptures.length = 0;
+  resolveWindowsOemEncodingMock.mockReset();
+  resolveWindowsOemEncodingMock.mockReturnValue(null);
 });
 
 describe("installScheduledTask", () => {
@@ -74,14 +97,48 @@ describe("installScheduledTask", () => {
     });
   }
 
-  function expectInitialTaskQueries(): void {
+  function expectInitialTaskQueries(taskName = "OpenClaw Gateway"): void {
     expect(schtasksCalls[0]).toEqual(["/Query"]);
-    expect(schtasksCalls[1]).toEqual(["/Query", "/TN", "OpenClaw Gateway"]);
+    expect(schtasksCalls[1]).toEqual(["/Query", "/TN", taskName]);
   }
 
-  function expectTaskRunCall(index: number): void {
-    expect(schtasksCalls[index]).toEqual(["/Run", "/TN", "OpenClaw Gateway"]);
+  function expectTaskRunCall(index: number, taskName = "OpenClaw Gateway"): void {
+    expect(schtasksCalls[index]).toEqual(["/Run", "/TN", taskName]);
   }
+
+  it("writes version-free gateway and node descriptions", async () => {
+    await withUserProfileDir(async (_tmpDir, env) => {
+      const gateway = await installDefaultGatewayTask(env);
+      const gatewayScript = decodeWindowsLauncherScript({
+        buffer: await fs.readFile(gateway.scriptPath),
+      });
+      expect(gatewayScript).toContain("rem OpenClaw Gateway");
+      expect(gatewayScript).not.toContain("OPENCLAW_SERVICE_VERSION");
+      expect(xmlPayloadCaptures.at(-1)?.xml).toContain(
+        "<Description>OpenClaw Gateway</Description>",
+      );
+
+      const node = await installScheduledTask({
+        env: {
+          ...env,
+          OPENCLAW_WINDOWS_TASK_NAME: "OpenClaw Node",
+          OPENCLAW_TASK_SCRIPT_NAME: "node.cmd",
+        },
+        stdout: new PassThrough(),
+        programArguments: ["node", "node-host.js"],
+        description: "OpenClaw Node Host",
+        environment: {},
+      });
+      const nodeScript = decodeWindowsLauncherScript({
+        buffer: await fs.readFile(node.scriptPath),
+      });
+      expect(nodeScript).toContain("rem OpenClaw Node Host");
+      expect(nodeScript).not.toContain("OPENCLAW_SERVICE_VERSION");
+      expect(xmlPayloadCaptures.at(-1)?.xml).toContain(
+        "<Description>OpenClaw Node Host</Description>",
+      );
+    });
+  });
 
   it("writes quoted set assignments and escapes metacharacters", async () => {
     await withUserProfileDir(async (_tmpDir, env) => {
@@ -109,7 +166,7 @@ describe("installScheduledTask", () => {
         },
       });
 
-      const script = await fs.readFile(scriptPath, "utf8");
+      const script = decodeWindowsLauncherScript({ buffer: await fs.readFile(scriptPath) });
       expect(script).toContain('cd /d "C:\\temp\\poc&calc"');
       expect(script).toContain(
         'node gateway.js --display-name "safe&whoami" --percent "%%TEMP%%" --bang "^!token^!"',
@@ -222,9 +279,12 @@ describe("installScheduledTask", () => {
         OPENCLAW_WINDOWS_TASK_HIDDEN_LAUNCHER: "1",
       });
       const launcherPath = scriptPath.replace(/\.cmd$/i, ".vbs");
-      const launcher = await fs.readFile(launcherPath, "utf8");
+      const rawLauncher = await fs.readFile(launcherPath);
+      const launcher = decodeWindowsLauncherScript({ buffer: rawLauncher });
 
       expectInitialTaskQueries();
+      // wscript only accepts UTF-16 LE with BOM or ANSI; UTF-16 keeps CJK paths intact.
+      expect(rawLauncher.subarray(0, 2)).toEqual(Buffer.from([0xff, 0xfe]));
       // `/Create /XML` argv shape: ["/Create", "/F", "/TN", "<name>", "/XML", "<path>", "/RU", "<user>", "/NP"].
       // The XML payload is what carries the SC, RL, TR, and battery settings now.
       expect(schtasksCalls[2]?.slice(0, 5)).toEqual([
@@ -239,6 +299,136 @@ describe("installScheduledTask", () => {
       expect(launcher).toContain(scriptPath);
       expect(launcher).toContain(`Run """${scriptPath}""", 0, False`);
       expectTaskRunCall(3);
+    });
+  });
+
+  it("writes hidden launchers wscript can decode for CJK profile paths (#107416)", async () => {
+    await withUserProfileDir(async (tmpDir, _env) => {
+      const cjkProfileDir = path.join(tmpDir, "苗振");
+      await fs.mkdir(cjkProfileDir, { recursive: true });
+      schtasksResponses.push(okSchtasksResponse, missingTaskResponse);
+
+      const { scriptPath } = await installDefaultGatewayTask({
+        USERPROFILE: cjkProfileDir,
+        OPENCLAW_PROFILE: "default",
+        OPENCLAW_WINDOWS_TASK_HIDDEN_LAUNCHER: "1",
+      });
+      const launcherPath = scriptPath.replace(/\.cmd$/i, ".vbs");
+      const rawLauncher = await fs.readFile(launcherPath);
+
+      expect(scriptPath).toContain("苗振");
+      expect(rawLauncher.subarray(0, 2)).toEqual(Buffer.from([0xff, 0xfe]));
+      expect(rawLauncher.subarray(2).toString("utf16le")).toContain(
+        `Run """${scriptPath}""", 0, False`,
+      );
+    });
+  });
+
+  it("fails the install instead of writing an unrepresentable cmd launcher", async () => {
+    await withUserProfileDir(async (_tmpDir, env) => {
+      resolveWindowsOemEncodingMock.mockReturnValue("gbk");
+      schtasksResponses.push(okSchtasksResponse, missingTaskResponse);
+
+      await expect(
+        installScheduledTask({
+          env,
+          stdout: new PassThrough(),
+          programArguments: ["node", "gateway.js"],
+          environment: { OC_LABEL: "🚀" },
+        }),
+      ).rejects.toThrow(/cannot be represented in the Windows console code page/);
+      await expect(fs.access(resolveTaskScriptPath(env))).rejects.toThrow();
+    });
+  });
+
+  it("uses the hidden launcher for generated Windows gateway service installs", async () => {
+    await withUserProfileDir(async (_tmpDir, env) => {
+      schtasksResponses.push(okSchtasksResponse, missingTaskResponse);
+      const callerEnv: Record<string, string | undefined> = {
+        ...env,
+        HOME: env.USERPROFILE,
+        USERDOMAIN: "WORKSTATION",
+        USERNAME: "alice",
+        OPENCLAW_WINDOWS_TASK_NAME: "OpenClaw Custom Gateway",
+      };
+      const gatewayEnv = buildServiceEnvironment({
+        env: callerEnv,
+        port: 18789,
+        platform: "win32",
+      });
+
+      expect(callerEnv.OPENCLAW_WINDOWS_TASK_HIDDEN_LAUNCHER).toBeUndefined();
+      expect(gatewayEnv.OPENCLAW_WINDOWS_TASK_HIDDEN_LAUNCHER).toBe("1");
+      expect(gatewayEnv.OPENCLAW_WINDOWS_TASK_NAME).toBe("OpenClaw Gateway");
+
+      const { scriptPath } = await installScheduledTask({
+        env: callerEnv,
+        stdout: new PassThrough(),
+        programArguments: ["node", "gateway.js"],
+        environment: {
+          ...gatewayEnv,
+          USERDOMAIN: "EVIL",
+          USERNAME: "mallory",
+        },
+      });
+      const launcherPath = scriptPath.replace(/\.cmd$/i, ".vbs");
+      const script = decodeWindowsLauncherScript({ buffer: await fs.readFile(scriptPath) });
+      const launcher = decodeWindowsLauncherScript({ buffer: await fs.readFile(launcherPath) });
+
+      expect(schtasksCalls[2]?.slice(0, 5)).toEqual([
+        "/Create",
+        "/F",
+        "/TN",
+        "OpenClaw Custom Gateway",
+        "/XML",
+      ]);
+      expect(schtasksCalls[2]?.slice(6)).toEqual(["/RU", "WORKSTATION\\alice", "/NP"]);
+      const captured = xmlPayloadCaptures.find((entry) => entry.index === 2);
+      expect(captured?.xml).toContain("gateway.vbs</Command>");
+      expect(script).toContain('set "OPENCLAW_WINDOWS_TASK_NAME=OpenClaw Custom Gateway"');
+      expect(launcher).toContain("WScript.Shell");
+      expect(launcher).toContain(`Run """${scriptPath}""", 0, False`);
+      expectTaskRunCall(3, "OpenClaw Custom Gateway");
+    });
+  });
+
+  it("removes a generated hidden launcher when the caller env lacks its marker", async () => {
+    await withUserProfileDir(async (_tmpDir, env) => {
+      schtasksResponses.push(okSchtasksResponse, missingTaskResponse);
+      const scriptPath = resolveTaskScriptPath(env);
+      const parsedScriptPath = path.parse(scriptPath);
+      const launcherPath = path.join(parsedScriptPath.dir, `${parsedScriptPath.name}.vbs`);
+      await fs.mkdir(parsedScriptPath.dir, { recursive: true });
+      await fs.writeFile(scriptPath, "@echo off\n", "utf8");
+      await fs.writeFile(launcherPath, 'CreateObject("WScript.Shell")\n', "utf8");
+
+      await uninstallScheduledTask({
+        env,
+        stdout: new PassThrough(),
+      });
+
+      const remaining: string[] = [];
+      for (const candidate of [scriptPath, launcherPath]) {
+        try {
+          await fs.access(candidate);
+          remaining.push(candidate);
+        } catch {}
+      }
+      expect(remaining).toEqual([]);
+    });
+  });
+
+  it("preserves task scripts when Scheduled Task deletion fails", async () => {
+    await withUserProfileDir(async (_tmpDir, env) => {
+      schtasksResponses.push(okSchtasksResponse, okSchtasksResponse, accessDeniedResponse);
+      const scriptPath = resolveTaskScriptPath(env);
+      await fs.mkdir(path.dirname(scriptPath), { recursive: true });
+      await fs.writeFile(scriptPath, "@echo off\n", "utf8");
+
+      await expect(uninstallScheduledTask({ env, stdout: new PassThrough() })).rejects.toThrow(
+        "schtasks delete failed: ERROR: Access is denied.",
+      );
+      await expect(fs.access(scriptPath)).resolves.toBeUndefined();
     });
   });
 
@@ -432,7 +622,7 @@ describe("installScheduledTask", () => {
         },
       });
 
-      const script = await fs.readFile(scriptPath, "utf8");
+      const script = decodeWindowsLauncherScript({ buffer: await fs.readFile(scriptPath) });
       expect(script).not.toContain('set "PATH=');
       expect(script).toContain('set "OPENCLAW_GATEWAY_PORT=18789"');
     });

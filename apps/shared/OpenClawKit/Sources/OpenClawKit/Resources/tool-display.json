@@ -32,6 +32,59 @@
         "command"
       ]
     },
+    "computer": {
+      "emoji": "🖱️",
+      "title": "Computer",
+      "detailKeys": [
+        "action",
+        "coordinate",
+        "text",
+        "node",
+        "nodeId",
+        "screenIndex"
+      ]
+    },
+    "mobile_ui": {
+      "emoji": "📱",
+      "title": "Mobile UI",
+      "detailKeys": [
+        "action",
+        "mobileAction",
+        "snapshotId",
+        "node",
+        "nodeId"
+      ]
+    },
+    "screen": {
+      "emoji": "🖥️",
+      "title": "Screen",
+      "detailKeys": [
+        "action",
+        "sessionKey",
+        "dock"
+      ]
+    },
+    "terminal": {
+      "emoji": "⌨️",
+      "title": "Terminal",
+      "detailKeys": [
+        "action",
+        "sessionId",
+        "command",
+        "cwd"
+      ]
+    },
+    "portal": {
+      "emoji": "🌐",
+      "title": "Portal",
+      "detailKeys": [
+        "action",
+        "port",
+        "id",
+        "title",
+        "path"
+      ]
+    },
     "process": {
       "emoji": "🧰",
       "title": "Process",
@@ -67,6 +120,17 @@
         "path",
         "url",
         "fileName"
+      ]
+    },
+    "api": {
+      "emoji": "🌐",
+      "title": "API",
+      "detailKeys": [
+        "url",
+        "endpoint",
+        "path",
+        "method",
+        "name"
       ]
     },
     "browser": {
@@ -198,39 +262,18 @@
             "node",
             "nodeId"
           ]
-        },
-        "eval": {
-          "label": "eval",
-          "detailKeys": [
-            "javaScript",
-            "node",
-            "nodeId"
-          ]
-        },
-        "snapshot": {
-          "label": "snapshot",
-          "detailKeys": [
-            "format",
-            "node",
-            "nodeId"
-          ]
-        },
-        "a2ui_push": {
-          "label": "A2UI push",
-          "detailKeys": [
-            "jsonlPath",
-            "node",
-            "nodeId"
-          ]
-        },
-        "a2ui_reset": {
-          "label": "A2UI reset",
-          "detailKeys": [
-            "node",
-            "nodeId"
-          ]
         }
       }
+    },
+    "dashboard": {
+      "emoji": "📋",
+      "title": "Dashboard",
+      "detailKeys": [
+        "action",
+        "tabId",
+        "name",
+        "title"
+      ]
     },
     "nodes": {
       "emoji": "📱",
@@ -296,6 +339,15 @@
             "durationMs"
           ]
         },
+        "camera_ptz": {
+          "label": "camera PTZ",
+          "detailKeys": [
+            "ptzOperation",
+            "node",
+            "nodeId",
+            "deviceId"
+          ]
+        },
         "screen_record": {
           "label": "screen record",
           "detailKeys": [
@@ -305,6 +357,15 @@
             "durationMs",
             "fps",
             "screenIndex"
+          ]
+        },
+        "screen_snapshot": {
+          "label": "screen snapshot",
+          "detailKeys": [
+            "node",
+            "nodeId",
+            "screenIndex",
+            "maxWidth"
           ]
         }
       }
@@ -381,12 +442,36 @@
         "status"
       ]
     },
-    "update_plan": {
+    "progress_card": {
       "emoji": "🗺️",
-      "title": "Update Plan",
+      "title": "Progress Card",
       "detailKeys": [
-        "explanation",
-        "plan.0.step"
+        "plan.0.step",
+        "markdown"
+      ]
+    },
+    "ask_user": {
+      "emoji": "❓",
+      "title": "Ask User",
+      "detailKeys": [
+        "questions.0.question"
+      ]
+    },
+    "suggest_task": {
+      "emoji": "✨",
+      "title": "Suggest Task",
+      "detailKeys": [
+        "title",
+        "tldr",
+        "cwd"
+      ]
+    },
+    "dismiss_task": {
+      "emoji": "🗑️",
+      "title": "Dismiss Task",
+      "detailKeys": [
+        "task_id",
+        "reason"
       ]
     },
     "skill_workshop": {
@@ -398,18 +483,22 @@
         "proposal_id"
       ]
     },
+    "openclaw": {
+      "emoji": "🦀",
+      "title": "OpenClaw",
+      "detailKeys": [
+        "action",
+        "path",
+        "model"
+      ]
+    },
     "gateway": {
       "emoji": "🔌",
       "title": "Gateway",
-      "actions": {
-        "restart": {
-          "label": "restart",
-          "detailKeys": [
-            "reason",
-            "delayMs"
-          ]
-        }
-      }
+      "detailKeys": [
+        "action",
+        "path"
+      ]
     },
     "exec": {
       "emoji": "🛠️",
@@ -436,6 +525,57 @@
         "model"
       ]
     },
+    "github_publish": {
+      "emoji": "🔀",
+      "title": "GitHub Publish",
+      "detailKeys": [
+        "title"
+      ]
+    },
+    "github_identity_status": {
+      "emoji": "🔐",
+      "title": "GitHub Identity Status",
+      "detailKeys": []
+    },
+    "sessions": {
+      "emoji": "🗂️",
+      "title": "Session Settings",
+      "actions": {
+        "patch": {
+          "label": "update",
+          "detailKeys": [
+            "sessionKey",
+            "label",
+            "pinned",
+            "archived",
+            "model",
+            "thinkingLevel"
+          ]
+        },
+        "group_list": {
+          "label": "groups"
+        },
+        "group_set": {
+          "label": "set groups",
+          "detailKeys": [
+            "names"
+          ]
+        },
+        "group_rename": {
+          "label": "rename group",
+          "detailKeys": [
+            "name",
+            "to"
+          ]
+        },
+        "group_delete": {
+          "label": "delete group",
+          "detailKeys": [
+            "name"
+          ]
+        }
+      }
+    },
     "sessions_list": {
       "emoji": "🗂️",
       "title": "Sessions",
@@ -449,6 +589,29 @@
         "includeDerivedTitles",
         "includeLastMessage",
         "messageLimit"
+      ]
+    },
+    "conversations_list": {
+      "emoji": "💬",
+      "title": "Conversations",
+      "detailKeys": [
+        "channel",
+        "limit"
+      ]
+    },
+    "conversations_send": {
+      "emoji": "📨",
+      "title": "Conversation Send",
+      "detailKeys": [
+        "conversationRef"
+      ]
+    },
+    "conversations_turn": {
+      "emoji": "↔️",
+      "title": "Conversation Turn",
+      "detailKeys": [
+        "conversationRef",
+        "timeoutSeconds"
       ]
     },
     "sessions_send": {
@@ -468,6 +631,15 @@
         "sessionKey",
         "limit",
         "includeTools"
+      ]
+    },
+    "sessions_search": {
+      "emoji": "🔎",
+      "title": "Session Search",
+      "detailKeys": [
+        "query",
+        "sessionKey",
+        "limit"
       ]
     },
     "transcripts": {
@@ -524,6 +696,21 @@
         "thinking",
         "runTimeoutSeconds",
         "cleanup"
+      ]
+    },
+    "agents_wait": {
+      "emoji": "⏳",
+      "title": "Wait for Agents",
+      "detailKeys": [
+        "ids",
+        "timeoutSeconds"
+      ]
+    },
+    "structured_output": {
+      "emoji": "🧾",
+      "title": "Structured Output",
+      "detailKeys": [
+        "result"
       ]
     },
     "subagents": {
@@ -867,6 +1054,18 @@
         "model"
       ]
     },
+    "view_image": {
+      "emoji": "🖼️",
+      "title": "View Image",
+      "detailKeys": [
+        "path",
+        "paths",
+        "url",
+        "urls",
+        "prompt",
+        "model"
+      ]
+    },
     "image_generate": {
       "emoji": "🎨",
       "title": "Image Generation",
@@ -953,10 +1152,7 @@
     },
     "sessions_yield": {
       "emoji": "⏸️",
-      "title": "Yield",
-      "detailKeys": [
-        "message"
-      ]
+      "title": "Yield"
     },
     "tts": {
       "emoji": "🔊",

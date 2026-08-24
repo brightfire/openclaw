@@ -3,7 +3,7 @@ import { resolveSessionIdentityFromMeta } from "@openclaw/acp-core/runtime/sessi
 import type { AcpRuntime } from "@openclaw/acp-core/runtime/types";
 import type { OpenClawConfig } from "../../config/types.openclaw.js";
 import { logVerbose } from "../../globals.js";
-import { formatErrorMessage } from "../../infra/errors.js";
+import { formatErrorMessage, toErrorObject } from "../../infra/errors.js";
 import type { AcpRuntimeError } from "../runtime/errors.js";
 import type { ManagerRuntimeHandleCache } from "./manager.runtime-handle-cache.js";
 import type {
@@ -17,27 +17,44 @@ export function isRecoverableManagerAcpxExitError(message: string): boolean {
   return /^acpx exited with (code \d+|signal [a-z0-9]+)/i.test(message.trim());
 }
 
-function isRecoverableMissingManagerPersistentSessionError(message: string): boolean {
-  const normalized = message.trim();
-  return (
-    /persistent acp session .* could not be resumed/i.test(normalized) &&
-    /(resource not found|no matching session)/i.test(normalized)
-  );
+/** acpx detail code for a persistent session that can no longer be resumed and must be re-created. */
+const SESSION_RESUME_REQUIRED_DETAIL_CODE = "SESSION_RESUME_REQUIRED";
+
+/**
+ * Detects a "persistent session can no longer be resumed" failure by acpx's
+ * structured detail code, on the error itself or anywhere in its cause chain.
+ * Keying on the structured code rather than the human reason text is what makes
+ * recovery independent of the backend's wording — Claude reports "Resource not
+ * found", Kiro reports "Internal error" (RequestError -32603), but both wrap a
+ * SessionResumeRequiredError; matching the reason text missed Kiro and left the
+ * thread permanently stuck (#87830).
+ */
+function isRecoverableMissingManagerPersistentSessionError(error: AcpRuntimeError): boolean {
+  let current: unknown = error;
+  // Depth-capped to defend against self-referential cause cycles.
+  for (let depth = 0; current && depth < 8; depth += 1) {
+    if ((current as { detailCode?: unknown }).detailCode === SESSION_RESUME_REQUIRED_DETAIL_CODE) {
+      return true;
+    }
+    current = (current as { cause?: unknown }).cause;
+  }
+  return false;
 }
 
-/** Prepares a one-time fresh-handle retry for recoverable pre-output runtime failures. */
+/** Prepares a one-time fresh-handle retry only before authoritative prompt submission. */
 export async function prepareFreshManagerRuntimeHandleRetry(params: {
   attempt: number;
   cfg: OpenClawConfig;
   sessionKey: string;
   error: AcpRuntimeError;
+  promptStarted: boolean;
   sawTurnOutput: boolean;
   runtime?: AcpRuntime;
   meta?: SessionAcpMeta;
   runtimeHandles: ManagerRuntimeHandleCache;
   writeSessionMeta: WriteManagerSessionMeta;
 }): Promise<boolean> {
-  if (params.attempt > 0 || params.sawTurnOutput) {
+  if (params.attempt > 0 || params.promptStarted || params.sawTurnOutput) {
     return false;
   }
   if (isRecoverableManagerAcpxExitError(params.error.message)) {
@@ -51,7 +68,7 @@ export async function prepareFreshManagerRuntimeHandleRetry(params: {
     !params.runtime ||
     !params.meta ||
     params.meta.mode !== "persistent" ||
-    !isRecoverableMissingManagerPersistentSessionError(params.error.message)
+    !isRecoverableMissingManagerPersistentSessionError(params.error)
   ) {
     return false;
   }
@@ -175,6 +192,12 @@ export async function discardPersistedManagerRuntimeState(params: {
   });
 }
 
+/**
+ * Best-effort fresh-session preparation against a maybe-missing backend.
+ * Every non-applied path records why it was skipped: a reset that silently
+ * skips this step looks successful while the backend keeps resuming the old
+ * conversation, which is the worst failure mode for session resets.
+ */
 export async function tryPrepareFreshManagerRuntimeSession(params: {
   deps: Pick<AcpSessionManagerDeps, "getRuntimeBackend">;
   cfg: OpenClawConfig;
@@ -188,11 +211,20 @@ export async function tryPrepareFreshManagerRuntimeSession(params: {
     const backend = params.deps.getRuntimeBackend(configuredBackend || undefined);
     if (!backend) {
       if (params.missingBackendError) {
-        throw toLintErrorObject(params.missingBackendError, "Non-Error thrown");
+        throw toErrorObject(params.missingBackendError, "Non-Error thrown");
       }
+      logVerbose(
+        `${params.logPrefix}: fresh-session preparation skipped for ${params.sessionKey}: ACP backend "${configuredBackend || "(default)"}" is not registered`,
+      );
       return;
     }
-    await backend.runtime.prepareFreshSession?.({
+    if (!backend.runtime.prepareFreshSession) {
+      logVerbose(
+        `${params.logPrefix}: fresh-session preparation skipped for ${params.sessionKey}: ACP backend "${backend.id}" does not support prepareFreshSession`,
+      );
+      return;
+    }
+    await backend.runtime.prepareFreshSession({
       sessionKey: params.sessionKey,
     });
   } catch (error) {
@@ -200,18 +232,4 @@ export async function tryPrepareFreshManagerRuntimeSession(params: {
       `${params.logPrefix}: unable to prepare fresh session for ${params.sessionKey}: ${formatErrorMessage(error)}`,
     );
   }
-}
-
-function toLintErrorObject(value: unknown, fallbackMessage: string): Error {
-  if (value instanceof Error) {
-    return value;
-  }
-  if (typeof value === "string") {
-    return new Error(value);
-  }
-  const error = new Error(fallbackMessage, { cause: value });
-  if ((typeof value === "object" && value !== null) || typeof value === "function") {
-    Object.assign(error, value);
-  }
-  return error;
 }

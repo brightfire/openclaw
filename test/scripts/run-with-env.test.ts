@@ -3,22 +3,31 @@ import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { MAX_TIMER_TIMEOUT_MS } from "@openclaw/normalization-core/number-coercion";
 import { describe, expect, it } from "vitest";
 import {
   isRunWithEnvHelpRequest,
   parseRunWithEnvArgs,
   resolveForceKillDelayMs,
   resolveSpawnCommand,
-} from "../../scripts/run-with-env.mjs";
+} from "../../scripts/run-with-env.mts";
 
-async function waitFor(predicate: () => boolean, label: string, timeoutMs = 3_000): Promise<void> {
+// These subprocess fixtures expose explicit ready files. Cold tsx startup can exceed a few
+// seconds on a loaded maintainer host, so this only bounds genuine fixture hangs.
+const PROCESS_READY_TIMEOUT_MS = 30_000;
+
+async function waitFor(
+  predicate: () => boolean,
+  label: string,
+  timeoutMs = PROCESS_READY_TIMEOUT_MS,
+): Promise<void> {
   const startedAt = Date.now();
   while (!predicate()) {
     if (Date.now() - startedAt > timeoutMs) {
       throw new Error(`timed out waiting for ${label}`);
     }
     await new Promise<void>((resolve) => {
-      setTimeout(resolve, 25);
+      setTimeout(resolve, 5);
     });
   }
 }
@@ -80,13 +89,17 @@ describe("run-with-env", () => {
   });
 
   it("prints wrapper help without spawning a command", () => {
-    const result = spawnSync(process.execPath, ["scripts/run-with-env.mjs", "--help"], {
-      cwd: process.cwd(),
-      encoding: "utf8",
-    });
+    const result = spawnSync(
+      process.execPath,
+      ["--import", "tsx", "scripts/run-with-env.mts", "--help"],
+      {
+        cwd: process.cwd(),
+        encoding: "utf8",
+      },
+    );
 
     expect(result.status).toBe(0);
-    expect(result.stdout).toContain("Usage: node scripts/run-with-env.mjs");
+    expect(result.stdout).toContain("Usage: node --import tsx scripts/run-with-env.mts");
     expect(result.stderr).toBe("");
   });
 
@@ -100,7 +113,9 @@ describe("run-with-env", () => {
     const result = spawnSync(
       process.execPath,
       [
-        "scripts/run-with-env.mjs",
+        "--import",
+        "tsx",
+        "scripts/run-with-env.mts",
         "1INVALID=value",
         "--",
         "node",
@@ -118,16 +133,45 @@ describe("run-with-env", () => {
     expect(result.stderr).toContain("invalid environment assignment");
   });
 
-  it("uses the current Node executable for node commands", () => {
-    expect(resolveSpawnCommand("node", ["scripts/run-vitest.mjs"], "node.exe")).toEqual({
-      command: "node.exe",
-      args: ["scripts/run-vitest.mjs"],
+  it("uses the current Node executable for bare Node command names", () => {
+    const args = ["scripts/run-vitest.mjs"];
+    expect(resolveSpawnCommand("node", args, "/usr/bin/node", "linux")).toEqual({
+      command: "/usr/bin/node",
+      args,
+    });
+    for (const command of ["node", "NODE", "node.exe", "Node.Exe"]) {
+      expect(resolveSpawnCommand(command, args, "C:\\Node24\\node.exe", "win32")).toEqual({
+        command: "C:\\Node24\\node.exe",
+        args,
+      });
+    }
+  });
+
+  it("preserves platform-specific and explicitly pathed commands", () => {
+    const args = ["scripts/run-vitest.mjs"];
+    for (const command of ["NODE", "node.exe", "C:\\Tools\\node.exe"]) {
+      expect(resolveSpawnCommand(command, args, "/usr/bin/node", "linux")).toEqual({
+        command,
+        args,
+      });
+    }
+    expect(
+      resolveSpawnCommand("C:\\Tools\\node.exe", args, "C:\\Node24\\node.exe", "win32"),
+    ).toEqual({
+      command: "C:\\Tools\\node.exe",
+      args,
     });
   });
 
   it("rejects malformed force-kill grace configuration before spawning", () => {
     expect(resolveForceKillDelayMs({})).toBe(5_000);
+    expect(resolveForceKillDelayMs({ OPENCLAW_RUN_WITH_ENV_FORCE_KILL_MS: "  " })).toBe(5_000);
     expect(resolveForceKillDelayMs({ OPENCLAW_RUN_WITH_ENV_FORCE_KILL_MS: "250" })).toBe(250);
+    expect(
+      resolveForceKillDelayMs({
+        OPENCLAW_RUN_WITH_ENV_FORCE_KILL_MS: String(MAX_TIMER_TIMEOUT_MS + 1),
+      }),
+    ).toBe(MAX_TIMER_TIMEOUT_MS);
     for (const value of ["0", "-1", "1e3", "100ms"]) {
       expect(() => resolveForceKillDelayMs({ OPENCLAW_RUN_WITH_ENV_FORCE_KILL_MS: value })).toThrow(
         "OPENCLAW_RUN_WITH_ENV_FORCE_KILL_MS must be a positive integer",
@@ -137,7 +181,9 @@ describe("run-with-env", () => {
     const result = spawnSync(
       process.execPath,
       [
-        "scripts/run-with-env.mjs",
+        "--import",
+        "tsx",
+        "scripts/run-with-env.mts",
         "OPENCLAW_RUN_WITH_ENV_SIGNAL_TEST=1",
         "--",
         "node",
@@ -180,7 +226,9 @@ describe("run-with-env", () => {
       const wrapper = spawn(
         process.execPath,
         [
-          "scripts/run-with-env.mjs",
+          "--import",
+          "tsx",
+          "scripts/run-with-env.mts",
           `READY_FILE=${readyFile}`,
           `SIGNALED_FILE=${signaledFile}`,
           "--",
@@ -231,7 +279,9 @@ describe("run-with-env", () => {
       const wrapper = spawn(
         process.execPath,
         [
-          "scripts/run-with-env.mjs",
+          "--import",
+          "tsx",
+          "scripts/run-with-env.mts",
           `READY_FILE=${readyFile}`,
           `GRANDCHILD_READY_FILE=${grandchildReadyFile}`,
           `GRANDCHILD_PID_FILE=${grandchildPidFile}`,
@@ -285,13 +335,13 @@ describe("run-with-env", () => {
       const grandchildReadyFile = path.join(tempDir, "grandchild-ready");
       const grandchildScript = [
         "const fs = require('node:fs');",
-        "fs.writeFileSync(process.env.GRANDCHILD_READY_FILE, 'ready');",
         "process.on('SIGTERM', () => {",
         "  setTimeout(() => {",
         "    fs.writeFileSync(process.env.GRACEFUL_FILE, 'done');",
         "    process.exit(0);",
         "  }, 75);",
         "});",
+        "fs.writeFileSync(process.env.GRANDCHILD_READY_FILE, 'ready');",
         "setInterval(() => {}, 1000);",
       ].join("\n");
       const childScript = [
@@ -305,7 +355,9 @@ describe("run-with-env", () => {
       const wrapper = spawn(
         process.execPath,
         [
-          "scripts/run-with-env.mjs",
+          "--import",
+          "tsx",
+          "scripts/run-with-env.mts",
           `READY_FILE=${readyFile}`,
           `GRACEFUL_FILE=${gracefulFile}`,
           `GRANDCHILD_READY_FILE=${grandchildReadyFile}`,
@@ -316,7 +368,10 @@ describe("run-with-env", () => {
         ],
         {
           cwd: process.cwd(),
-          env: { ...process.env, OPENCLAW_RUN_WITH_ENV_FORCE_KILL_MS: "1000" },
+          env: {
+            ...process.env,
+            OPENCLAW_RUN_WITH_ENV_FORCE_KILL_MS: String(MAX_TIMER_TIMEOUT_MS + 1),
+          },
           stdio: "ignore",
         },
       );
@@ -343,7 +398,9 @@ describe("run-with-env", () => {
     const result = spawnSync(
       process.execPath,
       [
-        "scripts/run-with-env.mjs",
+        "--import",
+        "tsx",
+        "scripts/run-with-env.mts",
         "OPENCLAW_RUN_WITH_ENV_SIGNAL_TEST=1",
         "--",
         "node",
@@ -361,7 +418,9 @@ describe("run-with-env", () => {
     const result = spawnSync(
       process.execPath,
       [
-        "scripts/run-with-env.mjs",
+        "--import",
+        "tsx",
+        "scripts/run-with-env.mts",
         "OPENCLAW_RUN_WITH_ENV_SIGNAL_TEST=1",
         "--",
         "node",
