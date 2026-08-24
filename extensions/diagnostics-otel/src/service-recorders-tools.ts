@@ -34,6 +34,8 @@ export function createToolAndSystemRecorders(runtime: DiagnosticsRecorderRuntime
     takeTrackedTrustedSpan,
     setSpanAttrs,
     addRunAttrs,
+    addSessionAttrs,
+    resolveAgentLabelAttr,
     paramsSummaryAttrs,
     contentCapturePolicy,
     tracesEnabled,
@@ -66,7 +68,7 @@ export function createToolAndSystemRecorders(runtime: DiagnosticsRecorderRuntime
     "openclaw.skill.name": normalizeDiagnosticValue(evt.skillName, "skill"),
     "openclaw.skill.source": normalizeDiagnosticValue(evt.skillSource),
     "openclaw.skill.activation": normalizeDiagnosticValue(evt.activation),
-    ...(evt.agentId ? { "openclaw.agent": normalizeDiagnosticValue(evt.agentId) } : {}),
+    ...(evt.agentId || evt.agentLabel ? { "openclaw.agent.id": resolveAgentLabelAttr(evt) } : {}),
     ...(evt.toolName
       ? { "openclaw.toolName": normalizeDiagnosticValue(evt.toolName, "tool") }
       : {}),

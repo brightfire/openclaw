@@ -45,6 +45,8 @@ export function createUsageRecorders(runtime: DiagnosticsRecorderRuntime) {
     setSpanAttrs,
     completeTrackedLifecycleSpan,
     addRunAttrs,
+    addSessionAttrs,
+    resolveAgentLabelAttr,
     tracesEnabled,
   } = runtime;
 
@@ -55,7 +57,7 @@ export function createUsageRecorders(runtime: DiagnosticsRecorderRuntime) {
   ) => {
     const attrs = {
       "openclaw.channel": evt.channel ?? "unknown",
-      "openclaw.agent": normalizeDiagnosticValue(evt.agentId),
+      "openclaw.agent.id": resolveAgentLabelAttr(evt),
       "openclaw.provider": evt.provider ?? "unknown",
       "openclaw.model": evt.model ?? "unknown",
     };
@@ -129,6 +131,7 @@ export function createUsageRecorders(runtime: DiagnosticsRecorderRuntime) {
       spanAttrs["openclaw.plugin"] = normalizeDiagnosticValue(hostPluginId);
     }
     assignGenAiSpanIdentityAttrs(spanAttrs, evt);
+    addSessionAttrs(spanAttrs, evt);
     assignPositiveNumberAttr(spanAttrs, "gen_ai.usage.input_tokens", genAiInputTokens);
     assignPositiveNumberAttr(spanAttrs, "gen_ai.usage.output_tokens", usage.output);
     assignPositiveNumberAttr(spanAttrs, "gen_ai.usage.cache_read.input_tokens", usage.cacheRead);
@@ -232,10 +235,12 @@ export function createUsageRecorders(runtime: DiagnosticsRecorderRuntime) {
     if (!traceContext?.spanId || activeTrustedSpans.has(traceContext.spanId)) {
       return;
     }
+    const dispatchSpanAttrs: Record<string, string | number> = { ...attrs };
+    addSessionAttrs(dispatchSpanAttrs, evt);
     trackInternalOrTrustedSpan(
       evt,
       metadata,
-      spanWithDuration("openclaw.message.processed", attrs, undefined, {
+      spanWithDuration("openclaw.message.processed", dispatchSpanAttrs, undefined, {
         parentContext: internalOrTrustedExplicitParentContext(evt, metadata),
         startTimeMs: evt.ts,
       }),
@@ -271,6 +276,7 @@ export function createUsageRecorders(runtime: DiagnosticsRecorderRuntime) {
       return;
     }
     const spanAttrs: Record<string, string | number> = { ...attrs };
+    addSessionAttrs(spanAttrs, evt);
     if (evt.reason) {
       spanAttrs["openclaw.reason"] = normalizeDiagnosticValue(evt.reason, "unknown");
     }

@@ -24,6 +24,7 @@ export function createHarnessRecorders(runtime: DiagnosticsRecorderRuntime) {
     setSpanAttrs,
     completeTrackedLifecycleSpan,
     addRunAttrs,
+    addSessionAttrs,
     tracesEnabled,
   } = runtime;
 
@@ -38,6 +39,7 @@ export function createHarnessRecorders(runtime: DiagnosticsRecorderRuntime) {
     "openclaw.provider": normalizeDiagnosticValue(evt.provider, "unknown"),
     "openclaw.model": normalizeDiagnosticValue(evt.model, "unknown"),
     ...(evt.channel ? { "openclaw.channel": normalizeDiagnosticValue(evt.channel) } : {}),
+    ...(evt.agentId ? { "openclaw.agent.id": evt.agentId } : {}),
   });
 
   const recordHarnessRunStarted = (
@@ -47,10 +49,14 @@ export function createHarnessRecorders(runtime: DiagnosticsRecorderRuntime) {
     if (!tracesEnabled || !metadata.trusted) {
       return;
     }
+    const spanAttrs: Record<string, string | number | boolean> = {
+      ...harnessRunMetricAttrs(evt),
+    };
+    addSessionAttrs(spanAttrs, evt);
     trackTrustedSpan(
       evt,
       metadata,
-      spanWithDuration("openclaw.harness.run", harnessRunMetricAttrs(evt), undefined, {
+      spanWithDuration("openclaw.harness.run", spanAttrs, undefined, {
         parentContext: activeTrustedParentContext(evt, metadata),
         startTimeMs: evt.ts,
       }),
@@ -69,6 +75,7 @@ export function createHarnessRecorders(runtime: DiagnosticsRecorderRuntime) {
     const spanAttrs: Record<string, string | number | boolean> = {
       ...harnessRunMetricAttrs(evt),
     };
+    addSessionAttrs(spanAttrs, evt);
     if (evt.resultClassification) {
       spanAttrs["openclaw.harness.result_classification"] = normalizeDiagnosticValue(
         evt.resultClassification,
@@ -134,6 +141,7 @@ export function createHarnessRecorders(runtime: DiagnosticsRecorderRuntime) {
       ...(redactedError ? { "openclaw.error": redactedError } : {}),
       ...(evt.cleanupFailed ? { "openclaw.harness.cleanup_failed": true } : {}),
     };
+    addSessionAttrs(spanAttrs, evt);
     const trustedTrace = trustedTraceContext(evt, metadata);
     const trackedSpan = trustedTrace?.spanId
       ? activeTrustedSpans.get(trustedTrace.spanId)
@@ -209,6 +217,7 @@ export function createHarnessRecorders(runtime: DiagnosticsRecorderRuntime) {
     const spanAttrs: Record<string, string | number | boolean> = {
       "openclaw.failover.reason": normalizeDiagnosticValue(evt.reason, "unknown"),
     };
+    addSessionAttrs(spanAttrs, evt);
     if (evt.fromProvider) {
       spanAttrs["openclaw.provider"] = evt.fromProvider;
     }
