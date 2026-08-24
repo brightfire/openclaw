@@ -62,6 +62,7 @@ import type { PreparedCompactionRuntime } from "./prepared-compaction-runtime.js
 import { sanitizeSessionHistory, validateReplayTurns } from "./replay-history.js";
 import { createEmbeddedAgentResourceLoader } from "./resource-loader.js";
 import { wrapStreamFnWithDiagnosticModelCallEvents } from "./run/attempt.model-diagnostic-events.js";
+import { resolveAgentIdentity } from "../identity.js";
 import { attemptServerEndpointCompaction } from "./server-endpoint-compaction.js";
 import { applySystemPromptToSession } from "./system-prompt.js";
 import { collectRegisteredToolNames, toSessionToolAllowlist } from "./tool-name-allowlist.js";
@@ -298,6 +299,10 @@ export async function executePreparedCompactionSession(runtime: PreparedCompacti
               runId: diagnosticCompactionRunId,
               ...(params.sessionKey && { sessionKey: params.sessionKey }),
               sessionId: params.sessionId,
+              agentId: sessionAgentId,
+              agentLabel: params.config
+                ? resolveAgentIdentity(params.config, sessionAgentId)?.name?.trim()
+                : undefined,
               provider,
               model: modelId,
               api: effectiveModel.api,

@@ -541,6 +541,7 @@ export type DiagnosticSkillUsedEvent = DiagnosticBaseEvent & {
   sessionKey?: string;
   sessionId?: string;
   agentId?: string;
+  agentLabel?: string;
   skillName: string;
   skillSource: DiagnosticSkillTelemetrySource;
   activation: DiagnosticSkillActivation;
@@ -645,6 +646,8 @@ type DiagnosticModelCallBaseEvent = DiagnosticBaseEvent & {
   callId: string;
   sessionKey?: string;
   sessionId?: string;
+  agentId?: string;
+  agentLabel?: string;
   provider: string;
   model: string;
   api?: string;

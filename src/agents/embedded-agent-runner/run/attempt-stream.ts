@@ -13,6 +13,7 @@ import { wrapStreamFnTextTransforms } from "../../plugin-text-transforms.js";
 import type { StreamFn } from "../../runtime/index.js";
 import type { AgentSession, SessionManager } from "../../sessions/index.js";
 import { resolveAgentTimeoutMs } from "../../timeout.js";
+import { resolveAgentIdentity } from "../../identity.js";
 import type { TranscriptPolicy } from "../../transcript-policy.js";
 import { shouldAllowProviderOwnedThinkingReplay } from "../../transcript-policy.js";
 import { log } from "../logger.js";
@@ -373,6 +374,10 @@ export function installEmbeddedAttemptStreamGuards(input: {
     runId: attempt.runId,
     ...(attempt.sessionKey && { sessionKey: attempt.sessionKey }),
     ...(attempt.sessionId && { sessionId: attempt.sessionId }),
+    agentId: input.sessionAgentId,
+    agentLabel: attempt.config
+      ? resolveAgentIdentity(attempt.config, input.sessionAgentId)?.name?.trim()
+      : undefined,
     provider: attempt.provider,
     model: attempt.modelId,
     api: attempt.model.api,
