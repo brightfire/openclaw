@@ -18,24 +18,23 @@ echo "verifyDepsBeforeRun: $(pnpm config get verify-deps-before-run 2>/dev/null 
 # All generators are independent (different inputs, non-overlapping outputs)
 # so run them all in parallel and wait for every one before committing.
 #
-#   deps:shrinkwrap:generate  reads pnpm-lock.yaml -> writes npm-shrinkwrap.json
 #   config:schema:gen         validates only; no file output
 #   protocol:gen              -> dist/protocol.schema.json
 #   protocol:gen:swift        -> apps/*/ Swift protocol files
 #   config:docs:gen           -> config doc baseline hash
-#   plugin-sdk:api:gen        -> plugin-sdk API baseline hash
 #   plugins:sync              -> propagates root package.json version to extensions/*/package.json
+# (deps:shrinkwrap:generate and plugin-sdk:api:gen removed upstream after v2026.6.8)
 #
 echo "=== Running generators in parallel ==="
 declare -a GEN_PIDS=()
 declare -a GEN_NAMES=()
 
-pnpm deps:shrinkwrap:generate  & GEN_PIDS+=($!) GEN_NAMES+=("deps:shrinkwrap:generate")
+# deps:shrinkwrap:generate and plugin-sdk:api:gen were removed upstream in
+# versions after v2026.6.8. Removed from this script on 2026-08-24.
 pnpm config:schema:gen         & GEN_PIDS+=($!) GEN_NAMES+=("config:schema:gen")
 pnpm protocol:gen              & GEN_PIDS+=($!) GEN_NAMES+=("protocol:gen")
 pnpm protocol:gen:swift        & GEN_PIDS+=($!) GEN_NAMES+=("protocol:gen:swift")
 pnpm config:docs:gen           & GEN_PIDS+=($!) GEN_NAMES+=("config:docs:gen")
-pnpm plugin-sdk:api:gen        & GEN_PIDS+=($!) GEN_NAMES+=("plugin-sdk:api:gen")
 pnpm plugins:sync              & GEN_PIDS+=($!) GEN_NAMES+=("plugins:sync")
 
 # Wait for all — collect failures without short-circuiting so every PID is
