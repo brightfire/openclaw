@@ -299,24 +299,48 @@ jobs:
           restore-keys: |
             upstream-v${{ steps.upstream-version.outputs.version }}-vite-
 
-      # Lint and build run concurrently. Lint (pnpm check + UI lint) is
-      # read-only source analysis — tsgo, oxlint, policy guards — and never
-      # reads from dist/. Build writes to dist/ and ui/dist/. No shared paths,
-      # so they are safe to overlap. Combined peak heap on the 64 GB XL runner:
-      # ~12 GB (build) + ~6 GB (tsgo) + ~2 GB (oxlint) ≈ 20 GB, well within budget.
+      # Lint and build run concurrently. The check commands mirror upstream
+      # CI's individual shards (not the `pnpm check` aggregate, which runs a
+      # superset including checks upstream CI doesn't gate on — e.g.
+      # check:temp-path-guardrails is broken on upstream main). Check +
+      # typecheck + lint + format are read-only source analysis. Build writes
+      # to dist/. No shared paths, safe to overlap.
       - name: Lint and build
         run: |
-          pnpm check                       & CHECK_PID=$!
-          pnpm lint:ui:no-raw-window-open  & UI_LINT_PID=$!
+          # --- Check shard (mirrors upstream CI `guards` shard) ---
+          (
+            pnpm check:no-conflict-markers &&
+            pnpm check:doctor-deprecation-registry &&
+            pnpm tool-display:check &&
+            pnpm check:host-env-policy:swift &&
+            pnpm dup:check &&
+            pnpm check:coercion-helpers &&
+            pnpm deps:patches:check &&
+            pnpm lint:webhook:no-low-level-body-read &&
+            pnpm lint:auth:no-pairing-store-group &&
+            pnpm lint:auth:pairing-account-scope &&
+            pnpm check:import-cycles &&
+            # Typecheck (mirrors upstream CI prod-types + scripts + test root)
+            pnpm tsgo:prod &&
+            pnpm tsgo:scripts &&
+            pnpm tsgo:test:root &&
+            # Lint + format (mirrors upstream CI lint shard)
+            pnpm lint &&
+            pnpm format:check &&
+            # npm package-lock guard (mirrors upstream CI npm-lock shard)
+            pnpm deps:npm-lock:check &&
+            # Bundled channel config metadata
+            pnpm check:bundled-channel-config-metadata
+          ) & CHECK_PID=$!
+
+          pnpm lint:ui:no-raw-window-open & UI_LINT_PID=$!
           NODE_OPTIONS="--max-old-space-size=12000" pnpm build & BUILD_PID=$!
+
           FAIL=0
-          wait "$CHECK_PID"    || { echo "=== FAILED: pnpm check ===" >&2;                      FAIL=1; }
+          wait "$CHECK_PID"   || { echo "=== FAILED: check shard ===" >&2;                     FAIL=1; }
           wait "$UI_LINT_PID"  || { echo "=== FAILED: pnpm lint:ui:no-raw-window-open ===" >&2; FAIL=1; }
           wait "$BUILD_PID"    || { echo "=== FAILED: pnpm build ===" >&2;                      FAIL=1; }
           [ "$FAIL" -eq 0 ]
-
-      - name: Build Control UI
-        run: pnpm ui:build
 
       # Tests run in the foreground. Release-check and tarball pack run in the
       # background concurrently — neither depends on test results, both depend
