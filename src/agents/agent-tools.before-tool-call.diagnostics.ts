@@ -35,11 +35,7 @@ import {
   resolveSkillTelemetrySource,
   resolveSkillTelemetrySourceValue,
 } from "../skills/loading/source.js";
-import type {
-  SkillSnapshot,
-  SkillTelemetrySource,
-  SkillUsagePath,
-} from "../skills/types.js";
+import type { SkillSnapshot, SkillTelemetrySource, SkillUsagePath } from "../skills/types.js";
 import { isPlainObject, truncateUtf16Safe } from "../utils.js";
 import { buildAdjustedParamsKey } from "./agent-tools.before-tool-call.state.js";
 import type {
@@ -83,8 +79,7 @@ export function resolveToolTerminalPresentation(params: {
   result: Awaited<ReturnType<AnyAgentTool["execute"]>>;
 }): string | undefined {
   try {
-    const presentationTool =
-      getBeforeToolCallSourceTool(params.tool) ?? params.tool;
+    const presentationTool = getBeforeToolCallSourceTool(params.tool) ?? params.tool;
     const text = getToolTerminalPresentation(presentationTool)?.(
       params.toolParams,
       params.result,
@@ -92,10 +87,7 @@ export function resolveToolTerminalPresentation(params: {
     if (!text) {
       return undefined;
     }
-    return truncateUtf16Safe(
-      redactToolDetail(text),
-      MAX_TERMINAL_PRESENTATION_CHARS,
-    );
+    return truncateUtf16Safe(redactToolDetail(text), MAX_TERMINAL_PRESENTATION_CHARS);
   } catch (err) {
     log.warn(
       `terminal tool presentation failed: tool=${params.tool.name || "tool"} error=${String(err)}`,
@@ -124,10 +116,7 @@ export function rememberPendingTerminalPresentation(params: {
     toolParams: structuredClone(params.toolParams),
     toolCallOrdinal: params.toolCallOrdinal,
   });
-  pruneMapToMaxSize(
-    pendingTerminalPresentationByToolCall,
-    MAX_PENDING_TERMINAL_PRESENTATIONS,
-  );
+  pruneMapToMaxSize(pendingTerminalPresentationByToolCall, MAX_PENDING_TERMINAL_PRESENTATIONS);
 }
 
 /** Finalizes a trusted terminal summary after harness result middleware. */
@@ -267,9 +256,7 @@ type ToolDiagnosticIdentity = {
   toolOwner?: string;
 };
 
-export function resolveToolDiagnosticIdentity(
-  tool: AnyAgentTool,
-): ToolDiagnosticIdentity {
+export function resolveToolDiagnosticIdentity(tool: AnyAgentTool): ToolDiagnosticIdentity {
   const pluginMeta = getPluginToolMeta(tool);
   if (pluginMeta) {
     return pluginMeta.pluginId === "bundle-mcp"
@@ -321,19 +308,12 @@ function findResolvedSkillUsageMatch(params: {
     (skill) => skill.name.trim() === skillName,
   );
   const skill =
-    candidates.find(
-      (candidate) =>
-        resolveSkillTelemetrySource(candidate) === params.skillSource,
-    ) ?? (candidates.length === 1 ? candidates[0] : undefined);
-  return skill
-    ? resolvedSkillUsageMatch({ activation: params.activation, skill })
-    : undefined;
+    candidates.find((candidate) => resolveSkillTelemetrySource(candidate) === params.skillSource) ??
+    (candidates.length === 1 ? candidates[0] : undefined);
+  return skill ? resolvedSkillUsageMatch({ activation: params.activation, skill }) : undefined;
 }
 
-function resolveRelativeToolPath(
-  candidate: string,
-  ctx?: HookContext,
-): string | undefined {
+function resolveRelativeToolPath(candidate: string, ctx?: HookContext): string | undefined {
   const trimmed = candidate.trim();
   if (!trimmed) {
     return undefined;
@@ -360,15 +340,11 @@ function readToolPathCandidates(params: unknown, ctx?: HookContext): string[] {
   }
   const candidates = typeof params.path === "string" ? [params.path] : [];
   return candidates
-    .map((candidate) =>
-      resolveRelativeToolPath(normalizeFileToolPathParam(candidate), ctx),
-    )
+    .map((candidate) => resolveRelativeToolPath(normalizeFileToolPathParam(candidate), ctx))
     .filter((candidate): candidate is string => Boolean(candidate));
 }
 
-function skillInstructionPaths(
-  snapshot: SkillSnapshot | undefined,
-): Map<string, SkillUsageMatch> {
+function skillInstructionPaths(snapshot: SkillSnapshot | undefined): Map<string, SkillUsageMatch> {
   const matches = new Map<string, SkillUsageMatch>();
   for (const skill of snapshot?.resolvedSkills ?? []) {
     const skillName = typeof skill.name === "string" ? skill.name.trim() : "";
@@ -376,8 +352,7 @@ function skillInstructionPaths(
       continue;
     }
     const match = resolvedSkillUsageMatch({ activation: "read", skill });
-    const filePath =
-      typeof skill.filePath === "string" ? skill.filePath.trim() : "";
+    const filePath = typeof skill.filePath === "string" ? skill.filePath.trim() : "";
     if (filePath) {
       if (filePath.startsWith("node://")) {
         matches.set(filePath, match);
@@ -385,8 +360,7 @@ function skillInstructionPaths(
         matches.set(path.resolve(filePath), match);
       }
     }
-    const baseDir =
-      typeof skill.baseDir === "string" ? skill.baseDir.trim() : "";
+    const baseDir = typeof skill.baseDir === "string" ? skill.baseDir.trim() : "";
     if (baseDir && path.isAbsolute(baseDir)) {
       matches.set(path.resolve(baseDir, "SKILL.md"), match);
     }
@@ -394,9 +368,7 @@ function skillInstructionPaths(
   return matches;
 }
 
-function materializedSkillInstructionPaths(
-  paths: SkillUsagePath[] | undefined,
-) {
+function materializedSkillInstructionPaths(paths: SkillUsagePath[] | undefined) {
   const matches = new Map<string, SkillUsageMatch>();
   for (const entry of paths ?? []) {
     matches.set(path.resolve(entry.readPath), {
@@ -416,9 +388,7 @@ export function findSkillUsageMatch(params: {
 }): SkillUsageMatch | undefined {
   const command = params.ctx?.skillCommand;
   if (command) {
-    const commandToolName = normalizeToolPolicyName(
-      command.toolName ?? params.toolName,
-    );
+    const commandToolName = normalizeToolPolicyName(command.toolName ?? params.toolName);
     if (!commandToolName || commandToolName === params.toolName) {
       const skillSource = resolveSkillTelemetrySourceValue(command.skillSource);
       const snapshotMatch = findResolvedSkillUsageMatch({
@@ -427,8 +397,7 @@ export function findSkillUsageMatch(params: {
         skillSource,
         snapshot: params.ctx?.skillsSnapshot,
       });
-      const skillFile =
-        canonicalSkillFile(command.skillFile) ?? snapshotMatch?.skillFile;
+      const skillFile = canonicalSkillFile(command.skillFile) ?? snapshotMatch?.skillFile;
       return {
         skillName: command.skillName,
         skillSource,
@@ -444,10 +413,7 @@ export function findSkillUsageMatch(params: {
   const skillPaths = params.ctx?.skillsSnapshot?.resolvedSkills?.length
     ? skillInstructionPaths(params.ctx.skillsSnapshot)
     : materializedSkillInstructionPaths(params.ctx?.skillUsagePaths);
-  for (const candidate of readToolPathCandidates(
-    params.toolParams,
-    params.ctx,
-  )) {
+  for (const candidate of readToolPathCandidates(params.toolParams, params.ctx)) {
     const match = skillPaths.get(candidate);
     if (match) {
       return match;
@@ -463,9 +429,7 @@ export function emitSkillUsedDiagnostic(params: {
   toolCallId?: string;
 }): void {
   const trace = params.ctx?.trace
-    ? freezeDiagnosticTraceContext(
-        createChildDiagnosticTraceContext(params.ctx.trace),
-      )
+    ? freezeDiagnosticTraceContext(createChildDiagnosticTraceContext(params.ctx.trace))
     : undefined;
   // Skill file paths are trusted-internal accounting data. Public diagnostic
   // payloads stay path-free even when diagnostics are enabled.
@@ -483,9 +447,7 @@ export function emitSkillUsedDiagnostic(params: {
       toolName: params.toolName,
       ...(params.toolCallId && { toolCallId: params.toolCallId }),
     },
-    params.match.skillFile
-      ? { skillUsage: { skillFile: params.match.skillFile } }
-      : undefined,
+    params.match.skillFile ? { skillUsage: { skillFile: params.match.skillFile } } : undefined,
   );
 }
 
@@ -534,9 +496,7 @@ export function emitToolBlockedSecurityEvent(params: {
     target: {
       kind: "tool",
       name: params.toolName,
-      ...(params.toolIdentity.toolOwner
-        ? { owner: params.toolIdentity.toolOwner }
-        : {}),
+      ...(params.toolIdentity.toolOwner ? { owner: params.toolIdentity.toolOwner } : {}),
     },
     policy: {
       id: control.policyId,
@@ -549,9 +509,7 @@ export function emitToolBlockedSecurityEvent(params: {
     },
     attributes: {
       tool_source: params.toolIdentity.toolSource,
-      ...(params.paramsSummary
-        ? { params_kind: params.paramsSummary.kind }
-        : {}),
+      ...(params.paramsSummary ? { params_kind: params.paramsSummary.kind } : {}),
     },
   });
 }
@@ -576,9 +534,7 @@ export function buildToolContentPrivateData(
   return Object.keys(toolContent).length > 0 ? { toolContent } : undefined;
 }
 
-export function summarizeToolParams(
-  params: unknown,
-): DiagnosticToolParamsSummary {
+export function summarizeToolParams(params: unknown): DiagnosticToolParamsSummary {
   if (params === null) {
     return { kind: "null" };
   }
@@ -628,10 +584,7 @@ export async function reconcileLoopCallExecutionParams(args: {
   toolParams: unknown;
   toolCallId?: string;
 }): Promise<void> {
-  if (
-    (!args.ctx?.sessionKey && !args.ctx?.sessionId) ||
-    args.ctx.loopDetection?.enabled !== true
-  ) {
+  if ((!args.ctx?.sessionKey && !args.ctx?.sessionId) || args.ctx.loopDetection?.enabled !== true) {
     return;
   }
   try {
@@ -703,9 +656,7 @@ export async function recordLoopOutcome(args: {
     const churnContinues =
       record !== undefined &&
       getArgumentChurnNoProgressStreak(
-        (sessionState.toolCallHistory ?? []).filter(
-          (call) => call.runId === record.runId,
-        ),
+        (sessionState.toolCallHistory ?? []).filter((call) => call.runId === record.runId),
         record.toolName,
         record.argsHash,
       ).count > 0;
@@ -721,21 +672,13 @@ export async function recordLoopOutcome(args: {
         toolName: record.toolName,
         argsHash: record.argsHash,
         resultHash: record.resultHash,
-        ...(args.resultContentSource
-          ? { resultContentSource: args.resultContentSource }
-          : {}),
-        ...(args.toolCallOrdinal !== undefined
-          ? { toolCallOrdinal: args.toolCallOrdinal }
-          : {}),
-        ...(args.terminalPresentation
-          ? { terminalPresentation: args.terminalPresentation }
-          : {}),
+        ...(args.resultContentSource ? { resultContentSource: args.resultContentSource } : {}),
+        ...(args.toolCallOrdinal !== undefined ? { toolCallOrdinal: args.toolCallOrdinal } : {}),
+        ...(args.terminalPresentation ? { terminalPresentation: args.terminalPresentation } : {}),
       };
     }
   } catch (err) {
-    log.warn(
-      `tool loop outcome tracking failed: tool=${args.toolName} error=${String(err)}`,
-    );
+    log.warn(`tool loop outcome tracking failed: tool=${args.toolName} error=${String(err)}`);
   }
   if (recordedOutcome) {
     args.ctx.onToolOutcome?.(recordedOutcome);
