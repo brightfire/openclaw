@@ -266,7 +266,7 @@ jobs:
         with:
           node-version: '24'
           install-bun: 'false'
-          use-actions-cache: 'true'
+          cache-mode: 'restore'
 
       - name: Regenerate build artifacts
         run: /tmp/bf-build-stable/regenerate-artifacts.sh
