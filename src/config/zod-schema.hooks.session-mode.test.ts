@@ -53,7 +53,7 @@ describe("HookMappingSchema sessionMode + sessionKey pairing", () => {
     );
     expect(result.success).toBe(false);
     if (!result.success) {
-      const issue = result.error.issues.find((entry) => entry.message.includes("sessionMode"));
+      const issue = result.error.issues.find((entry) => entry.message.includes("sessionKey"));
       expect(issue).toBeDefined();
       expect(issue?.message).toMatch(/persistent.*sessionKey/);
     }
@@ -61,9 +61,9 @@ describe("HookMappingSchema sessionMode + sessionKey pairing", () => {
 
   it("rejects persistent with whitespace-only sessionKey", () => {
     // renderOptional()/normalizeOptionalString() downstream trim sessionKey
-    // and treat whitespace-only as absent. The Zod refine must reject the
-    // same way at load time so the failure surfaces in config validation
-    // rather than at the first webhook fire.
+    // and treat whitespace-only as absent. The parent superRefine checks
+    // !sessionKey?.trim() the same way, so a whitespace-only key is treated
+    // as absent and the mapping is rejected at load time.
     const result = OpenClawSchema.safeParse(
       buildHooksConfig({
         id: "bad-whitespace-key",
@@ -75,7 +75,7 @@ describe("HookMappingSchema sessionMode + sessionKey pairing", () => {
     );
     expect(result.success).toBe(false);
     if (!result.success) {
-      const issue = result.error.issues.find((entry) => entry.message.includes("sessionMode"));
+      const issue = result.error.issues.find((entry) => entry.message.includes("sessionKey"));
       expect(issue).toBeDefined();
       expect(issue?.message).toMatch(/persistent.*sessionKey/);
     }
@@ -90,6 +90,25 @@ describe("HookMappingSchema sessionMode + sessionKey pairing", () => {
         sessionMode: "isolated",
       }),
     );
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts persistent mapping with hooks.defaultSessionKey", () => {
+    const result = OpenClawSchema.safeParse({
+      hooks: {
+        enabled: true,
+        token: "secret",
+        defaultSessionKey: "hook:card-update",
+        mappings: [
+          {
+            id: "ok-default-key",
+            match: { path: "linear" },
+            action: "agent",
+            sessionMode: "persistent",
+          },
+        ],
+      },
+    });
     expect(result.success).toBe(true);
   });
 

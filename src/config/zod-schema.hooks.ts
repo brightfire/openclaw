@@ -67,26 +67,6 @@ export const HookMappingSchema = z
       .optional(),
   })
   .strict()
-  .refine(
-    (value) => {
-      // Persistent hooks reuse the same session across invocations and
-      // only work when a stable sessionKey is bound to the mapping. Reject
-      // the combination at config time so operators see the misconfiguration
-      // before any webhook fires; defaultSessionKey is intentionally not
-      // accepted here — the pairing is a per-mapping contract. Transforms
-      // may still override sessionMode at runtime if they also return a
-      // sessionKey.
-      if (value?.sessionMode !== "persistent") {
-        return true;
-      }
-      // Mirror renderOptional()/normalizeOptionalString() downstream, which
-      // trim sessionKey and treat whitespace-only as absent. Without
-      // trimming here, "   " would slip past Zod and then fail later at
-      // dispatch with the same error, defeating the load-time check.
-      return typeof value.sessionKey === "string" && value.sessionKey.trim().length > 0;
-    },
-    { message: 'sessionMode "persistent" requires sessionKey', path: ["sessionMode"] },
-  )
   .optional();
 
 const HookConfigSchema = z
