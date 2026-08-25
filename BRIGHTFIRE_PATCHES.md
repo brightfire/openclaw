@@ -9,14 +9,14 @@ is maintained, the merge-not-rebase philosophy, and the new-entry template.
 
 ## Patches
 
-| Name | Canonical branch | Branch HEAD | Source PR | Last updated |
-|---|---|---|---|---|
-| Upstream Test Fixes | `brightfire/upstream-test-fixes` | `9ed004ca2a` | https://github.com/brightfire/openclaw/pull/150 | 2026-08-24 |
-| Slack Markdown | `brightfire/slack-mrkdwn` | `eac47dc640` | — | 2026-08-24 |
-| CLI HTTP Health Fallback | `brightfire/cli-http-fallback` | `acaf002096` | — | 2026-08-24 |
-| Webhook Session Target Support | `brightfire/webhook-sessiontarget-support` | `822fe75a23` | https://github.com/brightfire/openclaw/pull/106 | 2026-08-24 |
-| OTEL Improvements | `brightfire/otel-improvements` | `ca5fa24d51` | https://github.com/brightfire/openclaw/pull/173 | 2026-08-24 |
-| Bundle All Plugins | `brightfire/bundle-all-plugins` | `1b80890e33` | — | 2026-08-24 |
+| Name                           | Canonical branch                           | Branch HEAD   | Source PR                                       | Last updated |
+| ------------------------------ | ------------------------------------------ | ------------- | ----------------------------------------------- | ------------ |
+| Upstream Test Fixes            | `brightfire/upstream-test-fixes`           | `1b23b69213f` | https://github.com/brightfire/openclaw/pull/150 | 2026-08-24   |
+| Slack Markdown                 | `brightfire/slack-mrkdwn`                  | `eac47dc640`  | —                                               | 2026-08-24   |
+| CLI HTTP Health Fallback       | `brightfire/cli-http-fallback`             | `acaf002096`  | —                                               | 2026-08-24   |
+| Webhook Session Target Support | `brightfire/webhook-sessiontarget-support` | `822fe75a23`  | https://github.com/brightfire/openclaw/pull/106 | 2026-08-24   |
+| OTEL Improvements              | `brightfire/otel-improvements`             | `ca5fa24d51`  | https://github.com/brightfire/openclaw/pull/173 | 2026-08-24   |
+| Bundle All Plugins             | `brightfire/bundle-all-plugins`            | `1d021c9123f` | —                                               | 2026-08-24   |
 
 ## Upstream Test Fixes
 
