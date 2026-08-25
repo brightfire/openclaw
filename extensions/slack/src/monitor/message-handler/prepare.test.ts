@@ -2344,16 +2344,24 @@ Second paragraph should still reach the agent after Slack's preview cutoff.`;
   });
 
   it("records skipped no-mention shared images as pending history media", async () => {
-    // Spy on resolveSlackMedia to bypass the real download pipeline (which uses
-    // short timeouts that are sensitive to CPU contention under high parallelism).
+    // Spy on resolveSlackAttachmentContent to bypass the real download pipeline
+    // (which uses short timeouts sensitive to CPU contention under high parallelism).
+    // Shared image attachments go through resolveSlackAttachmentContent, not
+    // resolveSlackMedia, so we must mock the attachment-specific resolver.
     const mediaMod = await import("../media.js");
-    const resolveSlackMediaSpy = vi.spyOn(mediaMod, "resolveSlackMedia").mockResolvedValue([
-      {
-        path: "/fake/shared.png",
-        contentType: "image/png",
-        placeholder: "[Slack media attachment]",
-      },
-    ]);
+    const resolveSlackAttachmentContentSpy = vi
+      .spyOn(mediaMod, "resolveSlackAttachmentContent")
+      .mockResolvedValue({
+        text: "",
+        media: [
+          {
+            path: "/fake/shared.png",
+            contentType: "image/png",
+            placeholder: "[Slack media attachment]",
+          },
+        ],
+        unavailableImageCount: 0,
+      });
 
     try {
       const slackCtx = createInboundSlackCtx({
@@ -2391,7 +2399,7 @@ Second paragraph should still reach the agent after Slack's preview cutoff.`;
         messageId: "501.000",
       });
     } finally {
-      resolveSlackMediaSpy.mockRestore();
+      resolveSlackAttachmentContentSpy.mockRestore();
     }
   });
 
