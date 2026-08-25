@@ -52,7 +52,8 @@ jobs:
   rebuild-stable:
     name: Rebuild stable
     runs-on: ubuntu-latest-xl
-    timeout-minutes: 45
+    # No timeout — bundle-all-plugins increases build time significantly
+    # and we have no successful baseline run for this upstream version yet
     steps:
       - name: Generate app token
         uses: actions/create-github-app-token@v3
