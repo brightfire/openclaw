@@ -668,7 +668,7 @@ function buildUnifiedDeclarationPartitions(
     [...extensionEntriesById.entries()]
       .toSorted(([left], [right]) => left.localeCompare(right))
       .map(([, extensionEntries]) => extensionEntries),
-    5,
+    6,
   );
   const partitions = [baseEntries, ...pluginSdkPartitions, ...extensionPartitions];
 
