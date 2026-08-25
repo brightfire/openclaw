@@ -2289,16 +2289,14 @@ Second paragraph should still reach the agent after Slack's preview cutoff.`;
   });
 
   it("records skipped no-mention room images as pending history media", async () => {
-    // Spy on resolveSlackMedia to bypass the real download pipeline (which uses
-    // short timeouts that are sensitive to CPU contention under high parallelism).
-    const mediaMod = await import("../media.js");
-    const resolveSlackMediaSpy = vi.spyOn(mediaMod, "resolveSlackMedia").mockResolvedValue([
-      {
-        path: "/fake/diagram.png",
-        contentType: "image/png",
-        placeholder: "[Slack file: diagram.png (fileId: F1)]",
-      },
-    ]);
+    const originalFetch = globalThis.fetch;
+    const mockFetch = vi.fn(async () => {
+      return new Response(Buffer.from("image data"), {
+        status: 200,
+        headers: { "content-type": "image/png" },
+      });
+    });
+    globalThis.fetch = mockFetch as typeof fetch;
 
     try {
       const slackCtx = createInboundSlackCtx({
@@ -2339,29 +2337,19 @@ Second paragraph should still reach the agent after Slack's preview cutoff.`;
       });
       expect(entries[0]?.media?.[0]?.path).toEqual(expect.any(String));
     } finally {
-      resolveSlackMediaSpy.mockRestore();
+      globalThis.fetch = originalFetch;
     }
   });
 
   it("records skipped no-mention shared images as pending history media", async () => {
-    // Spy on resolveSlackAttachmentContent to bypass the real download pipeline
-    // (which uses short timeouts sensitive to CPU contention under high parallelism).
-    // Shared image attachments go through resolveSlackAttachmentContent, not
-    // resolveSlackMedia, so we must mock the attachment-specific resolver.
-    const mediaMod = await import("../media.js");
-    const resolveSlackAttachmentContentSpy = vi
-      .spyOn(mediaMod, "resolveSlackAttachmentContent")
-      .mockResolvedValue({
-        text: "",
-        media: [
-          {
-            path: "/fake/shared.png",
-            contentType: "image/png",
-            placeholder: "[Slack media attachment]",
-          },
-        ],
-        unavailableImageCount: 0,
+    const originalFetch = globalThis.fetch;
+    const mockFetch = vi.fn(async () => {
+      return new Response(Buffer.from("shared image data"), {
+        status: 200,
+        headers: { "content-type": "image/png" },
       });
+    });
+    globalThis.fetch = mockFetch as typeof fetch;
 
     try {
       const slackCtx = createInboundSlackCtx({
@@ -2399,7 +2387,7 @@ Second paragraph should still reach the agent after Slack's preview cutoff.`;
         messageId: "501.000",
       });
     } finally {
-      resolveSlackAttachmentContentSpy.mockRestore();
+      globalThis.fetch = originalFetch;
     }
   });
 
