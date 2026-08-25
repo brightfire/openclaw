@@ -11,7 +11,7 @@ is maintained, the merge-not-rebase philosophy, and the new-entry template.
 
 | Name                           | Canonical branch                           | Branch HEAD   | Source PR                                       | Last updated |
 | ------------------------------ | ------------------------------------------ | ------------- | ----------------------------------------------- | ------------ |
-| Upstream Test Fixes            | `brightfire/upstream-test-fixes`           | `6543e379b1f` | https://github.com/brightfire/openclaw/pull/150 | 2026-08-25   |
+| Upstream Test Fixes            | `brightfire/upstream-test-fixes`           | `41c8d637a31` | https://github.com/brightfire/openclaw/pull/150 | 2026-08-25   |
 | Slack Markdown                 | `brightfire/slack-mrkdwn`                  | `eac47dc640`  | —                                               | 2026-08-24   |
 | CLI HTTP Health Fallback       | `brightfire/cli-http-fallback`             | `acaf002096`  | —                                               | 2026-08-24   |
 | Webhook Session Target Support | `brightfire/webhook-sessiontarget-support` | `822fe75a23`  | https://github.com/brightfire/openclaw/pull/106 | 2026-08-24   |
