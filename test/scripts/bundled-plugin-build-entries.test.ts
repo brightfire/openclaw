@@ -182,24 +182,22 @@ describe("bundled plugin build entries", () => {
     }
   });
 
-  // Disabled: bundle-all-plugins bundles all extensions — these plugins are no longer external
-  it.skip("keeps external-only providers out of bundled dist entries", () => {
+  it("includes formerly external providers in bundled build entries but keeps them out of pack artifacts", () => {
     const entries = listBundledPluginBuildEntries();
     const artifacts = listBundledPluginPackArtifacts();
 
     for (const pluginId of ["amazon-bedrock", "amazon-bedrock-mantle", "anthropic-vertex"]) {
-      expectNoPrefixMatches(Object.keys(entries), `extensions/${pluginId}/`);
+      expectSomePrefixMatch(Object.keys(entries), `extensions/${pluginId}/`);
       expectNoPrefixMatches(artifacts, `dist/extensions/${pluginId}/`);
     }
   });
 
-  // Disabled: bundle-all-plugins bundles all extensions — these plugins are no longer external
-  it.skip("keeps externalized runtime-dependency plugins out of bundled dist entries", () => {
+  it("includes formerly externalized runtime-dependency plugins in build entries but keeps them out of pack artifacts", () => {
     const entries = listBundledPluginBuildEntries();
     const artifacts = listBundledPluginPackArtifacts();
 
     for (const pluginId of ["copilot", "openshell", "slack", "tokenjuice"]) {
-      expectNoPrefixMatches(Object.keys(entries), `extensions/${pluginId}/`);
+      expectSomePrefixMatch(Object.keys(entries), `extensions/${pluginId}/`);
       expectNoPrefixMatches(artifacts, `dist/extensions/${pluginId}/`);
     }
   });
@@ -394,12 +392,11 @@ describe("bundled plugin build entries", () => {
     }
   });
 
-  // Disabled: bundle-all-plugins bundles all extensions — these plugins are no longer external
-  it.skip("excludes the externalized Synthetic provider from bundled artifacts", () => {
+  it("includes formerly externalized Synthetic provider in build entries but keeps it out of pack artifacts", () => {
     const entries = listBundledPluginBuildEntries();
     const artifacts = listBundledPluginPackArtifacts();
 
-    expectNoPrefixMatches(Object.keys(entries), "extensions/synthetic/");
+    expectSomePrefixMatch(Object.keys(entries), "extensions/synthetic/");
     expectNoPrefixMatches(artifacts, "dist/extensions/synthetic/");
   });
 
@@ -427,12 +424,11 @@ describe("bundled plugin build entries", () => {
     expect(artifacts).not.toContain("dist/extensions/volcengine/package.json");
   });
 
-  // Disabled: bundle-all-plugins bundles all extensions — these plugins are no longer external
-  it.skip("excludes the externalized iMessage channel from bundled artifacts", () => {
+  it("includes formerly externalized iMessage channel in build entries but keeps it out of pack artifacts", () => {
     const entries = listBundledPluginBuildEntries();
     const artifacts = listBundledPluginPackArtifacts();
 
-    expectNoPrefixMatches(Object.keys(entries), "extensions/imessage/");
+    expectSomePrefixMatch(Object.keys(entries), "extensions/imessage/");
     expectNoPrefixMatches(artifacts, "dist/extensions/imessage/");
   });
 
