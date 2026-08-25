@@ -182,7 +182,8 @@ describe("bundled plugin build entries", () => {
     }
   });
 
-  it("keeps external-only providers out of bundled dist entries", () => {
+  // Disabled: bundle-all-plugins bundles all extensions — these plugins are no longer external
+  it.skip("keeps external-only providers out of bundled dist entries", () => {
     const entries = listBundledPluginBuildEntries();
     const artifacts = listBundledPluginPackArtifacts();
 
@@ -192,7 +193,8 @@ describe("bundled plugin build entries", () => {
     }
   });
 
-  it("keeps externalized runtime-dependency plugins out of bundled dist entries", () => {
+  // Disabled: bundle-all-plugins bundles all extensions — these plugins are no longer external
+  it.skip("keeps externalized runtime-dependency plugins out of bundled dist entries", () => {
     const entries = listBundledPluginBuildEntries();
     const artifacts = listBundledPluginPackArtifacts();
 
@@ -392,7 +394,8 @@ describe("bundled plugin build entries", () => {
     }
   });
 
-  it("excludes the externalized Synthetic provider from bundled artifacts", () => {
+  // Disabled: bundle-all-plugins bundles all extensions — these plugins are no longer external
+  it.skip("excludes the externalized Synthetic provider from bundled artifacts", () => {
     const entries = listBundledPluginBuildEntries();
     const artifacts = listBundledPluginPackArtifacts();
 
@@ -424,7 +427,8 @@ describe("bundled plugin build entries", () => {
     expect(artifacts).not.toContain("dist/extensions/volcengine/package.json");
   });
 
-  it("excludes the externalized iMessage channel from bundled artifacts", () => {
+  // Disabled: bundle-all-plugins bundles all extensions — these plugins are no longer external
+  it.skip("excludes the externalized iMessage channel from bundled artifacts", () => {
     const entries = listBundledPluginBuildEntries();
     const artifacts = listBundledPluginPackArtifacts();
 
