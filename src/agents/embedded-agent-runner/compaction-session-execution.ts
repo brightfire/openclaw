@@ -26,6 +26,7 @@ import {
   resolveEffectiveCompactionMode,
 } from "../agent-settings.js";
 import { pickFallbackThinkingLevel } from "../embedded-agent-helpers.js";
+import { resolveAgentIdentity } from "../identity.js";
 import { resolveAgentRunSessionTarget } from "../run-session-target.js";
 import { guardSessionManager } from "../session-tool-result-guard-wrapper.js";
 import { sanitizeToolUseResultPairingForModel } from "../session-transcript-repair.js";
@@ -298,6 +299,10 @@ export async function executePreparedCompactionSession(runtime: PreparedCompacti
               runId: diagnosticCompactionRunId,
               ...(params.sessionKey && { sessionKey: params.sessionKey }),
               sessionId: params.sessionId,
+              agentId: sessionAgentId,
+              agentLabel: params.config
+                ? resolveAgentIdentity(params.config, sessionAgentId)?.name?.trim()
+                : undefined,
               provider,
               model: modelId,
               api: effectiveModel.api,
@@ -415,7 +420,10 @@ export async function executePreparedCompactionSession(runtime: PreparedCompacti
             trigger,
             streamFn: session.agent.streamFn,
             model: effectiveModel,
-            context: { systemPrompt: systemPromptText, messages: session.messages },
+            context: {
+              systemPrompt: systemPromptText,
+              messages: session.messages,
+            },
             sessionManager,
             extraParams: effectiveExtraParams,
             customInstructions: params.customInstructions,

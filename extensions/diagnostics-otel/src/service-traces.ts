@@ -6,6 +6,7 @@ import {
   type SpanKind,
   type Tracer,
 } from "@opentelemetry/api";
+import { normalizeDiagnosticValue } from "openclaw/plugin-sdk/diagnostic-runtime";
 import type {
   DiagnosticEventMetadata,
   DiagnosticEventPayload,
@@ -350,12 +351,45 @@ export function createDiagnosticsTraceRuntime(tracer: Tracer) {
     }
   };
 
+  // Resolves the openclaw.agent.id span attribute from agentLabel (preferred) or by
+  // stripping the "agent:" session-key prefix from agentId as fallback.
+  const resolveAgentLabelAttr = (evt: { agentId?: string; agentLabel?: string }): string => {
+    if (evt.agentLabel) {
+      const candidate = normalizeDiagnosticValue(evt.agentLabel);
+      if (candidate !== "unknown") {
+        return candidate;
+      }
+    }
+    const id = evt.agentId;
+    if (!id) {
+      return "unknown";
+    }
+    const lower = id.toLowerCase();
+    const stripped = lower.startsWith("agent:") ? id.slice("agent:".length) : id;
+    const colonIdx = stripped.indexOf(":");
+    const label = colonIdx >= 0 ? stripped.slice(0, colonIdx) : stripped;
+    return normalizeDiagnosticValue(label || undefined);
+  };
+
+  const addSessionAttrs = (
+    spanAttrs: Record<string, string | number | boolean>,
+    evt: { sessionId?: string; sessionKey?: string },
+  ) => {
+    if (evt.sessionId) {
+      spanAttrs["openclaw.sessionId"] = evt.sessionId;
+    }
+    if (evt.sessionKey) {
+      spanAttrs["openclaw.sessionKey"] = evt.sessionKey;
+    }
+  };
+
   const addRunAttrs = (
     spanAttrs: Record<string, string | number | boolean>,
     evt: {
       runId?: string;
       sessionKey?: string;
       sessionId?: string;
+      agentId?: string;
       provider?: string;
       model?: string;
       channel?: string;
@@ -374,6 +408,10 @@ export function createDiagnosticsTraceRuntime(tracer: Tracer) {
     if (evt.trigger) {
       spanAttrs["openclaw.trigger"] = evt.trigger;
     }
+    if (evt.agentId) {
+      spanAttrs["openclaw.agent.id"] = resolveAgentLabelAttr(evt);
+    }
+    addSessionAttrs(spanAttrs, evt);
   };
 
   const paramsSummaryAttrs = (
@@ -409,6 +447,8 @@ export function createDiagnosticsTraceRuntime(tracer: Tracer) {
     setSpanAttrs,
     completeTrackedLifecycleSpan,
     addRunAttrs,
+    addSessionAttrs,
+    resolveAgentLabelAttr,
     paramsSummaryAttrs,
     stopActiveTrustedSpans,
   };
