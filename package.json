@@ -253,8 +253,6 @@
     "!dist/plugin-sdk/src/test-helpers/**",
     "!dist/plugin-sdk/src/test-utils/**",
     "!dist/plugin-sdk/src/plugin-sdk/test-helpers/**",
-    "!dist/extensions/node_modules/**",
-    "!dist/extensions/*/node_modules/**",
     "!dist/plugin-sdk/extensions/qa-channel/**",
     "!dist/plugin-sdk/extensions/qa-lab/**",
     "!dist/plugin-sdk/qa-channel.*",
