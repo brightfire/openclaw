@@ -2090,7 +2090,8 @@
     "web-tree-sitter": "0.26.12",
     "ws": "8.21.3",
     "yaml": "2.9.0",
-    "zod": "4.4.3"
+    "zod": "4.4.3",
+    "get-east-asian-width": "1.6.0"
   },
   "devDependencies": {
     "@a2ui/lit": "0.10.3",
