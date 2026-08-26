@@ -3,9 +3,11 @@
 # Rebuilds the stable branch by creating it fresh from origin/main
 # and merging all active brightfire/* patch branches in manifest order.
 #
-# Build + test ALWAYS run (so we keep getting signal on patches still
-# merging cleanly and tests still passing, and to keep upstream caches
-# warm). Only the PUBLISH steps (push stable, tag, write fingerprint,
+# Build always runs. Tests run by default (so we keep getting signal on
+# patches still merging cleanly and tests still passing, and to keep upstream
+# caches warm). Tests can be skipped via workflow_dispatch input skip_tests
+# when a flaky CI runner or worker crash is blocking a needed release.
+# Only the PUBLISH steps (push stable, tag, write fingerprint,
 # create GitHub Release) gate on the manifest fingerprint: when the
 # current BRIGHTFIRE_PATCHES.md sha256 matches the bf-build-fingerprint.json
 # asset on the latest bf/v* release, publishing is skipped because the
@@ -29,6 +31,11 @@ on:
     inputs:
       force_release:
         description: 'Tag and release even if manifest is unchanged'
+        required: false
+        type: boolean
+        default: false
+      skip_tests:
+        description: 'Skip the test suite (build + publish only)'
         required: false
         type: boolean
         default: false
@@ -399,9 +406,14 @@ jobs:
             echo "tarball=$(ls openclaw-*.tgz | head -1)" >> "$GITHUB_OUTPUT"
           ) & PACK_PID=$!
 
-          # Tests run in the foreground.
-          pnpm test
-          TEST_EXIT=$?
+          # Tests run in the foreground unless skip_tests is set.
+          if [ "${{ inputs.skip_tests }}" = "true" ]; then
+            echo "::notice::skip_tests is set — skipping test suite"
+            TEST_EXIT=0
+          else
+            pnpm test
+            TEST_EXIT=$?
+          fi
 
           # Collect background job results. Failures are reported individually
           # so the log clearly identifies which of the three tasks failed.
