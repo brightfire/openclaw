@@ -401,6 +401,49 @@ jobs:
             node scripts/package-changelog.mjs prepare
             node --import tsx scripts/write-package-dist-inventory.ts
             node --import tsx scripts/test-built-bundled-channel-entry-smoke.mts
+
+            # Rewrite workspace:* deps to exact versions before packing.
+            # npm pack --ignore-scripts bypasses prepack (which would re-run
+            # build), but prepack is also what normally rewrites workspace:*
+            # deps via preparePackageManifest. Without this, the tarball ships
+            # with workspace:* in package.json which npm can't resolve when
+            # installing globally. This mirrors what upstream's OCM workspace
+            # dep resolver does (rewriteWorkspaceDependencyVersions).
+            node --input-type=module -e '
+              import { readFileSync, writeFileSync } from "node:fs";
+              const pkg = JSON.parse(readFileSync("package.json", "utf8"));
+              const workspacePkgs = [
+                { name: "@openclaw/ai", dir: "packages/ai" },
+                { name: "@openclaw/session-url-contract", dir: "packages/session-url-contract" },
+              ];
+              const versions = new Map();
+              for (const { name, dir } of workspacePkgs) {
+                try {
+                  const wp = JSON.parse(readFileSync(`${dir}/package.json`, "utf8"));
+                  versions.set(name, wp.version);
+                } catch (e) {
+                  console.error(`Could not read workspace package ${name} from ${dir}: ${e.message}`);
+                  process.exit(1);
+                }
+              }
+              let rewritten = 0;
+              for (const section of ["dependencies", "optionalDependencies", "peerDependencies", "devDependencies"]) {
+                const deps = pkg[section];
+                if (!deps || typeof deps !== "object") continue;
+                for (const [depName, spec] of Object.entries(deps)) {
+                  if (typeof spec !== "string" || !spec.startsWith("workspace:")) continue;
+                  const version = versions.get(depName);
+                  if (!version) {
+                    console.error(`Unresolved workspace dependency: ${depName}`);
+                    process.exit(1);
+                  }
+                  deps[depName] = version;
+                  rewritten++;
+                }
+              }
+              writeFileSync("package.json", JSON.stringify(pkg, null, 2) + "\n");
+              console.error(`Rewrote ${rewritten} workspace:* dependencies to exact versions`);
+            '
             npm pack --ignore-scripts
             node scripts/package-changelog.mjs restore
             echo "tarball=$(ls openclaw-*.tgz | head -1)" >> "$GITHUB_OUTPUT"
