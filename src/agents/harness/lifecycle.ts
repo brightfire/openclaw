@@ -30,6 +30,7 @@ import {
   projectAgentRunAttemptTerminal,
 } from "../agent-run-terminal-outcome.js";
 import type { EmbeddedRunAttemptResult } from "../embedded-agent-runner/run/types.js";
+import { resolveAgentIdentity } from "../identity.js";
 import { recordAgentHarnessPreflightOwner } from "./errors.js";
 import { applyAgentHarnessResultClassification } from "./result-classification.js";
 import { EmptySettledTurnFinalizationError } from "./settled-turn-finalization-outcome.js";
@@ -91,6 +92,10 @@ function agentHarnessDiagnosticBase(
   return {
     runId: params.runId,
     sessionId: params.sessionId,
+    agentId: params.agentId,
+    agentLabel: params.config
+      ? resolveAgentIdentity(params.config, params.agentId ?? "")?.name?.trim()
+      : undefined,
     provider: params.provider,
     model: params.modelId,
     harnessId: harness.id,
