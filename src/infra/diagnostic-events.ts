@@ -541,6 +541,7 @@ export type DiagnosticSkillUsedEvent = DiagnosticBaseEvent & {
   sessionKey?: string;
   sessionId?: string;
   agentId?: string;
+  agentLabel?: string;
   skillName: string;
   skillSource: DiagnosticSkillTelemetrySource;
   activation: DiagnosticSkillActivation;
@@ -606,6 +607,8 @@ type DiagnosticHarnessRunBaseEvent = DiagnosticBaseEvent & {
   runId: string;
   sessionKey?: string;
   sessionId?: string;
+  agentId?: string;
+  agentLabel?: string;
   provider?: string;
   model?: string;
   trigger?: string;
@@ -645,6 +648,8 @@ type DiagnosticModelCallBaseEvent = DiagnosticBaseEvent & {
   callId: string;
   sessionKey?: string;
   sessionId?: string;
+  agentId?: string;
+  agentLabel?: string;
   provider: string;
   model: string;
   api?: string;
@@ -1366,7 +1371,9 @@ function emitDiagnosticEventWithTrust(
   const metadata: InternalDiagnosticEventMetadata = {
     ...(internal ? createInternalDiagnosticMetadata(trusted) : { trusted }),
     ...(options.coreModelRequestLifecycle
-      ? { [CORE_MODEL_REQUEST_LIFECYCLE_METADATA_KEY]: options.coreModelRequestLifecycle }
+      ? {
+          [CORE_MODEL_REQUEST_LIFECYCLE_METADATA_KEY]: options.coreModelRequestLifecycle,
+        }
       : {}),
     ...(options.coreSemanticRunProgress === true
       ? { [CORE_SEMANTIC_RUN_PROGRESS_METADATA_KEY]: true }
@@ -1378,7 +1385,12 @@ function emitDiagnosticEventWithTrust(
   if (ASYNC_DIAGNOSTIC_EVENT_TYPES.has(enriched.type)) {
     if (state.asyncQueue.length >= MAX_ASYNC_DIAGNOSTIC_EVENTS) {
       if (!trusted || !PRIORITY_ASYNC_DIAGNOSTIC_EVENT_TYPES.has(enriched.type)) {
-        noteAsyncDiagnosticDrop(state, { event: enriched, metadata, privateData, hostPluginId });
+        noteAsyncDiagnosticDrop(state, {
+          event: enriched,
+          metadata,
+          privateData,
+          hostPluginId,
+        });
         return;
       }
       const droppedEntry = makeRoomForPriorityAsyncDiagnosticEvent(state);
@@ -1386,7 +1398,12 @@ function emitDiagnosticEventWithTrust(
         noteAsyncDiagnosticDrop(state, droppedEntry);
       }
     }
-    state.asyncQueue.push({ event: enriched, metadata, privateData, hostPluginId });
+    state.asyncQueue.push({
+      event: enriched,
+      metadata,
+      privateData,
+      hostPluginId,
+    });
     if (prepareTracePropagation) {
       prepareDiagnosticTracePropagation(
         cloneDiagnosticEventForListener(enriched),
@@ -1403,7 +1420,9 @@ function emitDiagnosticEventWithTrust(
       createDiagnosticMetadataForListener(metadata),
     );
   }
-  dispatchDiagnosticEvent(state, enriched, metadata, privateData, { hostPluginId });
+  dispatchDiagnosticEvent(state, enriched, metadata, privateData, {
+    hostPluginId,
+  });
 }
 
 function isToolExecutionEventInput(
@@ -1425,7 +1444,11 @@ function dispatchTrustedToolExecutionEvent(
   let enriched: TrustedToolExecutionEvent;
   try {
     enriched = deepFreezeDiagnosticValue(
-      structuredClone({ ...event, seq: state.toolExecutionSeq, ts: Date.now() }),
+      structuredClone({
+        ...event,
+        seq: state.toolExecutionSeq,
+        ts: Date.now(),
+      }),
     ) as TrustedToolExecutionEvent;
   } catch (error) {
     console.error(
@@ -1505,7 +1528,10 @@ export function emitTrustedDiagnosticEventWithPrivateData(
 ) {
   const coreModelRequestLifecycle = consumeCoreModelRequestLifecycleDiagnosticEvent(event);
   if (!privateData || !Object.hasOwn(privateData, "hostPluginId")) {
-    emitDiagnosticEventWithTrust(event, true, { coreModelRequestLifecycle, privateData });
+    emitDiagnosticEventWithTrust(event, true, {
+      coreModelRequestLifecycle,
+      privateData,
+    });
     return;
   }
   // Plugin-facing emitters may provide trusted private content, but host attribution
