@@ -402,47 +402,82 @@ jobs:
             node --import tsx scripts/write-package-dist-inventory.ts
             node --import tsx scripts/test-built-bundled-channel-entry-smoke.mts
 
-            # Rewrite workspace:* deps to exact versions before packing.
-            # npm pack --ignore-scripts bypasses prepack (which would re-run
-            # build), but prepack is also what normally rewrites workspace:*
-            # deps via preparePackageManifest. Without this, the tarball ships
-            # with workspace:* in package.json which npm can't resolve when
-            # installing globally. This mirrors what upstream's OCM workspace
-            # dep resolver does (rewriteWorkspaceDependencyVersions).
+            # Bundle @openclaw/ai into the tarball and rewrite workspace:*
+            # deps to exact versions. npm pack --ignore-scripts bypasses
+            # prepack (which would re-run build), but prepack is also what
+            # normally handles workspace deps. Without this, the tarball ships
+            # with workspace:* in package.json and @openclaw/ai is not bundled,
+            # so npm can't install it globally. This mirrors what upstream's
+            # package-openclaw-for-docker.mts (prepareBundledAiRuntimePackage)
+            # and preparePackageManifest do together.
             node --input-type=module -e '
-              import { readFileSync, writeFileSync } from "node:fs";
+              import { readFileSync, writeFileSync, mkdirSync, renameSync, rmSync, readdirSync } from "node:fs";
+              import { execSync } from "node:child_process";
+
               const pkg = JSON.parse(readFileSync("package.json", "utf8"));
-              const workspacePkgs = [
-                { name: "@openclaw/ai", dir: "packages/ai" },
-                { name: "@openclaw/session-url-contract", dir: "packages/session-url-contract" },
-              ];
-              const versions = new Map();
-              for (const { name, dir } of workspacePkgs) {
-                try {
-                  const wp = JSON.parse(readFileSync(`${dir}/package.json`, "utf8"));
-                  versions.set(name, wp.version);
-                } catch (e) {
-                  console.error(`Could not read workspace package ${name} from ${dir}: ${e.message}`);
-                  process.exit(1);
+
+              // 1. Pack packages/ai into a tarball
+              execSync("pnpm --dir packages/ai pack --loglevel=error --use-stderr --pack-destination /tmp/ai-pack", {
+                stdio: "inherit",
+                timeout: 120000,
+              });
+
+              // 2. Find the packed tarball
+              const aiTarballs = readdirSync("/tmp/ai-pack").filter(f => f.startsWith("openclaw-ai-") && f.endsWith(".tgz"));
+              if (aiTarballs.length !== 1) {
+                console.error(`Expected 1 @openclaw/ai tarball, found ${aiTarballs.length}: ${aiTarballs.join(", ")}`);
+                process.exit(1);
+              }
+              const aiTarball = `/tmp/ai-pack/${aiTarballs[0]}`;
+
+              // 3. Extract into node_modules/@openclaw/ai/
+              const aiDest = "node_modules/@openclaw/ai";
+              mkdirSync(aiDest, { recursive: true });
+              execSync(`tar -xzf ${aiTarball} -C ${aiDest} --strip-components=1`, {
+                stdio: "inherit",
+              });
+
+              // 4. Read the staged package.json to get version + deps
+              const stagedPkg = JSON.parse(readFileSync(`${aiDest}/package.json`, "utf8"));
+              if (typeof stagedPkg.version !== "string" || !stagedPkg.version) {
+                console.error("Packed @openclaw/ai package must declare a version");
+                process.exit(1);
+              }
+
+              // 5. Hoist @openclaw/ai deps to root, strip from staged copy
+              //    (root owns these — same pattern as upstream)
+              for (const [name, version] of Object.entries(stagedPkg.dependencies ?? {})) {
+                if (version === "0.0.0-private") continue;
+                pkg.dependencies[name] = version;
+              }
+              delete stagedPkg.dependencies;
+              writeFileSync(`${aiDest}/package.json`, JSON.stringify(stagedPkg, null, 2) + "\n");
+
+              // 6. Set @openclaw/ai to exact version and add to bundleDependencies
+              //    bundleDependencies tells npm pack to include node_modules/@openclaw/ai
+              //    inside the tarball
+              pkg.dependencies["@openclaw/ai"] = stagedPkg.version;
+              const bundleDeps = pkg.bundleDependencies ?? [];
+              if (!Array.isArray(bundleDeps)) {
+                console.error("root package.json bundleDependencies must be an array when present");
+                process.exit(1);
+              }
+              pkg.bundleDependencies = [...new Set([...bundleDeps, "@openclaw/ai"])];
+
+              // 7. Strip workspace:* from devDependencies (preparePackageManifest does this)
+              const devDeps = pkg.devDependencies;
+              if (devDeps && typeof devDeps === "object") {
+                const cleaned = Object.entries(devDeps).filter(([, spec]) =>
+                  typeof spec !== "string" || !spec.startsWith("workspace:"));
+                if (cleaned.length === 0) {
+                  delete pkg.devDependencies;
+                } else {
+                  pkg.devDependencies = Object.fromEntries(cleaned);
                 }
               }
-              let rewritten = 0;
-              for (const section of ["dependencies", "optionalDependencies", "peerDependencies", "devDependencies"]) {
-                const deps = pkg[section];
-                if (!deps || typeof deps !== "object") continue;
-                for (const [depName, spec] of Object.entries(deps)) {
-                  if (typeof spec !== "string" || !spec.startsWith("workspace:")) continue;
-                  const version = versions.get(depName);
-                  if (!version) {
-                    console.error(`Unresolved workspace dependency: ${depName}`);
-                    process.exit(1);
-                  }
-                  deps[depName] = version;
-                  rewritten++;
-                }
-              }
+
               writeFileSync("package.json", JSON.stringify(pkg, null, 2) + "\n");
-              console.error(`Rewrote ${rewritten} workspace:* dependencies to exact versions`);
+              console.error(`Bundled @openclaw/ai@${stagedPkg.version} into node_modules and added to bundleDependencies`);
             '
             npm pack --ignore-scripts
             node scripts/package-changelog.mjs restore
