@@ -869,9 +869,6 @@ describe("diagnostics-otel service", () => {
       "openclaw.parent_span_id",
       "openclaw.runId",
       "openclaw.run_id",
-      "openclaw.sessionId",
-      "openclaw.session_id",
-      "openclaw.sessionKey",
       "openclaw.session_key",
       "openclaw.spanId",
       "openclaw.span_id",
@@ -1131,7 +1128,7 @@ describe("diagnostics-otel service", () => {
     expect(telemetryState.counters.get("openclaw.session.turn.created")?.add).toHaveBeenCalledWith(
       1,
       {
-        "openclaw.agent": "agent.default",
+        "openclaw.agent.id": "agent.default",
         "openclaw.channel": "telegram",
         "openclaw.trigger": "user",
       },
@@ -4283,7 +4280,7 @@ describe("diagnostics-otel service", () => {
     const tokens = telemetryState.counters.get("openclaw.tokens");
     expect(tokens?.add).toHaveBeenCalledWith(12, {
       "openclaw.channel": "webchat",
-      "openclaw.agent": "ops",
+      "openclaw.agent.id": "ops",
       "openclaw.provider": "openai",
       "openclaw.model": "gpt-5.4",
       "openclaw.token": "input",
@@ -4332,10 +4329,6 @@ describe("diagnostics-otel service", () => {
 
   test.each([
     ["bounds agent identifiers on model usage metric attributes", "Bearer sk-test-secret-value"],
-    [
-      "drops session-shaped agent identifiers from model usage metric attributes",
-      "Agent:qa:otel-trace-smoke",
-    ],
   ])("%s", async (_name, agentId) => {
     await startOtelService({ metrics: true });
 
@@ -4348,7 +4341,7 @@ describe("diagnostics-otel service", () => {
 
     expect(telemetryState.counters.get("openclaw.tokens")?.add).toHaveBeenCalledWith(2, {
       "openclaw.channel": "unknown",
-      "openclaw.agent": "unknown",
+      "openclaw.agent.id": "unknown",
       "openclaw.provider": "openai",
       "openclaw.model": "gpt-5.4",
       "openclaw.token": "input",
@@ -4356,6 +4349,25 @@ describe("diagnostics-otel service", () => {
     expect(
       JSON.stringify(telemetryState.counters.get("openclaw.tokens")?.add.mock.calls),
     ).not.toContain(agentId);
+  });
+
+  test("extracts agent name from session-shaped agent identifiers in model usage metric attributes", async () => {
+    await startOtelService({ metrics: true });
+
+    await emitAndFlush({
+      type: "model.usage",
+      agentId: "Agent:qa:otel-trace-smoke",
+      ...MODEL_FIXTURE,
+      usage: { input: 2 },
+    });
+
+    expect(telemetryState.counters.get("openclaw.tokens")?.add).toHaveBeenCalledWith(2, {
+      "openclaw.channel": "unknown",
+      "openclaw.agent.id": "qa",
+      "openclaw.provider": "openai",
+      "openclaw.model": "gpt-5.4",
+      "openclaw.token": "input",
+    });
   });
 
   test.each([
@@ -4441,15 +4453,14 @@ describe("diagnostics-otel service", () => {
     expect(modelUsageOptions?.attributes?.["gen_ai.usage.output_tokens"]).toBe(40);
     expect(modelUsageOptions?.attributes?.["gen_ai.usage.cache_read.input_tokens"]).toBe(30);
     expect(modelUsageOptions?.attributes?.["gen_ai.usage.cache_creation.input_tokens"]).toBe(20);
-    expect(Object.hasOwn(modelUsageOptions?.attributes ?? {}, "openclaw.sessionKey")).toBe(false);
-    expect(Object.hasOwn(modelUsageOptions?.attributes ?? {}, "openclaw.sessionId")).toBe(false);
+    expect(modelUsageOptions?.attributes?.["openclaw.sessionKey"]).toBe("session-key");
+    expect(modelUsageOptions?.attributes?.["openclaw.sessionId"]).toBe("session-id");
     expect(Object.hasOwn(modelUsageOptions?.attributes ?? {}, "gen_ai.provider.name")).toBe(false);
     expect(Object.hasOwn(modelUsageOptions?.attributes ?? {}, "gen_ai.input.messages")).toBe(false);
     expect(Object.hasOwn(modelUsageOptions?.attributes ?? {}, "gen_ai.output.messages")).toBe(
       false,
     );
     expect(modelUsageOptions?.startTime).toBeTypeOf("number");
-    expect(JSON.stringify(modelUsageOptions)).not.toContain("session-key");
   });
 
   test("separates request and turn GenAI client duration by operation", async () => {
@@ -4584,7 +4595,7 @@ describe("diagnostics-otel service", () => {
     });
 
     const expectedAttrs = {
-      "openclaw.agent": "main",
+      "openclaw.agent.id": "main",
       "openclaw.skill.activation": "read",
       "openclaw.skill.name": "tiny-llm-brainstorm",
       "openclaw.skill.source": "workspace",
@@ -4599,7 +4610,11 @@ describe("diagnostics-otel service", () => {
     );
     expect(skillSpanCall?.[1]).toMatchObject({ attributes: expectedAttrs });
     expect(JSON.stringify(skillSpanCall)).not.toContain("run-should-not-export");
-    expect(JSON.stringify(skillSpanCall)).not.toContain("session-should-not-export");
+    // sessionKey is now emitted on spans (DEV-457), so we only assert that
+    // the raw session-key value doesn't leak into unrelated metric calls.
+    expect(
+      JSON.stringify(telemetryState.counters.get("openclaw.skill.used")?.add.mock.calls),
+    ).not.toContain("session-should-not-export");
   });
 
   test("exports run, model call, and tool execution lifecycle spans", async () => {
@@ -4686,7 +4701,7 @@ describe("diagnostics-otel service", () => {
     expect(Object.hasOwn(runOptions?.attributes ?? {}, "gen_ai.system")).toBe(false);
     expect(Object.hasOwn(runOptions?.attributes ?? {}, "gen_ai.request.model")).toBe(false);
     expect(Object.hasOwn(runOptions?.attributes ?? {}, "openclaw.runId")).toBe(false);
-    expect(Object.hasOwn(runOptions?.attributes ?? {}, "openclaw.sessionKey")).toBe(false);
+    expect(Object.hasOwn(runOptions?.attributes ?? {}, "openclaw.sessionKey")).toBe(true);
     expect(Object.hasOwn(runOptions?.attributes ?? {}, "openclaw.traceId")).toBe(false);
     expect(runOptions?.startTime).toBeTypeOf("number");
 
@@ -4719,8 +4734,8 @@ describe("diagnostics-otel service", () => {
     expect(harnessOptions?.attributes?.["openclaw.harness.items.completed"]).toBe(2);
     expect(harnessOptions?.attributes?.["openclaw.harness.items.active"]).toBe(1);
     expect(Object.hasOwn(harnessOptions?.attributes ?? {}, "openclaw.runId")).toBe(false);
-    expect(Object.hasOwn(harnessOptions?.attributes ?? {}, "openclaw.sessionId")).toBe(false);
-    expect(Object.hasOwn(harnessOptions?.attributes ?? {}, "openclaw.sessionKey")).toBe(false);
+    expect(harnessOptions?.attributes?.["openclaw.sessionId"]).toBe("session-1");
+    expect(harnessOptions?.attributes?.["openclaw.sessionKey"]).toBe("session-key");
     expect(Object.hasOwn(harnessOptions?.attributes ?? {}, "openclaw.traceId")).toBe(false);
     expect(harnessOptions?.startTime).toBeTypeOf("number");
     expect(harnessCall?.[2]).toBeUndefined();
@@ -4890,7 +4905,7 @@ describe("diagnostics-otel service", () => {
     expect(failoverOptions?.attributes?.["openclaw.failover.suspended"]).toBe(true);
     expect(failoverOptions?.attributes?.["openclaw.failover.cascade_depth"]).toBe(1);
     expect(failoverOptions?.attributes?.["openclaw.lane"]).toBe("main");
-    expect(Object.hasOwn(failoverOptions?.attributes ?? {}, "openclaw.sessionId")).toBe(false);
+    expect(failoverOptions?.attributes?.["openclaw.sessionId"]).toBe("session-1");
     expect(Object.hasOwn(failoverOptions?.attributes ?? {}, "openclaw.sessionKey")).toBe(false);
     expect(failoverOptions?.startTime).toBeTypeOf("number");
     expect(firstSpanEndTime("openclaw.model.failover")).toBeTypeOf("number");
@@ -5184,7 +5199,7 @@ describe("diagnostics-otel service", () => {
     expect(contextOptions?.attributes?.["openclaw.context.reserve_tokens"]).toBe(4096);
     expect(contextOptions?.attributes).toBeTypeOf("object");
     expect(contextOptions?.startTime).toBeTypeOf("number");
-    expect(JSON.stringify(contextCall)).not.toContain("session-key");
+    expect(contextOptions?.attributes?.["openclaw.sessionKey"]).toBe("session-key");
     expect(JSON.stringify(contextCall)).not.toContain("prompt text");
     const linkedSpanContext = firstSetSpanContext();
     expect(linkedSpanContext.traceId).toBe(TRACE_ID);
@@ -5231,7 +5246,7 @@ describe("diagnostics-otel service", () => {
       code: 2,
       message: "known_poll_no_progress:block",
     });
-    expect(JSON.stringify(loopSpanCall)).not.toContain("session-key");
+    expect(JSON.stringify(loopSpanCall)).toContain("session-key");
     expect(JSON.stringify(loopSpanCall)).not.toContain("secret-bearing");
   });
 
