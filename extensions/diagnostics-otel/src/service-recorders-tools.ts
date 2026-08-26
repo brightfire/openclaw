@@ -34,6 +34,7 @@ export function createToolAndSystemRecorders(runtime: DiagnosticsRecorderRuntime
     takeTrackedTrustedSpan,
     setSpanAttrs,
     addRunAttrs,
+    resolveAgentLabelAttr,
     paramsSummaryAttrs,
     contentCapturePolicy,
     tracesEnabled,
@@ -66,7 +67,7 @@ export function createToolAndSystemRecorders(runtime: DiagnosticsRecorderRuntime
     "openclaw.skill.name": normalizeDiagnosticValue(evt.skillName, "skill"),
     "openclaw.skill.source": normalizeDiagnosticValue(evt.skillSource),
     "openclaw.skill.activation": normalizeDiagnosticValue(evt.activation),
-    ...(evt.agentId ? { "openclaw.agent": normalizeDiagnosticValue(evt.agentId) } : {}),
+    ...(evt.agentId || evt.agentLabel ? { "openclaw.agent.id": resolveAgentLabelAttr(evt) } : {}),
     ...(evt.toolName
       ? { "openclaw.toolName": normalizeDiagnosticValue(evt.toolName, "tool") }
       : {}),
@@ -304,13 +305,19 @@ export function createToolAndSystemRecorders(runtime: DiagnosticsRecorderRuntime
       "openclaw.liveness.queued": evt.queued,
       "openclaw.liveness.interval_ms": evt.intervalMs,
       ...(evt.eventLoopDelayP99Ms !== undefined
-        ? { "openclaw.liveness.event_loop_delay_p99_ms": evt.eventLoopDelayP99Ms }
+        ? {
+            "openclaw.liveness.event_loop_delay_p99_ms": evt.eventLoopDelayP99Ms,
+          }
         : {}),
       ...(evt.eventLoopDelayMaxMs !== undefined
-        ? { "openclaw.liveness.event_loop_delay_max_ms": evt.eventLoopDelayMaxMs }
+        ? {
+            "openclaw.liveness.event_loop_delay_max_ms": evt.eventLoopDelayMaxMs,
+          }
         : {}),
       ...(evt.eventLoopUtilization !== undefined
-        ? { "openclaw.liveness.event_loop_utilization": evt.eventLoopUtilization }
+        ? {
+            "openclaw.liveness.event_loop_utilization": evt.eventLoopUtilization,
+          }
         : {}),
       ...(evt.cpuUserMs !== undefined ? { "openclaw.liveness.cpu_user_ms": evt.cpuUserMs } : {}),
       ...(evt.cpuSystemMs !== undefined
@@ -369,7 +376,9 @@ export function createToolAndSystemRecorders(runtime: DiagnosticsRecorderRuntime
       "openclaw.status": evt.status,
       ...(evt.reason ? { "openclaw.reason": evt.reason } : {}),
       ...(evt.errorCategory
-        ? { "openclaw.errorCategory": normalizeDiagnosticValue(evt.errorCategory, "other") }
+        ? {
+            "openclaw.errorCategory": normalizeDiagnosticValue(evt.errorCategory, "other"),
+          }
         : {}),
     });
   };
