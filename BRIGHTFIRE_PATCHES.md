@@ -12,12 +12,12 @@ is maintained, the merge-not-rebase philosophy, and the new-entry template.
 
 | Name                           | Canonical branch                           | Branch HEAD   | Source PR                                       | Last updated |
 | ------------------------------ | ------------------------------------------ | ------------- | ----------------------------------------------- | ------------ |
-| Upstream Test Fixes            | `brightfire/upstream-test-fixes`           | `08f14ac3d3` | https://github.com/brightfire/openclaw/pull/150 | 2026-08-25   |
+| Upstream Test Fixes            | `brightfire/upstream-test-fixes`           | `0be91349da` | https://github.com/brightfire/openclaw/pull/150 | 2026-09-01   |
 | Slack Markdown                 | `brightfire/slack-mrkdwn`                  | `3fc05ac327`  | —                                               | 2026-08-24   |
 | CLI HTTP Health Fallback       | `brightfire/cli-http-fallback`             | `d0a8dfb097`  | —                                               | 2026-08-24   |
 | Webhook Session Target Support | `brightfire/webhook-sessiontarget-support` | `dd89590762`  | https://github.com/brightfire/openclaw/pull/106 | 2026-08-24   |
 | OTEL Improvements              | `brightfire/otel-improvements`             | `cfca72a2f6`  | https://github.com/brightfire/openclaw/pull/173 | 2026-09-01   |
-| Bundle All Plugins             | `brightfire/bundle-all-plugins`            | `71956fd01c`  | —                                               | 2026-08-25   |
+| Bundle All Plugins             | `brightfire/bundle-all-plugins`            | `d668fa9f4d`  | —                                               | 2026-09-01   |
 
 ## Upstream Test Fixes
 
