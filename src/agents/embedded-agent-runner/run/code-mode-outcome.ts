@@ -9,7 +9,7 @@ import { readToolResultDetails } from "../../tool-result-error.js";
 /** Preserve the model's ordinary error recovery without replaying uncertain mutations. */
 export function installCodeModeOutcomeHook(params: {
   agent: Agent;
-  onReconciliationCandidate?: () => void;
+  onReconciliationCandidate?: (parentToolCallId: string) => void;
 }): void {
   const previousAfterToolOutcome = params.agent.afterToolOutcome?.bind(params.agent);
 
@@ -21,8 +21,8 @@ export function installCodeModeOutcomeHook(params: {
     }
 
     const details = readToolResultDetails(context.result);
-    // Capability is host-minted on this exact result object; guest-supplied fields cannot grant it.
-    const noToolStarted = consumeRepairableCodeModeFailure(details);
+    // Exact host proof covers the full cell history, including work before wait; copies cannot grant it.
+    const repairableFailure = consumeRepairableCodeModeFailure(details);
     let prior: AfterToolCallResult | undefined;
     try {
       prior = await previousAfterToolOutcome?.(context, signal);
@@ -58,13 +58,13 @@ export function installCodeModeOutcomeHook(params: {
     const dispatchUnknown =
       context.executionStarted && typeof details?.bridgeDispatchStarted !== "boolean";
     const unsafeToContinue =
-      isCodeModeWait || ((bridgeStarted || dispatchUnknown) && !noToolStarted);
+      (isCodeModeWait || bridgeStarted || dispatchUnknown) && !repairableFailure;
     if (
       unsafeToContinue &&
       isCodeModeExec &&
       context.assistantMessage.content.filter((entry) => entry.type === "toolCall").length === 1
     ) {
-      params.onReconciliationCandidate?.();
+      params.onReconciliationCandidate?.(context.toolCall.id);
     }
 
     // Agent core owns ordinary continuation; only uncertain side effects need a restricted retry.

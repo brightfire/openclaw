@@ -3,15 +3,30 @@ import {
   buildExternalPluginLocalDist,
   listExternalPluginLocalDistPackageDirs,
 } from "../../scripts/build-external-plugin-local-dist.mts";
-import { DOCKER_SELECTED_PLUGIN_BUILD_IDS_ENV } from "../../scripts/lib/bundled-plugin-build-entries.mjs";
+import {
+  collectRootPackageExcludedExtensionDirs,
+  DOCKER_SELECTED_PLUGIN_BUILD_IDS_ENV,
+} from "../../scripts/lib/bundled-plugin-build-entries.mjs";
 
 describe("external plugin local dist build", () => {
   it("selects every externalized first-party plugin behind a package exclusion", () => {
     const packageDirs = listExternalPluginLocalDistPackageDirs();
+    const excludedPluginIds = collectRootPackageExcludedExtensionDirs();
 
-    // All plugins are bundled into the core tarball (bundledDist: true), so none
-    // are externalized for separate local dist builds.
-    expect(packageDirs).toHaveLength(0);
+    expect(packageDirs).toHaveLength(63);
+    expect(packageDirs).toEqual(
+      expect.arrayContaining([
+        "extensions/diffs",
+        "extensions/diffs-language-pack",
+        "extensions/slack",
+        "extensions/sms",
+        "extensions/mxc",
+      ]),
+    );
+    expect(packageDirs).not.toContain("extensions/whatsapp");
+    expect(
+      packageDirs.every((packageDir) => excludedPluginIds.has(packageDir.split("/").at(-1) ?? "")),
+    ).toBe(true);
   });
 
   it("leaves Docker-selected external plugin compilation on the unified build path", () => {
