@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   refit:
-    if: github.repository == 'openclaw/openclaw' && github.ref == 'refs/heads/main'
+    if: false  # Disabled on Brightfire fork
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
