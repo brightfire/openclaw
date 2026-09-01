@@ -410,8 +410,14 @@ jobs:
             # so npm can't install it globally. This mirrors what upstream's
             # package-openclaw-for-docker.mts (prepareBundledAiRuntimePackage)
             # and preparePackageManifest do together.
+            #
+            # Save packages/ai/package.json before pnpm pack, which temporarily
+            # rewrites workspace:* to resolved versions (0.0.0-private). Restore
+            # immediately after so concurrent tests reading packages/ai/package.json
+            # still see workspace:* values.
+            cp packages/ai/package.json /tmp/ai-pkg-backup.json
             node --input-type=module -e '
-              import { readFileSync, writeFileSync, mkdirSync, renameSync, rmSync, readdirSync } from "node:fs";
+              import { readFileSync, writeFileSync, mkdirSync, renameSync, rmSync, readdirSync, copyFileSync } from "node:fs";
               import { execSync } from "node:child_process";
 
               const pkg = JSON.parse(readFileSync("package.json", "utf8"));
@@ -421,6 +427,9 @@ jobs:
                 stdio: "inherit",
                 timeout: 120000,
               });
+              // 1b. Restore packages/ai/package.json — pnpm pack rewrites
+              // workspace:* to 0.0.0-private in the source file temporarily.
+              copyFileSync("/tmp/ai-pkg-backup.json", "packages/ai/package.json");
 
               // 2. Find the packed tarball
               const aiTarballs = readdirSync("/tmp/ai-pack").filter(f => f.startsWith("openclaw-ai-") && f.endsWith(".tgz"));
