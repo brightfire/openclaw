@@ -42,7 +42,7 @@ for PATCH in "${PATCH_LIST[@]}"; do
     #      need to update assertions for build behavior changes introduced by
     #      the same patch.  The patch branch version is authoritative.
     CONFLICTED=$(git diff --name-only --diff-filter=U 2>/dev/null)
-    NON_AUTO=$(echo "$CONFLICTED" | grep -vE '^docs/\.generated/.*\.sha256$|^test/scripts/.*\.test\.ts$' || true)
+    NON_AUTO=$(echo "$CONFLICTED" | grep -vE '^docs/\.generated/.*\.sha256$|^test/scripts/.*\.test\.ts$|^ui/src/.*\.test\.ts$|^ui/src/.*\.browser\.test\.ts$' || true)
     if [ -n "$CONFLICTED" ] && [ -z "$NON_AUTO" ]; then
       echo "Auto-resolving generated baseline hashes and test-script conflicts (taking patch version)"
       while IFS= read -r file; do
