@@ -253,9 +253,9 @@ export function createModelRecorders(runtime: DiagnosticsRecorderRuntime) {
   ) => {
     const traceContext = trustedTraceContext(evt, metadata);
     const parentSpanId = traceContext?.parentSpanId;
-    if (!parentSpanId) return;
+    if (!parentSpanId) { return; }
     const parentSpan = activeTrustedSpans.get(parentSpanId);
-    if (!parentSpan) return;
+    if (!parentSpan) { return; }
     const ioAttrs: Record<string, string | number | boolean> = {};
     assignOtelModelContentAttributes(ioAttrs, modelContent, policy);
     if (Object.keys(ioAttrs).length > 0) {
