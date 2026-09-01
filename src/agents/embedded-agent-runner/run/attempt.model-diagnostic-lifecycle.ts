@@ -55,6 +55,7 @@ export type ModelCallDiagnosticContext = {
   ownerGeneration?: CoreModelRequestOwnerGeneration;
   onStarted?: () => void;
   suppressPluginHooks?: boolean;
+  requestTimeoutMs?: number;
 };
 
 export type ModelCallEventBase = Omit<

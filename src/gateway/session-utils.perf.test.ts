@@ -15,13 +15,14 @@ import type { SessionEntry } from "../config/sessions.js";
 import { createEmptyPluginRegistry } from "../plugins/registry-empty.js";
 import { resetPluginRuntimeStateForTest, setActivePluginRegistry } from "../plugins/runtime.js";
 import { openOpenClawStateDatabase } from "../state/openclaw-state-db.js";
+import { ensureProfileForEmail } from "../state/user-profiles.js";
 import { withStateDirEnv } from "../test-helpers/state-dir-env.js";
 import * as usageFormat from "../utils/usage-format.js";
 import * as titleReader from "./session-transcript-title-reader.js";
 import { resolveEstimatedSessionCostUsd } from "./session-utils-core.js";
 import { resolveGatewaySessionThinkingProjectionInternal } from "./session-utils-model.js";
 import { buildSessionListRowMetadataContext } from "./session-utils-projection.js";
-import { listSessionsFromStore, listSessionsFromStoreAsync } from "./session-utils.js";
+import { listSessionsFromStoreAsync } from "./session-utils.js";
 
 /**
  * Regression smoke for the per-list rowContext resolver cache. The bug we are
@@ -34,7 +35,7 @@ import { listSessionsFromStore, listSessionsFromStoreAsync } from "./session-uti
  * CI runners cannot give a stable wall-time signal, and call-count regressions
  * are the actual scaling failure mode we care about.
  */
-describe("listSessionsFromStore resolver cache", () => {
+describe("session list resolver cache", () => {
   test("collapses request-local resolver work to O(unique provider/model tuples)", () => {
     const cfg: OpenClawConfig = {
       agents: {
@@ -226,7 +227,7 @@ describe("listSessionsFromStore resolver cache", () => {
         expect(acpSelects).toBe(3);
 
         acpSelects = 0;
-        const result = listSessionsFromStore({
+        const result = await listSessionsFromStoreAsync({
           cfg,
           storePath: path.join(stateDir, "agents", "default", "sessions", "sessions.json"),
           store: {
@@ -234,7 +235,6 @@ describe("listSessionsFromStore resolver cache", () => {
             [missingKey]: missingEntry,
             [markerKey]: markerEntry,
           },
-          lightweightListRows: true,
           opts: { limit: 3 },
         });
         expect(result.sessions).toHaveLength(3);
@@ -245,7 +245,18 @@ describe("listSessionsFromStore resolver cache", () => {
     });
   });
 
-  test("batches transcript title hydration once instead of O(rows)", async () => {
+  test.each([
+    { name: "ordinary", count: 30, owned: 0, limit: 30, rows: 30, enriched: 30, sharedTail: 29 },
+    {
+      name: "retained owner-first",
+      count: 480,
+      owned: 240,
+      limit: 240,
+      rows: 300,
+      enriched: 160,
+      sharedTail: 99,
+    },
+  ])("batches $name transcript hydration without starving shared rows", async (scenario) => {
     await withStateDirEnv("openclaw-perf-title-batch-", async () => {
       resetPluginRuntimeStateForTest();
       setActivePluginRegistry(createEmptyPluginRegistry());
@@ -256,10 +267,20 @@ describe("listSessionsFromStore resolver cache", () => {
       setRuntimeConfigSnapshot(cfg);
       const storePath = "/tmp/sessions.json";
       const store: Record<string, SessionEntry> = {};
-      for (let index = 0; index < 30; index += 1) {
+      const ownerId = scenario.owned ? ensureProfileForEmail("owner@example.com").id : undefined;
+      for (let index = 0; index < scenario.count; index += 1) {
         const sessionId = `title-batch-${index}`;
         const sessionKey = `agent:main:${sessionId}`;
-        const entry = { sessionId, updatedAt: 1_000 - index } satisfies SessionEntry;
+        const entry: SessionEntry = {
+          sessionId,
+          updatedAt: 1_000 - index,
+          ...(ownerId && index >= scenario.count - scenario.owned
+            ? {
+                createdVia: "operator",
+                createdActor: { type: "human", source: "profile", id: ownerId },
+              }
+            : {}),
+        };
         store[sessionKey] = entry;
       }
 
@@ -276,21 +297,21 @@ describe("listSessionsFromStore resolver cache", () => {
           cfg,
           storePath,
           store,
-          lightweightListRows: true,
-          opts: { includeDerivedTitles: true, includeLastMessage: true, limit: 30 },
+          ownerFirstActorId: ownerId,
+          opts: { includeDerivedTitles: true, includeLastMessage: true, limit: scenario.limit },
         });
 
-        expect(result.sessions).toHaveLength(30);
+        expect(result.sessions).toHaveLength(scenario.rows);
         expect(titleBatchSpy).toHaveBeenCalledOnce();
-        expect(titleBatchSpy.mock.calls[0]?.[0]).toHaveLength(30);
+        expect(titleBatchSpy.mock.calls[0]?.[0]).toHaveLength(scenario.enriched);
         const sessionsByKey = new Map(result.sessions.map((session) => [session.key, session]));
         expect(sessionsByKey.get("agent:main:title-batch-0")).toMatchObject({
           derivedTitle: "title 0",
           lastMessagePreview: "last 0",
         });
-        expect(sessionsByKey.get("agent:main:title-batch-29")).toMatchObject({
-          derivedTitle: "title 29",
-          lastMessagePreview: "last 29",
+        expect(sessionsByKey.get(`agent:main:title-batch-${scenario.sharedTail}`)).toMatchObject({
+          derivedTitle: `title ${scenario.sharedTail}`,
+          lastMessagePreview: `last ${scenario.sharedTail}`,
         });
 
         titleBatchSpy.mockClear();
@@ -298,8 +319,8 @@ describe("listSessionsFromStore resolver cache", () => {
           cfg,
           storePath,
           store,
-          lightweightListRows: true,
-          opts: { includeDerivedTitles: false, includeLastMessage: false, limit: 30 },
+          ownerFirstActorId: ownerId,
+          opts: { includeDerivedTitles: false, includeLastMessage: false, limit: scenario.limit },
         });
         expect(titleBatchSpy).toHaveBeenCalledOnce();
         expect(titleBatchSpy).toHaveBeenCalledWith([]);
