@@ -86,7 +86,7 @@ describe("buildDraftSessionCreateParams", () => {
     ).toEqual({ agentId: "main", message: "", attachments });
   });
 
-  it("includes selected model, context-window, and thinking overrides for a plain session", () => {
+  it("includes selected model, context-window, thinking, and fast overrides for a plain session", () => {
     expect(
       buildDraftSessionCreateParams({
         agentId: "main",
@@ -94,6 +94,7 @@ describe("buildDraftSessionCreateParams", () => {
         model: "anthropic/claude-sonnet-4-6",
         contextWindow: "200k",
         thinkingLevel: "high",
+        fastMode: true,
         worktree: false,
       }),
     ).toEqual({
@@ -102,6 +103,27 @@ describe("buildDraftSessionCreateParams", () => {
       model: "anthropic/claude-sonnet-4-6",
       contextWindow: "200k",
       thinkingLevel: "high",
+      fastMode: true,
+    });
+  });
+
+  it("includes selected capability overrides in the atomic create request", () => {
+    const toolOverrides = {
+      mcpServers: { github: false },
+      skills: { release: false },
+      webSearch: false,
+    };
+    expect(
+      buildDraftSessionCreateParams({
+        agentId: "main",
+        message: "use these capabilities",
+        toolOverrides,
+        worktree: false,
+      }),
+    ).toEqual({
+      agentId: "main",
+      message: "use these capabilities",
+      toolOverrides,
     });
   });
 
@@ -113,6 +135,7 @@ describe("buildDraftSessionCreateParams", () => {
         model: "openai/gpt-5.5",
         contextWindow: "200k",
         thinkingLevel: "medium",
+        fastMode: true,
         worktree: false,
         catalogId: "claude",
       }),
