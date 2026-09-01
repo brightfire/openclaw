@@ -196,6 +196,9 @@ jobs:
           );
           NODE
 
+      - name: Prepare Git owner
+        uses: openclaw/openclaw/.github/actions/git-owner@dd4528b6393e7d00063067a080ca7241b48ce475
+
       - name: Checkout selected ref
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -227,16 +230,16 @@ jobs:
             exit 1
           fi
 
-          timeout --signal=TERM --kill-after=10s 120s git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          python3 -I -S "$CI_GIT_OWNER" --checkout-git 120 fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
 
           if [[ "$tag_candidate" =~ ^v ]]; then
-            timeout --signal=TERM --kill-after=10s 120s git fetch --no-tags origin "+refs/tags/${tag_candidate}:refs/tags/${tag_candidate}"
+            python3 -I -S "$CI_GIT_OWNER" --checkout-git 120 fetch --no-tags origin "+refs/tags/${tag_candidate}:refs/tags/${tag_candidate}"
             release_tag_sha="$(git rev-parse "refs/tags/${tag_candidate}^{commit}")"
             if [[ "$selected_revision" == "$release_tag_sha" ]]; then
               trusted_reason="release-tag"
             fi
           elif [[ "$branch_candidate" =~ ^release/[0-9]{4}\.[0-9]+\.[0-9]+$ ]]; then
-            timeout --signal=TERM --kill-after=10s 120s git fetch --no-tags origin "+refs/heads/${branch_candidate}:refs/remotes/origin/${branch_candidate}"
+            python3 -I -S "$CI_GIT_OWNER" --checkout-git 120 fetch --no-tags origin "+refs/heads/${branch_candidate}:refs/remotes/origin/${branch_candidate}"
             release_branch_sha="$(git rev-parse "refs/remotes/origin/${branch_candidate}")"
             if [[ "$selected_revision" == "$release_branch_sha" ]]; then
               trusted_reason="release-branch-head"
@@ -335,6 +338,9 @@ jobs:
               );
             }
 
+      - name: Prepare Git owner
+        uses: openclaw/openclaw/.github/actions/git-owner@dd4528b6393e7d00063067a080ca7241b48ce475
+
       - name: Checkout trusted QA harness
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -353,7 +359,7 @@ jobs:
             echo "Expected workflow SHA must be a full lowercase commit SHA." >&2
             exit 1
           fi
-          git fetch --no-tags --no-recurse-submodules --depth=1 origin "$EXPECTED_WORKFLOW_SHA"
+          python3 -I -S "$CI_GIT_OWNER" --checkout-git 0 fetch --no-tags --no-recurse-submodules --depth=1 origin "$EXPECTED_WORKFLOW_SHA"
           git checkout --detach "$EXPECTED_WORKFLOW_SHA"
           test "$(git rev-parse HEAD)" = "$EXPECTED_WORKFLOW_SHA"
 
@@ -378,9 +384,10 @@ jobs:
           fi
           git init selected
           git -C selected remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
-          git -C selected fetch --no-tags --no-recurse-submodules --depth=1 origin "$EXPECTED_SHA"
-          git -C selected checkout --detach FETCH_HEAD
-          test "$(git -C selected rev-parse HEAD)" = "$EXPECTED_SHA"
+          cd selected
+          python3 -I -S "$CI_GIT_OWNER" --checkout-git 0 fetch --no-tags --no-recurse-submodules --depth=1 origin "$EXPECTED_SHA"
+          git checkout --detach FETCH_HEAD
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
 
       - name: Install selected dependencies
         shell: bash
@@ -389,6 +396,7 @@ jobs:
           set -euo pipefail
           selected_home="${RUNNER_TEMP}/openclaw-qa-selected-home"
           mkdir -p "$selected_home"
+          # Native pnpm reads this policy from env; the config flag also covers older targets.
           env -i \
             CI=true \
             COREPACK_HOME="${selected_home}/.cache/corepack" \
@@ -396,12 +404,13 @@ jobs:
             LANG=C.UTF-8 \
             NPM_CONFIG_USERCONFIG=/dev/null \
             PATH="$PATH" \
+            PNPM_CONFIG_PACKAGE_IMPORT_METHOD=copy \
             RUNNER_TEMP="$RUNNER_TEMP" \
             pnpm install \
               --store-dir "$RUNNER_TEMP/openclaw-qa-selected-pnpm-store" \
               --prefer-offline \
               --frozen-lockfile \
-              --ignore-scripts=false \
+              --config.ignore-scripts=false \
               --config.engine-strict=false \
               --config.enable-pre-post-scripts=true \
               --config.package-import-method=copy \
@@ -498,6 +507,9 @@ jobs:
               );
             }
 
+      - name: Prepare Git owner
+        uses: openclaw/openclaw/.github/actions/git-owner@dd4528b6393e7d00063067a080ca7241b48ce475
+
       - name: Checkout trusted QA harness
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -516,7 +528,7 @@ jobs:
             echo "Expected workflow SHA must be a full lowercase commit SHA." >&2
             exit 1
           fi
-          git fetch --no-tags --no-recurse-submodules --depth=1 origin "$EXPECTED_WORKFLOW_SHA"
+          python3 -I -S "$CI_GIT_OWNER" --checkout-git 0 fetch --no-tags --no-recurse-submodules --depth=1 origin "$EXPECTED_WORKFLOW_SHA"
           git checkout --detach "$EXPECTED_WORKFLOW_SHA"
           test "$(git rev-parse HEAD)" = "$EXPECTED_WORKFLOW_SHA"
 
@@ -541,9 +553,10 @@ jobs:
           fi
           git init selected
           git -C selected remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
-          git -C selected fetch --no-tags --no-recurse-submodules --depth=1 origin "$EXPECTED_SHA"
-          git -C selected checkout --detach FETCH_HEAD
-          test "$(git -C selected rev-parse HEAD)" = "$EXPECTED_SHA"
+          cd selected
+          python3 -I -S "$CI_GIT_OWNER" --checkout-git 0 fetch --no-tags --no-recurse-submodules --depth=1 origin "$EXPECTED_SHA"
+          git checkout --detach FETCH_HEAD
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
 
       - name: Install selected dependencies
         shell: bash
@@ -559,12 +572,13 @@ jobs:
             LANG=C.UTF-8 \
             NPM_CONFIG_USERCONFIG=/dev/null \
             PATH="$PATH" \
+            PNPM_CONFIG_PACKAGE_IMPORT_METHOD=copy \
             RUNNER_TEMP="$RUNNER_TEMP" \
             pnpm install \
               --store-dir "$RUNNER_TEMP/openclaw-qa-selected-pnpm-store" \
               --prefer-offline \
               --frozen-lockfile \
-              --ignore-scripts=false \
+              --config.ignore-scripts=false \
               --config.engine-strict=false \
               --config.enable-pre-post-scripts=true \
               --config.package-import-method=copy \
@@ -580,7 +594,7 @@ jobs:
             echo "Protocol comparison base must be a full commit SHA." >&2
             exit 1
           fi
-          timeout --signal=TERM --kill-after=10s 120s git fetch --no-tags --no-recurse-submodules --depth=1 origin \
+          python3 -I -S "$CI_GIT_OWNER" --checkout-git 120 fetch --no-tags --no-recurse-submodules --depth=1 origin \
             "+${PROTOCOL_SINCE_BASE_SHA}:refs/remotes/origin/qa-protocol-base"
           test "$(git rev-parse refs/remotes/origin/qa-protocol-base^{commit})" = "$PROTOCOL_SINCE_BASE_SHA"
 
@@ -803,6 +817,9 @@ jobs:
               );
             }
 
+      - name: Prepare Git owner
+        uses: openclaw/openclaw/.github/actions/git-owner@dd4528b6393e7d00063067a080ca7241b48ce475
+
       - name: Checkout trusted QA harness
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -821,7 +838,7 @@ jobs:
             echo "Expected workflow SHA must be a full lowercase commit SHA." >&2
             exit 1
           fi
-          git fetch --no-tags --no-recurse-submodules --depth=1 origin "$EXPECTED_WORKFLOW_SHA"
+          python3 -I -S "$CI_GIT_OWNER" --checkout-git 0 fetch --no-tags --no-recurse-submodules --depth=1 origin "$EXPECTED_WORKFLOW_SHA"
           git checkout --detach "$EXPECTED_WORKFLOW_SHA"
           test "$(git rev-parse HEAD)" = "$EXPECTED_WORKFLOW_SHA"
 
@@ -846,9 +863,10 @@ jobs:
           fi
           git init selected
           git -C selected remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
-          git -C selected fetch --no-tags --no-recurse-submodules --depth=1 origin "$EXPECTED_SHA"
-          git -C selected checkout --detach FETCH_HEAD
-          test "$(git -C selected rev-parse HEAD)" = "$EXPECTED_SHA"
+          cd selected
+          python3 -I -S "$CI_GIT_OWNER" --checkout-git 0 fetch --no-tags --no-recurse-submodules --depth=1 origin "$EXPECTED_SHA"
+          git checkout --detach FETCH_HEAD
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
 
       - name: Install selected dependencies
         shell: bash
@@ -864,12 +882,13 @@ jobs:
             LANG=C.UTF-8 \
             NPM_CONFIG_USERCONFIG=/dev/null \
             PATH="$PATH" \
+            PNPM_CONFIG_PACKAGE_IMPORT_METHOD=copy \
             RUNNER_TEMP="$RUNNER_TEMP" \
             pnpm install \
               --store-dir "$RUNNER_TEMP/openclaw-qa-selected-pnpm-store" \
               --prefer-offline \
               --frozen-lockfile \
-              --ignore-scripts=false \
+              --config.ignore-scripts=false \
               --config.engine-strict=false \
               --config.enable-pre-post-scripts=true \
               --config.package-import-method=copy \

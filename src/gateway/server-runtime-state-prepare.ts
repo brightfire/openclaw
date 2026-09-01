@@ -13,6 +13,8 @@ import { isGatewayDraining } from "../process/command-queue.js";
 import type { RuntimeEnv } from "../runtime.js";
 import { getActiveSecretsRuntimeConfigSnapshot } from "../secrets/runtime-state.js";
 import { NODE_DESKTOP_STREAM_COMMAND } from "../shared/node-desktop-stream.js";
+import { openClawStateDatabaseCache } from "../state/openclaw-state-db-cache.js";
+import { resolveDatabasePath } from "../state/openclaw-state-db-maintenance.js";
 import { createAuthRateLimiter, type AuthRateLimiter } from "./auth-rate-limit.js";
 import { resolveGatewayAuth } from "./auth.js";
 import { createDesktopSessionRegistry } from "./desktop/session-registry.js";
@@ -130,7 +132,7 @@ export async function prepareGatewayKernelState(params: {
       ? createDesktopSessionRegistry()
       : undefined;
   const nodeDesktopStreamBroker =
-    nodeDesktopObserveAvailable || workerDesktopObserveAvailable
+    nodeDesktopObserveAvailable || shouldStartWorkerEnvironmentService
       ? (
           await startupTrace.measure(
             "node-desktop.runtime-import",
@@ -156,6 +158,8 @@ export async function prepareGatewayKernelState(params: {
           const workerModule = await loadWorkerEnvironmentStartupModule();
           return await workerModule.createGatewayWorkerEnvironmentRuntime({
             getPluginRegistry: () => pluginRuntime.registry,
+            getPortalRuntime: () => pluginGatewayContext.current,
+            resolveGatewayContext: () => pluginGatewayContext.current,
             desktopSessionRegistry,
             ...(nodeDesktopStreamBroker ? { nodeDesktopStreamBroker } : {}),
             startup: workerEnvironmentStartup,
@@ -172,6 +176,7 @@ export async function prepareGatewayKernelState(params: {
     bindNodeWorkspaceBindingResolver,
     bindGitHubPublication,
     handleNodeWorkerBundleTransferRequest,
+    handleWorkerBootstrapArtifactTransferRequest,
     handleNodeWorkspaceTransferRequest,
   } = workerEnvironmentRuntime;
   // Assigned once approval managers exist; placement dispatch must not run before then.
@@ -206,7 +211,7 @@ export async function prepareGatewayKernelState(params: {
             getSessionChangeContext: () => pluginGatewayContext.current,
             persistAbandonedPartial: async ({ sessionId, sessionKey, agentId, runId }) => {
               // Placement runtime starts before chat state exists; moves invoke this only after startup.
-              const text = connectionState.chatRunState.resolveBuffer(runId).text;
+              const text = connectionState.chatRunState.resolveBuffer(runId, { final: true }).text;
               if (!text.trim()) {
                 return;
               }
@@ -219,6 +224,7 @@ export async function prepareGatewayKernelState(params: {
               });
             },
             revokeSessionAuthority: (request) => workerDispatchAuthority.revoke(request),
+            info: (message) => log.info(message),
             warn: (message) => log.warn(message),
             ...(githubPublicationRuntime ? { githubPublicationRuntime } : {}),
           }),
@@ -437,6 +443,8 @@ export async function prepareGatewayKernelState(params: {
     channelManager,
     ...startupCheckerDeps,
     getEventLoopHealth: readinessEventLoopHealth.snapshot,
+    getStateDatabaseFailure: () =>
+      openClawStateDatabaseCache.getOpenClawStateDatabaseRuntimeFailure(resolveDatabasePath()),
     shouldSkipChannelReadiness: () =>
       isTruthyEnvValue(process.env.OPENCLAW_SKIP_CHANNELS) ||
       isTruthyEnvValue(process.env.OPENCLAW_SKIP_PROVIDERS),
@@ -489,6 +497,7 @@ export async function prepareGatewayKernelState(params: {
     handleWatchNodeRequest: async (req: IncomingMessage, res: ServerResponse) =>
       (await watchNodeRequestHandler.current?.(req, res)) ?? false,
     handleNodeWorkerBundleTransferRequest,
+    handleWorkerBootstrapArtifactTransferRequest,
     handleNodeWorkspaceTransferRequest,
     workerIngressEnabled: Boolean(workerEnvironmentService),
     desktopSessionRegistry,
