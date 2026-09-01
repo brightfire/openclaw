@@ -60,7 +60,6 @@ export async function runEmbeddedAttempt(
   const runAbortController = new AbortController();
   const {
     agentCoreThinkingLevel,
-    defaultAgentId,
     effectiveCwd,
     effectiveFsWorkspaceOnly,
     effectiveWorkspace,
@@ -326,7 +325,6 @@ export async function runEmbeddedAttempt(
           attempt: params,
           bootstrap: preparedBootstrap,
           capabilityToolNames: toolSearchRunPlan.capabilityToolNames,
-          defaultAgentId,
           effectiveCwd,
           effectiveTools,
           effectiveWorkspace,
@@ -382,6 +380,7 @@ export async function runEmbeddedAttempt(
             effectiveWorkspace,
             initialSystemPrompt: preparedSystemPrompt.systemPromptText,
             isRawModelRun,
+            nestedToolActivities: preparedToolBase.nestedToolActivities,
             sessionManager: {
               replayAllowedToolNames: toolSearchRunPlan.replayAllowedToolNames,
               resolveActiveContextEnginePluginId,
@@ -531,6 +530,7 @@ export async function runEmbeddedAttempt(
         buildAbortSettlePromise,
         trajectoryRecorder,
         trajectoryEndRecorded: executionState.trajectoryEndRecorded,
+        deferredLifecycleOwner: executionState.deferredLifecycleOwner,
         cleanupYieldAborted: terminal.cleanupYieldAborted,
         emitDiagnosticRunCompleted,
         readState: () => ({

@@ -105,10 +105,6 @@ the UI does not guess. It shows a small disambiguation view with the matching
 display names, agents, and longer id prefixes. Use a longer prefix to make the
 URL unique. Current Gateways return at most ten recent candidates; when that
 bound is reached, the view treats the result as incomplete instead of guessing.
-Against an older Gateway that predates short-id resolve support, the UI falls
-back to the prior bounded list search, scanning at most five pages of results.
-It likewise reports an incomplete search instead of guessing when that fallback
-cannot prove uniqueness.
 
 To continue one of these links in the terminal or attach a coding harness, see
 [Session synchronization and attachment](/concepts/session-attachment).
@@ -122,6 +118,21 @@ query-form identity, and new links must not emit it. The Sessions list keeps its
 own `?session=` parameter because that parameter expands a row; it is not a
 session deep link. The one-shot composer value `?draft=` remains supported on
 chat and dashboard session paths.
+
+### Native catalog links
+
+Native catalog threads use the agent path with a source query:
+
+```text
+/chat/<agentId>?catalog=<catalogId>&host=<hostId>&thread=<threadId>
+```
+
+URL-encode each query value. The agent in the path owns the OpenClaw pane,
+including catalog reads and continuation; `catalog`, `host`, and `thread`
+identify the native source. Opening the same source under different agents
+keeps their panes and drafts separate, including in split view. Continuing a
+thread navigates to the adopted OpenClaw session link. The same catalog query
+also works under `/dashboard/<agentId>`.
 
 ## Focus presentation routes
 
@@ -267,7 +278,11 @@ These Gateway-served documents sit outside the application route table:
 - `/?onboarding=1` opens the first-run onboarding presentation.
 - `/approve/<approvalId>` opens a standalone approval document. With a base
   path, use `<basePath>/approve/<approvalId>`. The id identifies an approval but
-  never authorizes it; normal Gateway authentication still applies.
+  never authorizes it; normal Gateway authentication still applies. An approval
+  notification uses a scope-relative approval path and may add
+  `#gatewayUrl=<encoded-ws-url>` when the owning Gateway has
+  `gateway.publicOrigin`. The Control UI strips that fragment before
+  authentication and applies the normal remote-Gateway handoff below.
 
 Registered exact and prefix plugin HTTP routes can own `/focus` and
 `/focus/*`. After plugin authentication and dispatch decline a request, the
