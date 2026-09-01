@@ -104,6 +104,7 @@ function projectGatewayConnectFailure(params: {
 /** Probe Gateway connectivity or read-capability status with optional RPC verification. */
 export async function probeGatewayStatus(opts: {
   url: string;
+  localPortOverride?: number;
   token?: string;
   password?: string;
   config?: OpenClawConfig;
@@ -137,6 +138,7 @@ export async function probeGatewayStatus(opts: {
           let server: GatewayProbeServerSummary | undefined;
           await callGateway({
             url: opts.url,
+            localPortOverride: opts.localPortOverride,
             token: opts.token,
             password: opts.password,
             tlsFingerprint: opts.tlsFingerprint,

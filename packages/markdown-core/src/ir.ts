@@ -270,6 +270,11 @@ export type MarkdownParseOptions = {
   horizontalRuleText?: string;
   /** Preserve source line spacing after headings and code blocks. */
   preserveSourceBlockSpacing?: boolean;
+  /**
+   * Treat Python-style `__name__` member, call, argument, and index identifiers as literal text
+   * instead of emphasis delimiters. Disabled by default.
+   */
+  preserveDunderIdentifiers?: boolean;
 };
 
 function appendHeadingSeparator(state: RenderState, nextBlockStart: number | undefined) {
@@ -288,7 +293,23 @@ function appendHeadingSeparator(state: RenderState, nextBlockStart: number | und
   state.headingLineEnd = undefined;
 }
 
+// These seven parser switches bound the prepared configurations to 128 entries.
+// Parse state and rendered options remain local to each markdownToIRWithMeta call.
+const markdownParsers = new Map<number, MarkdownItParser>();
+
 function createMarkdownIt(options: MarkdownParseOptions): MarkdownItParser {
+  const key =
+    ((options.linkify ?? true) ? 1 : 0) |
+    (options.preserveDunderIdentifiers ? 2 : 0) |
+    (options.enableTaskLists ? 4 : 0) |
+    (options.enableHtmlUnderline ? 8 : 0) |
+    (options.enableSpoilers ? 16 : 0) |
+    (options.tableMode && options.tableMode !== "off" ? 32 : 0) |
+    (options.autolink === false ? 64 : 0);
+  const prepared = markdownParsers.get(key);
+  if (prepared) {
+    return prepared;
+  }
   const md = new MarkdownIt({
     html: false,
     linkify: options.linkify ?? true,
@@ -298,6 +319,13 @@ function createMarkdownIt(options: MarkdownParseOptions): MarkdownItParser {
   md.linkify.set({ fuzzyLink: true });
   md.use(markdownItCjkFriendly);
   md.use(markdownItAssistantTranscriptRoles);
+  if (options.preserveDunderIdentifiers) {
+    md.inline.ruler.before(
+      "emphasis",
+      "markdown_core_dunder_identifiers",
+      preserveDunderIdentifier,
+    );
+  }
   if (options.enableTaskLists) {
     md.core.ruler.before("inline", "markdown_core_task_lists", protectTaskListMarkers);
   }
@@ -321,7 +349,34 @@ function createMarkdownIt(options: MarkdownParseOptions): MarkdownItParser {
   if (options.autolink === false) {
     md.disable("autolink");
   }
+  markdownParsers.set(key, md);
   return md;
+}
+
+function preserveDunderIdentifier(state: StateInline, silent: boolean): boolean {
+  const match = /^__[\p{L}_][\p{L}\p{N}_]*__/u.exec(state.src.slice(state.pos, state.posMax));
+  if (!match) {
+    return false;
+  }
+  const identifier = match[0];
+  const end = state.pos + identifier.length;
+  const before = state.src[state.pos - 1];
+  const beforeBefore = state.src[state.pos - 2];
+  const after = end < state.posMax ? state.src[end] : undefined;
+  const member = before === ".";
+  const call = after === "(";
+  const functionArgument = before === "(" && /[\p{L}\p{N}_]/u.test(beforeBefore ?? "");
+  const index = after === "[";
+  if (!member && !call && !functionArgument && !index) {
+    return false;
+  }
+  // markdown-it also invokes matching rules silently while scanning labels;
+  // both modes must consume the same source span.
+  if (!silent) {
+    state.push("text", "", 0).content = identifier;
+  }
+  state.pos = end;
+  return true;
 }
 
 function protectTaskListMarkers(state: StateCore): void {

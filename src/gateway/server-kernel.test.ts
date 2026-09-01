@@ -38,6 +38,7 @@ describe("createGatewayKernel", () => {
       },
     });
     const token = "gateway-kernel-direct-close-readiness-token";
+    const configReloaderStop = createDeferred();
     let kernel: Awaited<ReturnType<typeof createGatewayKernel>> | undefined;
     try {
       await state.writeConfig({
@@ -58,7 +59,6 @@ describe("createGatewayKernel", () => {
 
       const closeFirstStop = vi.fn(async () => {});
       kernel.kernel.swapBonjourStop(closeFirstStop);
-      const configReloaderStop = createDeferred();
       vi.spyOn(kernel.runtimeState.configReloader, "stop").mockReturnValue(
         configReloaderStop.promise,
       );
@@ -71,6 +71,7 @@ describe("createGatewayKernel", () => {
       expect(closeFirstStop).toHaveBeenCalledOnce();
       expect(kernel.runtimeState.bonjourStop).toBeNull();
     } finally {
+      configReloaderStop.resolve();
       try {
         await kernel?.closeOnStartupFailure();
       } finally {
@@ -397,8 +398,6 @@ describe("createGatewayKernel", () => {
         "plugins.metadata.scan",
         "plugins.metadata.freeze",
         "config.snapshot.read.materialize",
-        "plugins.metadata.scan",
-        "plugins.metadata.freeze",
         "config.snapshot.read.observe",
         "config.auth",
         "config.auth.snapshot-validate",
@@ -412,8 +411,6 @@ describe("createGatewayKernel", () => {
         "config.auth.secrets-activate",
         "startup.maintenance",
         "plugins.bootstrap",
-        "plugins.metadata.scan",
-        "plugins.metadata.freeze",
         "runtime.config",
         "control-ui.root",
         "tls.runtime",
