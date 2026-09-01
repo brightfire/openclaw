@@ -25,15 +25,10 @@ import { bindSessionWindowEntryProjection } from "./session-accessor.sqlite-sess
 import { parseSessionEntryJson } from "./session-accessor.sqlite-status.js";
 import { ensureTranscriptGenerationInTransaction } from "./session-accessor.sqlite-transcript-state.js";
 import { canonicalSessionKeyMigrationRequiredError } from "./session-canonical-key.js";
-import { invalidateExistingSessionTranscriptDisplayInTransaction } from "./session-transcript-display.js";
 import {
   deleteSessionTranscriptIndexInTransaction,
   reconcileSessionTranscriptIndexInTransaction,
 } from "./session-transcript-index.js";
-import {
-  startSessionTranscriptDisplayReconcile,
-  startSessionTranscriptIndexReconcile,
-} from "./session-transcript-reconcile.js";
 import { normalizeStoreSessionKey } from "./store-entry.js";
 import type { SessionEntry } from "./types.js";
 
@@ -90,7 +85,6 @@ export function readExactSessionEntryRowForCanonicalRepair(
     entry:
       parsedEntry ??
       ({ sessionId: row.current_session_id, updatedAt: row.updated_at } satisfies SessionEntry),
-    legacyKeys: [],
     row,
   };
 }
@@ -474,22 +468,9 @@ function copySqliteSessionOwnedStateForRepair(params: {
     if (!replaced) {
       continue;
     }
-    // Every transcript projection follows the selected canonical source, including replacements
-    // whose final sequence is unchanged or lower than the destination it supersedes.
-    const displayProjectionInvalidated = invalidateExistingSessionTranscriptDisplayInTransaction(
-      params.destination.db,
-      sessionId,
-    );
+    // Doctor repair runs outside gateway requests and must atomically finish copied projections.
     deleteSessionTranscriptIndexInTransaction(params.destination.db, sessionId);
     reconcileSessionTranscriptIndexInTransaction(params.destination.db, sessionId);
-    const startReconcile = displayProjectionInvalidated
-      ? startSessionTranscriptDisplayReconcile
-      : startSessionTranscriptIndexReconcile;
-    startReconcile({
-      agentId: params.destination.agentId,
-      path: params.destination.path,
-      preferredSessionId: sessionId,
-    });
     publishSessionEntryCacheInvalidation(params.destination);
   }
   // Membership is authorization state and follows the selected winner. Boards,
@@ -507,6 +488,7 @@ function copySqliteSessionOwnedStateForRepair(params: {
     params.destination,
     params.preferredSessionKey ? [params.preferredSessionKey] : sourceKeys,
     params.canonicalKey,
+    { includeParticipants: false },
   );
 }
 
