@@ -1,11 +1,19 @@
 import { SpanStatusCode } from "@opentelemetry/api";
 import { normalizeDiagnosticValue } from "openclaw/plugin-sdk/diagnostic-runtime";
 import { redactSensitiveText } from "../api.js";
-import type { DiagnosticEventMetadata, DiagnosticEventPayload } from "../api.js";
+import type {
+  DiagnosticEventMetadata,
+  DiagnosticEventPayload,
+  DiagnosticEventPrivateData,
+} from "../api.js";
 import {
   assignGenAiSpanIdentityAttrs,
   assignPositiveNumberAttr,
 } from "./service-genai-attributes.js";
+import {
+  MAX_OTEL_CONTENT_ATTRIBUTE_CHARS,
+  normalizeOtelLogString,
+} from "./service-content-normalization.js";
 import type { DiagnosticsRecorderRuntime } from "./service-recorder-runtime.js";
 import type { MessageDeliveryDiagnosticEvent, TrustedSpanAliasOwner } from "./service-types.js";
 
@@ -47,6 +55,7 @@ export function createUsageRecorders(runtime: DiagnosticsRecorderRuntime) {
     addRunAttrs,
     addSessionAttrs,
     resolveAgentLabelAttr,
+    contentCapturePolicy,
     tracesEnabled,
   } = runtime;
 
@@ -263,6 +272,7 @@ export function createUsageRecorders(runtime: DiagnosticsRecorderRuntime) {
   const recordMessageProcessed = (
     evt: Extract<DiagnosticEventPayload, { type: "message.processed" }>,
     metadata: DiagnosticEventMetadata,
+    privateData: DiagnosticEventPrivateData,
   ) => {
     const attrs = {
       "openclaw.channel": normalizeDiagnosticValue(evt.channel),
@@ -279,6 +289,18 @@ export function createUsageRecorders(runtime: DiagnosticsRecorderRuntime) {
     addSessionAttrs(spanAttrs, evt);
     if (evt.reason) {
       spanAttrs["openclaw.reason"] = normalizeDiagnosticValue(evt.reason, "unknown");
+    }
+    if (contentCapturePolicy.inputMessages && privateData.messageContent?.userPrompt) {
+      spanAttrs["input.value"] = normalizeOtelLogString(
+        privateData.messageContent.userPrompt,
+        MAX_OTEL_CONTENT_ATTRIBUTE_CHARS,
+      );
+    }
+    if (contentCapturePolicy.outputMessages && privateData.messageContent?.finalResponse) {
+      spanAttrs["output.value"] = normalizeOtelLogString(
+        privateData.messageContent.finalResponse,
+        MAX_OTEL_CONTENT_ATTRIBUTE_CHARS,
+      );
     }
     const trackedSpan = getTrackedInternalOrTrustedSpan(evt, metadata);
     const span =

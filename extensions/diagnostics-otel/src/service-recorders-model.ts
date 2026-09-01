@@ -16,7 +16,6 @@ import {
 } from "./service-genai-attributes.js";
 import { assignOtelModelContentAttributes } from "./service-genai-content.js";
 import type { OtelModelCallContent } from "./service-genai-content.js";
-import type { OtelContentCapturePolicy } from "./service-content-normalization.js";
 import type { DiagnosticsRecorderRuntime } from "./service-recorder-runtime.js";
 import type { ModelCallLifecycleDiagnosticEvent } from "./service-types.js";
 
@@ -29,8 +28,6 @@ export function createModelRecorders(runtime: DiagnosticsRecorderRuntime) {
     modelCallTimeToFirstByteHistogram,
     spanWithDuration,
     activeTrustedParentContext,
-    activeTrustedSpans,
-    trustedTraceContext,
     trackTrustedSpan,
     getTrackedInternalOrTrustedSpan,
     takeTrackedTrustedSpan,
@@ -153,13 +150,6 @@ export function createModelRecorders(runtime: DiagnosticsRecorderRuntime) {
     assignModelCallPromptStatsAttrs(spanAttrs, evt);
     assignModelCallUsageAttrs(spanAttrs, evt);
     assignOtelModelContentAttributes(spanAttrs, modelContent, contentCapturePolicy);
-    // Propagate I/O content to the parent span (typically openclaw.harness.run) so
-    // that Langfuse traces show the prompt and final response at the harness level.
-    // In v2026.6.8 and earlier, model call events reused the harness.run span's
-    // spanId (via takeTrackedTrustedSpan), so content landed on it directly.
-    // v2026.8.1 creates a child trace context for model calls, so the content is
-    // on the child model.call span instead. This restores the prior visibility.
-    propagateContentToParent(evt, metadata, modelContent, contentCapturePolicy);
     const span =
       takeTrackedTrustedSpan(evt, metadata) ??
       spanWithDuration(modelCallSpanName(evt), spanAttrs, evt.durationMs, {
@@ -215,9 +205,6 @@ export function createModelRecorders(runtime: DiagnosticsRecorderRuntime) {
     assignModelCallPromptStatsAttrs(spanAttrs, evt);
     assignModelCallUsageAttrs(spanAttrs, evt);
     assignOtelModelContentAttributes(spanAttrs, modelContent, contentCapturePolicy);
-    // Propagate I/O content to the parent span for the same reason as in
-    // recordModelCallCompleted — restores harness-level I/O visibility.
-    propagateContentToParent(evt, metadata, modelContent, contentCapturePolicy);
     const span =
       takeTrackedTrustedSpan(evt, metadata) ??
       spanWithDuration(modelCallSpanName(evt), spanAttrs, evt.durationMs, {
@@ -232,35 +219,6 @@ export function createModelRecorders(runtime: DiagnosticsRecorderRuntime) {
       message: redactSensitiveText(evt.errorCategory),
     });
     span.end(evt.ts);
-  };
-
-  /**
-   * Propagates model call I/O content (input.value, output.value, gen_ai.* messages)
-   * to the parent span in activeTrustedSpans (typically openclaw.harness.run).
-   *
-   * Before v2026.8.1, model call events carried the same trace spanId as the
-   * harness.run span, so takeTrackedTrustedSpan returned the harness.run span
-   * itself and content attributes landed on it directly. v2026.8.1 creates a
-   * child trace context for model calls, so the content is on the child
-   * model.call span instead. This helper restores the prior visibility by
-   * mirroring the I/O attributes onto the parent span.
-   */
-  const propagateContentToParent = (
-    evt: DiagnosticEventPayload,
-    metadata: DiagnosticEventMetadata,
-    modelContent: OtelModelCallContent | undefined,
-    policy: OtelContentCapturePolicy,
-  ) => {
-    const traceContext = trustedTraceContext(evt, metadata);
-    const parentSpanId = traceContext?.parentSpanId;
-    if (!parentSpanId) { return; }
-    const parentSpan = activeTrustedSpans.get(parentSpanId);
-    if (!parentSpan) { return; }
-    const ioAttrs: Record<string, string | number | boolean> = {};
-    assignOtelModelContentAttributes(ioAttrs, modelContent, policy);
-    if (Object.keys(ioAttrs).length > 0) {
-      setSpanAttrs(parentSpan, ioAttrs);
-    }
   };
 
   return {

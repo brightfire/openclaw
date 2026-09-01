@@ -12,6 +12,8 @@ type MessageLifecycleProcessedOptions = MessageLifecycleRef & {
   durationMs?: number;
   reason?: string;
   error?: string;
+  userPrompt?: string;
+  finalResponse?: string;
 };
 
 export function createDiagnosticMessageLifecycle(
@@ -89,6 +91,8 @@ export function createDiagnosticMessageLifecycle(
         outcome,
         reason: options?.reason,
         error: options?.error,
+        userPrompt: options?.userPrompt,
+        finalResponse: options?.finalResponse,
       });
     },
   };
