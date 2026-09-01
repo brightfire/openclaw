@@ -8,9 +8,9 @@ import type {
   DiagnosticEventPayload,
   DiagnosticEventPrivateData,
 } from "../api.js";
-import { normalizeOtelErrorMessage } from "./service-content-normalization.js";
 import {
   MAX_OTEL_CONTENT_ATTRIBUTE_CHARS,
+  normalizeOtelErrorMessage,
   normalizeOtelLogString,
 } from "./service-content-normalization.js";
 import type { DiagnosticsRecorderRuntime } from "./service-recorder-runtime.js";
