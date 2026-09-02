@@ -246,6 +246,9 @@ importers:
       file-type:
         specifier: 22.0.2
         version: 22.0.2(supports-color@10.2.2)
+      get-east-asian-width:
+        specifier: 1.6.0
+        version: 1.6.0
       grammy:
         specifier: 1.45.1
         version: 1.45.1(supports-color@10.2.2)

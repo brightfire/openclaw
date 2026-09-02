@@ -227,14 +227,14 @@ describe("tsdown config", () => {
     expect(entrySources(distGraph)["docker-healthcheck"]).toBe("src/docker-healthcheck.ts");
   });
 
-  it("keeps root-package-excluded external plugins out of the root dist graph", () => {
+  it("includes formerly external plugins with bundledDist in the root dist graph", () => {
     const distGraph = requireUnifiedDistGraph();
     const keys = entryKeys(distGraph);
     const hasPluginEntry = (pluginId: string) =>
       keys.some((entry) => entry.startsWith(`${bundledPluginRoot(pluginId)}/`));
 
-    expect(hasPluginEntry("amazon-bedrock")).toBe(false);
-    expect(hasPluginEntry("amazon-bedrock-mantle")).toBe(false);
+    expect(hasPluginEntry("amazon-bedrock")).toBe(true);
+    expect(hasPluginEntry("amazon-bedrock-mantle")).toBe(true);
   });
 
   it("keeps gateway lifecycle lazy runtime behind one stable dist entry", () => {
