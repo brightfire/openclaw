@@ -11,8 +11,8 @@ const goVersionResult = spawnSync("go", ["version"], { encoding: "utf8" });
 const hasGoToolchain = goVersionResult.status === 0;
 // Check if Go version meets the go.mod minimum (1.26.0)
 const goVersionMatch = goVersionResult.stdout.match(/go(\d+)\.(\d+)\./);
-const goMajor = goVersionMatch ? Number.parseInt(goVersionMatch[1], 10) : 0;
-const goMinor = goVersionMatch ? Number.parseInt(goVersionMatch[2], 10) : 0;
+const goMajor = goVersionMatch ? Number.parseInt(goVersionMatch[1] ?? "0", 10) : 0;
+const goMinor = goVersionMatch ? Number.parseInt(goVersionMatch[2] ?? "0", 10) : 0;
 const goVersionMeetsMin = goMajor > 1 || (goMajor === 1 && goMinor >= 26);
 
 describe.skipIf(!hasGoToolchain || !goVersionMeetsMin)("docs-i18n Go module", () => {
