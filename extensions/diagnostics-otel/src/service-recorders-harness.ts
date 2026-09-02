@@ -8,7 +8,11 @@ import type {
   DiagnosticEventPayload,
   DiagnosticEventPrivateData,
 } from "../api.js";
-import { normalizeOtelErrorMessage } from "./service-content-normalization.js";
+import {
+  MAX_OTEL_CONTENT_ATTRIBUTE_CHARS,
+  normalizeOtelErrorMessage,
+  normalizeOtelLogString,
+} from "./service-content-normalization.js";
 import type { DiagnosticsRecorderRuntime } from "./service-recorder-runtime.js";
 import type { HarnessRunDiagnosticEvent, ModelFailoverDiagnosticEvent } from "./service-types.js";
 
@@ -24,6 +28,8 @@ export function createHarnessRecorders(runtime: DiagnosticsRecorderRuntime) {
     setSpanAttrs,
     completeTrackedLifecycleSpan,
     addRunAttrs,
+    addSessionAttrs,
+    contentCapturePolicy,
     tracesEnabled,
   } = runtime;
 
@@ -38,19 +44,31 @@ export function createHarnessRecorders(runtime: DiagnosticsRecorderRuntime) {
     "openclaw.provider": normalizeDiagnosticValue(evt.provider, "unknown"),
     "openclaw.model": normalizeDiagnosticValue(evt.model, "unknown"),
     ...(evt.channel ? { "openclaw.channel": normalizeDiagnosticValue(evt.channel) } : {}),
+    ...(evt.agentId ? { "openclaw.agent.id": evt.agentId } : {}),
   });
 
   const recordHarnessRunStarted = (
     evt: Extract<DiagnosticEventPayload, { type: "harness.run.started" }>,
     metadata: DiagnosticEventMetadata,
+    privateData: DiagnosticEventPrivateData,
   ) => {
     if (!tracesEnabled || !metadata.trusted) {
       return;
     }
+    const spanAttrs: Record<string, string | number | boolean> = {
+      ...harnessRunMetricAttrs(evt),
+    };
+    addSessionAttrs(spanAttrs, evt);
+    if (contentCapturePolicy.inputMessages && privateData.harnessContent?.userPrompt) {
+      spanAttrs["input.value"] = normalizeOtelLogString(
+        privateData.harnessContent.userPrompt,
+        MAX_OTEL_CONTENT_ATTRIBUTE_CHARS,
+      );
+    }
     trackTrustedSpan(
       evt,
       metadata,
-      spanWithDuration("openclaw.harness.run", harnessRunMetricAttrs(evt), undefined, {
+      spanWithDuration("openclaw.harness.run", spanAttrs, undefined, {
         parentContext: activeTrustedParentContext(evt, metadata),
         startTimeMs: evt.ts,
       }),
@@ -69,6 +87,7 @@ export function createHarnessRecorders(runtime: DiagnosticsRecorderRuntime) {
     const spanAttrs: Record<string, string | number | boolean> = {
       ...harnessRunMetricAttrs(evt),
     };
+    addSessionAttrs(spanAttrs, evt);
     if (evt.resultClassification) {
       spanAttrs["openclaw.harness.result_classification"] = normalizeDiagnosticValue(
         evt.resultClassification,
@@ -86,6 +105,12 @@ export function createHarnessRecorders(runtime: DiagnosticsRecorderRuntime) {
     const redactedError = normalizeOtelErrorMessage(privateData.errorMessage);
     if (redactedError) {
       spanAttrs["openclaw.error"] = redactedError;
+    }
+    if (contentCapturePolicy.outputMessages && privateData.harnessContent?.finalResponse) {
+      spanAttrs["output.value"] = normalizeOtelLogString(
+        privateData.harnessContent.finalResponse,
+        MAX_OTEL_CONTENT_ATTRIBUTE_CHARS,
+      );
     }
     const trustedTrace = trustedTraceContext(evt, metadata);
     const trackedSpan = trustedTrace?.spanId
@@ -134,6 +159,7 @@ export function createHarnessRecorders(runtime: DiagnosticsRecorderRuntime) {
       ...(redactedError ? { "openclaw.error": redactedError } : {}),
       ...(evt.cleanupFailed ? { "openclaw.harness.cleanup_failed": true } : {}),
     };
+    addSessionAttrs(spanAttrs, evt);
     const trustedTrace = trustedTraceContext(evt, metadata);
     const trackedSpan = trustedTrace?.spanId
       ? activeTrustedSpans.get(trustedTrace.spanId)
@@ -209,6 +235,7 @@ export function createHarnessRecorders(runtime: DiagnosticsRecorderRuntime) {
     const spanAttrs: Record<string, string | number | boolean> = {
       "openclaw.failover.reason": normalizeDiagnosticValue(evt.reason, "unknown"),
     };
+    addSessionAttrs(spanAttrs, evt);
     if (evt.fromProvider) {
       spanAttrs["openclaw.provider"] = evt.fromProvider;
     }
