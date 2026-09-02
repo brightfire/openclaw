@@ -18,7 +18,7 @@ is maintained, the merge-not-rebase philosophy, and the new-entry template.
 | CLI HTTP Health Fallback       | `brightfire/cli-http-fallback`             | `d0a8dfb097` | —                                               | 2026-08-24   |
 | Webhook Session Target Support | `brightfire/webhook-sessiontarget-support` | `dd89590762` | https://github.com/brightfire/openclaw/pull/106 | 2026-08-24   |
 | OTEL Improvements              | `brightfire/otel-improvements`             | `b2ddfd8861` | https://github.com/brightfire/openclaw/pull/173 | 2026-09-01   |
-| Bundle All Plugins             | `brightfire/bundle-all-plugins`            | `d668fa9f4d` | —                                               | 2026-09-01   |
+| Bundle All Plugins             | `brightfire/bundle-all-plugins`            | `af9b89c95d` | —                                               | 2026-09-01   |
 
 ## Upstream Test Fixes
 
