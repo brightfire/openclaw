@@ -14,7 +14,7 @@ import {
 } from "./tsdown-declaration-fixture.js";
 
 describe("write-unified-entry-dts", () => {
-  it("reuses six complete unified groups after unrelated byte edits while rebuilding runtime", () => {
+  it("reuses seven complete unified groups after unrelated byte edits while rebuilding runtime", () => {
     const { root, write, production, declarations } = createFixture(
       TSDOWN_NON_SDK_DTS_CONFIG_GROUPS,
     );
@@ -70,7 +70,7 @@ describe("write-unified-entry-dts", () => {
     expect(initial.status, initial.stdout + initial.stderr).toBe(0);
     expect(
       (initial.stdout + initial.stderr).match(/\[tsdown-build\] invocation \d\/\d finished/gu),
-    ).toHaveLength(7);
+    ).toHaveLength(8);
     for (const entry of production) {
       expect(fs.statSync(path.join(root, `dist/${entry}.d.ts`)).size, entry).toBeGreaterThan(0);
     }
@@ -133,8 +133,8 @@ describe("write-unified-entry-dts", () => {
     const initial = runUnifiedWriter(root, env);
     expect(initial.status, initial.stdout + initial.stderr).toBe(0);
     expect(
-      (initial.stdout + initial.stderr).match(/\[tsdown-build\] invocation \d\/6 finished/gu),
-    ).toHaveLength(6);
+      (initial.stdout + initial.stderr).match(/\[tsdown-build\] invocation \d\/7 finished/gu),
+    ).toHaveLength(7);
     expect(fs.existsSync(path.join(root, "dist/extensions/fixture-a/index.d.ts"))).toBe(true);
     expect(fs.existsSync(path.join(root, "dist/extensions/fixture-b/index.d.ts"))).toBe(false);
     const before = treeHashes(path.join(root, "dist"));
@@ -174,7 +174,7 @@ selected.hooks = { "build:done": async (context) => {
       }
       const failed = runUnifiedWriter(root);
       expect(failed.status, failed.stdout + failed.stderr).toBeGreaterThan(0);
-      expect(failed.stdout + failed.stderr).toContain("invocation 6/6 finished");
+      expect(failed.stdout + failed.stderr).toContain("invocation 7/7 finished");
       expect(failed.stdout + failed.stderr).toContain(
         failure === "last compiler failure"
           ? "MISSING_EXPORT"

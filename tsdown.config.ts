@@ -342,7 +342,8 @@ function shouldAlwaysBundleDependency(id: string): boolean {
     ].includes(id) ||
     id.startsWith("@openclaw/acp-core/") ||
     id === "zod" ||
-    id.startsWith("zod/")
+    id.startsWith("zod/") ||
+    id === "get-east-asian-width"
   );
 }
 
@@ -685,7 +686,7 @@ function buildUnifiedDeclarationPartitions(
     [...extensionEntriesById.entries()]
       .toSorted(([left], [right]) => left.localeCompare(right))
       .map(([, extensionEntries]) => extensionEntries),
-    5,
+    6,
   );
   const partitions = [baseEntries, ...pluginSdkPartitions, ...extensionPartitions];
 

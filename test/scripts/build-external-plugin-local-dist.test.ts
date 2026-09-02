@@ -13,14 +13,13 @@ describe("external plugin local dist build", () => {
     const packageDirs = listExternalPluginLocalDistPackageDirs();
     const excludedPluginIds = collectRootPackageExcludedExtensionDirs();
 
-    expect(packageDirs).toHaveLength(64);
+    // bundle-all-plugins sets bundledDist: true for most extensions, leaving
+    // only diffs, diffs-language-pack, and whatsapp as externalized.
+    expect(packageDirs).toHaveLength(3);
     expect(packageDirs).toEqual(
       expect.arrayContaining([
         "extensions/diffs",
         "extensions/diffs-language-pack",
-        "extensions/slack",
-        "extensions/sms",
-        "extensions/mxc",
         "extensions/whatsapp",
       ]),
     );
@@ -34,7 +33,7 @@ describe("external plugin local dist build", () => {
       listExternalPluginLocalDistPackageDirs({
         env: {
           ...process.env,
-          [DOCKER_SELECTED_PLUGIN_BUILD_IDS_ENV]: "slack,whatsapp",
+          [DOCKER_SELECTED_PLUGIN_BUILD_IDS_ENV]: "slack",
         },
       }),
     ).toEqual([]);
@@ -45,7 +44,7 @@ describe("external plugin local dist build", () => {
       buildExternalPluginLocalDist({
         env: {
           ...process.env,
-          [DOCKER_SELECTED_PLUGIN_BUILD_IDS_ENV]: "slack,whatsapp",
+          [DOCKER_SELECTED_PLUGIN_BUILD_IDS_ENV]: "slack",
         },
         logLevel: "silent",
       }),

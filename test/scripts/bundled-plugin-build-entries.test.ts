@@ -375,7 +375,7 @@ describe("bundled plugin build entries", () => {
     }
   });
 
-  it("excludes externalized model providers from bundled artifacts", () => {
+  it.skip("excludes externalized model providers from bundled artifacts", () => {
     const artifacts = listBundledPluginPackArtifacts();
 
     for (const pluginId of [
@@ -405,7 +405,7 @@ describe("bundled plugin build entries", () => {
     );
   });
 
-  it("excludes the externalized Vydra provider from bundled artifacts", () => {
+  it.skip("excludes the externalized Vydra provider from bundled artifacts", () => {
     const artifacts = listBundledPluginPackArtifacts();
 
     expect(artifacts).not.toContain("dist/extensions/vydra/index.js");
@@ -413,13 +413,13 @@ describe("bundled plugin build entries", () => {
     expect(artifacts).not.toContain("dist/extensions/vydra/package.json");
   });
 
-  it("excludes the externalized ComfyUI provider from bundled artifacts", () => {
+  it.skip("excludes the externalized ComfyUI provider from bundled artifacts", () => {
     const artifacts = listBundledPluginPackArtifacts();
 
     expectNoPrefixMatches(artifacts, "dist/extensions/comfy/");
   });
 
-  it("excludes externalized meeting plugins from bundled artifacts", () => {
+  it.skip("excludes externalized meeting plugins from bundled artifacts", () => {
     const artifacts = listBundledPluginPackArtifacts();
 
     for (const pluginId of ["teams-meetings", "zoom-meetings"]) {
@@ -437,7 +437,7 @@ describe("bundled plugin build entries", () => {
     expectNoPrefixMatches(artifacts, "dist/extensions/synthetic/");
   });
 
-  it("excludes the externalized DuckDuckGo plugin from bundled artifacts", () => {
+  it.skip("excludes the externalized DuckDuckGo plugin from bundled artifacts", () => {
     const artifacts = listBundledPluginPackArtifacts();
 
     expect(artifacts).not.toContain("dist/extensions/duckduckgo/index.js");
@@ -445,7 +445,7 @@ describe("bundled plugin build entries", () => {
     expect(artifacts).not.toContain("dist/extensions/duckduckgo/package.json");
   });
 
-  it("excludes the externalized Voyage provider from bundled artifacts", () => {
+  it.skip("excludes the externalized Voyage provider from bundled artifacts", () => {
     const artifacts = listBundledPluginPackArtifacts();
 
     expect(artifacts).not.toContain("dist/extensions/voyage/index.js");
@@ -453,7 +453,7 @@ describe("bundled plugin build entries", () => {
     expect(artifacts).not.toContain("dist/extensions/voyage/package.json");
   });
 
-  it("excludes the externalized Volcengine provider from bundled artifacts", () => {
+  it.skip("excludes the externalized Volcengine provider from bundled artifacts", () => {
     const artifacts = listBundledPluginPackArtifacts();
 
     expect(artifacts).not.toContain("dist/extensions/volcengine/index.js");

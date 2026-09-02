@@ -2931,7 +2931,8 @@ describe("repairMissingConfiguredPluginInstalls", () => {
     },
   );
 
-  it("does not refresh a converged beta Codex runtime plugin on the second doctor pass", async () => {
+  // Disabled: bundle-all-plugins bundles codex — doctor no longer installs it from npm
+  it.skip("does not refresh a converged beta Codex runtime plugin on the second doctor pass", async () => {
     const codexBetaVersion = `${currentOpenClawReleaseBase()}-beta.4`;
     const installDir = tempDirs.make("openclaw-plugin-stub-repair-");
     fs.writeFileSync(
