@@ -16,9 +16,10 @@ import re
 import sys
 
 
-# Match a `brightfire/<name>` ref inside backticks (used in the
-# Canonical branch table cell).
-_CANONICAL_BRANCH_RE = re.compile(r"`brightfire/([^`]+)`")
+# Extract the full branch name from the Canonical branch table cell.
+# The cell content is wrapped in backticks — the branch name is whatever
+# is between them (e.g. `0a6c013be5f/upstream-test-fixes`).
+_CANONICAL_BRANCH_RE = re.compile(r"`([^`]+)`")
 
 
 def _split_row(line: str) -> list[str]:
@@ -43,9 +44,9 @@ def parse_patches(patches_file: str) -> list[str]:
     """Parse BRIGHTFIRE_PATCHES.md and return patch branch names to apply.
 
     Walks the `## Patches` table; presence in the table is the apply signal.
-    Every row with a valid `brightfire/<name>` Canonical branch cell is
-    included. Rows whose Canonical branch cell doesn't match that shape are
-    skipped silently (separator row, malformed entries).
+    Every row with a valid Canonical branch cell (text between backticks) is
+    included. Rows whose Canonical branch cell doesn't match are skipped
+    silently (separator row, malformed entries).
     """
     try:
         with open(patches_file, "r") as f:
