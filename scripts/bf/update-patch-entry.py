@@ -21,7 +21,7 @@ Owns four modes, all dispatched via argparse:
          --pr-title "feat: my new feature"
 
   3. Refresh ONE entry's HEAD via `git ls-remote origin
-     refs/heads/brightfire/<patch>` — Source PR always preserved:
+     refs/heads/<patch>` — Source PR always preserved:
        update-patch-entry.py -f BRIGHTFIRE_PATCHES.md \\
          --refresh --patch sessions-history-archived
 
@@ -228,18 +228,19 @@ def _parse_table(content):
     return rows, (header_idx, sep_idx, first_row_idx, last_row_idx), lines
 
 
-_CANONICAL_BRANCH_RE = re.compile(r"`brightfire/([^`]+)`")
+_CANONICAL_BRANCH_RE = re.compile(r"`([^`]+)`")
 
 
 def _row_branch_name(row):
-    """Extract the patch name (no `brightfire/` prefix) from the Canonical
-    branch cell. Returns None when the cell doesn't match the expected
-    `brightfire/<name>` shape.
+    """Extract the full branch name from the Canonical branch cell.
+    Returns the text between backticks — the full branch path (e.g.
+    `0a6c013be5f/bundle-all-plugins` or `brightfire/old-patch`).
+    Returns None when the cell has no backtick-delimited value.
     """
     m = _CANONICAL_BRANCH_RE.search(row.get("Canonical branch", ""))
     if not m:
         return None
-    return m.group(1)
+    return m.group(1)  # Full branch name, no prefix stripping
 
 
 def _row_head_sha(row):
@@ -359,11 +360,11 @@ def _render_template(template_str, substitutions):
 def _resolve_branch_head(patch_name):
     """Resolve the HEAD short SHA of `brightfire/<patch_name>` on origin.
 
-    Uses `git ls-remote origin refs/heads/brightfire/<patch>` — no fetch.
+    Uses `git ls-remote origin refs/heads/<patch>` — no fetch.
     Returns the 10-char short SHA. Raises RuntimeError when the branch
     isn't on origin or git fails.
     """
-    ref = f"refs/heads/brightfire/{patch_name}"
+    ref = f"refs/heads/{patch_name}"
     try:
         result = subprocess.run(
             ["git", "ls-remote", "origin", ref],
@@ -537,7 +538,7 @@ def _build_parser():
         "-c", "--commit-sha",
         metavar="COMMIT_SHORT",
         help="Short (10-char) Branch HEAD commit SHA. Omit to resolve via "
-             "`git ls-remote origin refs/heads/brightfire/<patch>`.",
+             "`git ls-remote origin refs/heads/<patch>`.",
     )
     parser.add_argument(
         "--pr",
@@ -587,7 +588,7 @@ def _validate_args(args, parser):
         if not args.patch:
             parser.error("--patch <name> is required (or use --refresh --all)")
         # --commit-sha is optional: when omitted, the SHA is resolved via
-        # `git ls-remote origin refs/heads/brightfire/<patch>` — same as
+        # `git ls-remote origin refs/heads/<patch>` — same as
         # `--refresh --patch`. Lets manual workflow_dispatch (no merge SHA)
         # invoke the same code path.
 

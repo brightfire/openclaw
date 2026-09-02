@@ -1,6 +1,6 @@
 # Register Patch
 #
-# Triggered when a PR merges into any brightfire/* branch.
+# Triggered when a PR merges into any patch branch (brightfire/* or <base-commit>/*).
 # Updates BRIGHTFIRE_PATCHES.md on brightfire/ci directly:
 #   - NEW patches: appends a full manifest entry
 #   - EXISTING patches: updates the squashed commit SHA and source PR number
@@ -21,27 +21,28 @@ on:
   pull_request_target:
     types: [closed]
     branches:
-      - 'brightfire/*'
+      - "brightfire/*"
+      - "**/*" # Catch <base-commit>/<patch> branches that don't match brightfire/*
   workflow_dispatch:
     inputs:
       refresh_branch_heads:
-        description: 'Bulk-refresh mode: refresh Branch HEAD commit for ALL active patches in the manifest via git ls-remote against origin (no local fetch). Source PR is left untouched per entry. One commit, one push. Ignores patch_branch / pr_number / pr_title. Use after a catch-up batch.'
+        description: "Bulk-refresh mode: refresh Branch HEAD commit for ALL active patches in the manifest via git ls-remote against origin (no local fetch). Source PR is left untouched per entry. One commit, one push. Ignores patch_branch / pr_number / pr_title. Use after a catch-up batch."
         required: false
         type: boolean
         default: false
       patch_branch:
-        description: 'Patch branch (e.g. brightfire/sessions-history-archived). Ignored when refresh_branch_heads=true.'
+        description: "Patch branch (e.g. brightfire/sessions-history-archived). Ignored when refresh_branch_heads=true."
         required: false
         type: string
       pr_number:
-        description: 'Source PR ref. Accepts a bare number (`24`), a `#N` form (`#24`), or a full URL (`https://github.com/brightfire/openclaw/pull/24`). Bare/`#N` defaults to the Brightfire fork (`brightfire/openclaw`). For cross-repo refs (e.g. upstream `openclaw/openclaw`) pass the full URL. Leave EMPTY (or `0`/`#0`) to preserve the existing Source PR (use for catch-up syncs). Ignored when refresh_branch_heads=true.'
+        description: "Source PR ref. Accepts a bare number (`24`), a `#N` form (`#24`), or a full URL (`https://github.com/brightfire/openclaw/pull/24`). Bare/`#N` defaults to the Brightfire fork (`brightfire/openclaw`). For cross-repo refs (e.g. upstream `openclaw/openclaw`) pass the full URL. Leave EMPTY (or `0`/`#0`) to preserve the existing Source PR (use for catch-up syncs). Ignored when refresh_branch_heads=true."
         required: false
         type: string
       pr_title:
-        description: 'PR title (used for new entries). Ignored when refresh_branch_heads=true.'
+        description: "PR title (used for new entries). Ignored when refresh_branch_heads=true."
         required: false
         type: string
-        default: 'Manual registration'
+        default: "Manual registration"
 
 permissions:
   contents: write
@@ -52,8 +53,11 @@ jobs:
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event.pull_request.merged == true &&
-      startsWith(github.event.pull_request.base.ref, 'brightfire/') &&
-      github.event.pull_request.base.ref != 'brightfire/ci')
+      github.event.pull_request.base.ref != 'brightfire/ci' &&
+      github.event.pull_request.base.ref != 'main' &&
+      !startsWith(github.event.pull_request.base.ref, 'stable/') &&
+      !startsWith(github.event.pull_request.base.ref, 'feature/') &&
+      !startsWith(github.event.pull_request.base.ref, 'fix/'))
     runs-on: ubuntu-latest
     steps:
       - name: Generate app token
