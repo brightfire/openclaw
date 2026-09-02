@@ -7,18 +7,15 @@ import type {
   DiagnosticEventPrivateData,
 } from "../api.js";
 import {
-  assignGenAiSpanIdentityAttrs,
-  assignPositiveNumberAttr,
-} from "./service-genai-attributes.js";
-import {
   MAX_OTEL_CONTENT_ATTRIBUTE_CHARS,
   normalizeOtelLogString,
 } from "./service-content-normalization.js";
+import {
+  assignGenAiSpanIdentityAttrs,
+  assignPositiveNumberAttr,
+} from "./service-genai-attributes.js";
 import type { DiagnosticsRecorderRuntime } from "./service-recorder-runtime.js";
-import type {
-  MessageDeliveryDiagnosticEvent,
-  TrustedSpanAliasOwner,
-} from "./service-types.js";
+import type { MessageDeliveryDiagnosticEvent, TrustedSpanAliasOwner } from "./service-types.js";
 
 export function createUsageRecorders(runtime: DiagnosticsRecorderRuntime) {
   const {
@@ -139,8 +136,7 @@ export function createUsageRecorders(runtime: DiagnosticsRecorderRuntime) {
       return;
     }
     const genAiInputTokens =
-      usage.promptTokens ??
-      (usage.input ?? 0) + (usage.cacheRead ?? 0) + (usage.cacheWrite ?? 0);
+      usage.promptTokens ?? (usage.input ?? 0) + (usage.cacheRead ?? 0) + (usage.cacheWrite ?? 0);
     const spanAttrs: Record<string, string | number> = {
       ...attrs,
       "openclaw.tokens.input": usage.input ?? 0,
@@ -154,36 +150,19 @@ export function createUsageRecorders(runtime: DiagnosticsRecorderRuntime) {
     }
     assignGenAiSpanIdentityAttrs(spanAttrs, evt);
     addSessionAttrs(spanAttrs, evt);
-    assignPositiveNumberAttr(
-      spanAttrs,
-      "gen_ai.usage.input_tokens",
-      genAiInputTokens,
-    );
-    assignPositiveNumberAttr(
-      spanAttrs,
-      "gen_ai.usage.output_tokens",
-      usage.output,
-    );
-    assignPositiveNumberAttr(
-      spanAttrs,
-      "gen_ai.usage.cache_read.input_tokens",
-      usage.cacheRead,
-    );
+    assignPositiveNumberAttr(spanAttrs, "gen_ai.usage.input_tokens", genAiInputTokens);
+    assignPositiveNumberAttr(spanAttrs, "gen_ai.usage.output_tokens", usage.output);
+    assignPositiveNumberAttr(spanAttrs, "gen_ai.usage.cache_read.input_tokens", usage.cacheRead);
     assignPositiveNumberAttr(
       spanAttrs,
       "gen_ai.usage.cache_creation.input_tokens",
       usage.cacheWrite,
     );
 
-    const span = spanWithDuration(
-      "openclaw.model.usage",
-      spanAttrs,
-      evt.durationMs,
-      {
-        parentContext: activeTrustedParentContext(evt, metadata),
-        endTimeMs: evt.ts,
-      },
-    );
+    const span = spanWithDuration("openclaw.model.usage", spanAttrs, evt.durationMs, {
+      parentContext: activeTrustedParentContext(evt, metadata),
+      endTimeMs: evt.ts,
+    });
     span.end(evt.ts);
   };
 
@@ -211,17 +190,11 @@ export function createUsageRecorders(runtime: DiagnosticsRecorderRuntime) {
       return;
     }
     const spanAttrs: Record<string, string | number> = { ...attrs };
-    const span = spanWithDuration(
-      "openclaw.webhook.processed",
-      spanAttrs,
-      evt.durationMs,
-    );
+    const span = spanWithDuration("openclaw.webhook.processed", spanAttrs, evt.durationMs);
     span.end();
   };
 
-  const recordWebhookError = (
-    evt: Extract<DiagnosticEventPayload, { type: "webhook.error" }>,
-  ) => {
+  const recordWebhookError = (evt: Extract<DiagnosticEventPayload, { type: "webhook.error" }>) => {
     const attrs = {
       "openclaw.channel": normalizeDiagnosticValue(evt.channel),
       "openclaw.webhook": normalizeDiagnosticValue(evt.updateType),
@@ -285,23 +258,15 @@ export function createUsageRecorders(runtime: DiagnosticsRecorderRuntime) {
     trackInternalOrTrustedSpan(
       evt,
       metadata,
-      spanWithDuration(
-        "openclaw.message.processed",
-        dispatchSpanAttrs,
-        undefined,
-        {
-          parentContext: internalOrTrustedExplicitParentContext(evt, metadata),
-          startTimeMs: evt.ts,
-        },
-      ),
+      spanWithDuration("openclaw.message.processed", dispatchSpanAttrs, undefined, {
+        parentContext: internalOrTrustedExplicitParentContext(evt, metadata),
+        startTimeMs: evt.ts,
+      }),
     );
   };
 
   const recordMessageDispatchCompleted = (
-    evt: Extract<
-      DiagnosticEventPayload,
-      { type: "message.dispatch.completed" }
-    >,
+    evt: Extract<DiagnosticEventPayload, { type: "message.dispatch.completed" }>,
   ) => {
     const attrs = {
       "openclaw.channel": normalizeDiagnosticValue(evt.channel),
@@ -332,24 +297,15 @@ export function createUsageRecorders(runtime: DiagnosticsRecorderRuntime) {
     const spanAttrs: Record<string, string | number> = { ...attrs };
     addSessionAttrs(spanAttrs, evt);
     if (evt.reason) {
-      spanAttrs["openclaw.reason"] = normalizeDiagnosticValue(
-        evt.reason,
-        "unknown",
-      );
+      spanAttrs["openclaw.reason"] = normalizeDiagnosticValue(evt.reason, "unknown");
     }
-    if (
-      contentCapturePolicy.inputMessages &&
-      privateData.messageContent?.userPrompt
-    ) {
+    if (contentCapturePolicy.inputMessages && privateData.messageContent?.userPrompt) {
       spanAttrs["input.value"] = normalizeOtelLogString(
         privateData.messageContent.userPrompt,
         MAX_OTEL_CONTENT_ATTRIBUTE_CHARS,
       );
     }
-    if (
-      contentCapturePolicy.outputMessages &&
-      privateData.messageContent?.finalResponse
-    ) {
+    if (contentCapturePolicy.outputMessages && privateData.messageContent?.finalResponse) {
       spanAttrs["output.value"] = normalizeOtelLogString(
         privateData.messageContent.finalResponse,
         MAX_OTEL_CONTENT_ATTRIBUTE_CHARS,
@@ -358,15 +314,10 @@ export function createUsageRecorders(runtime: DiagnosticsRecorderRuntime) {
     const trackedSpan = getTrackedInternalOrTrustedSpan(evt, metadata);
     const span =
       trackedSpan ??
-      spanWithDuration(
-        "openclaw.message.processed",
-        spanAttrs,
-        evt.durationMs,
-        {
-          parentContext: internalOrTrustedExplicitParentContext(evt, metadata),
-          endTimeMs: evt.ts,
-        },
-      );
+      spanWithDuration("openclaw.message.processed", spanAttrs, evt.durationMs, {
+        parentContext: internalOrTrustedExplicitParentContext(evt, metadata),
+        endTimeMs: evt.ts,
+      });
     setSpanAttrs(span, spanAttrs);
     if (evt.outcome === "error" && evt.error) {
       span.setStatus({
@@ -382,14 +333,9 @@ export function createUsageRecorders(runtime: DiagnosticsRecorderRuntime) {
     span.end(evt.ts);
   };
 
-  const messageDeliveryAttrs = (
-    evt: MessageDeliveryDiagnosticEvent,
-  ): Record<string, string> => ({
+  const messageDeliveryAttrs = (evt: MessageDeliveryDiagnosticEvent): Record<string, string> => ({
     "openclaw.channel": normalizeDiagnosticValue(evt.channel),
-    "openclaw.delivery.kind": normalizeDiagnosticValue(
-      evt.deliveryKind,
-      "other",
-    ),
+    "openclaw.delivery.kind": normalizeDiagnosticValue(evt.deliveryKind, "other"),
   });
 
   const recordMessageDeliveryStarted = (
@@ -399,10 +345,7 @@ export function createUsageRecorders(runtime: DiagnosticsRecorderRuntime) {
   };
 
   const recordMessageDeliveryCompleted = (
-    evt: Extract<
-      DiagnosticEventPayload,
-      { type: "message.delivery.completed" }
-    >,
+    evt: Extract<DiagnosticEventPayload, { type: "message.delivery.completed" }>,
     metadata: DiagnosticEventMetadata,
   ) => {
     const attrs = {
@@ -435,24 +378,16 @@ export function createUsageRecorders(runtime: DiagnosticsRecorderRuntime) {
     const attrs = {
       ...messageDeliveryAttrs(evt),
       "openclaw.outcome": "error",
-      "openclaw.errorCategory": normalizeDiagnosticValue(
-        evt.errorCategory,
-        "other",
-      ),
+      "openclaw.errorCategory": normalizeDiagnosticValue(evt.errorCategory, "other"),
     };
     messageDeliveryDurationHistogram.record(evt.durationMs, attrs);
     if (!tracesEnabled) {
       return;
     }
-    const span = spanWithDuration(
-      "openclaw.message.delivery",
-      attrs,
-      evt.durationMs,
-      {
-        parentContext: activeInternalOrTrustedContext(evt, metadata),
-        endTimeMs: evt.ts,
-      },
-    );
+    const span = spanWithDuration("openclaw.message.delivery", attrs, evt.durationMs, {
+      parentContext: activeInternalOrTrustedContext(evt, metadata),
+      endTimeMs: evt.ts,
+    });
     span.setStatus({
       code: SpanStatusCode.ERROR,
       message: redactSensitiveText(evt.errorCategory),
