@@ -8,19 +8,33 @@
 #   VERSION     — bare version (X.Y.Z) read from package.json on the base branch;
 #                 stable branch is `stable/<VERSION>`
 #   BASE_BRANCH — base branch name (default: main), read from manifest _meta
+#   BASE_COMMIT — optional pinned commit SHA from manifest _meta; when present,
+#                 stable is built from this commit instead of origin/<BASE_BRANCH> HEAD
 
 set -euo pipefail
 
 VERSION="${VERSION:?prepare-stable-branch.sh requires VERSION env var}"
 BASE_BRANCH="${BASE_BRANCH:-main}"
+BASE_COMMIT="${BASE_COMMIT:-}"
 
 STABLE_BRANCH="stable/$VERSION"
 
-# Fetch the base branch if not already available locally.
+# Fetch the base branch so the pinned commit (if any) is available.
 git fetch origin "$BASE_BRANCH" 2>/dev/null || true
 
-# Create the stable branch from the base branch.
-git checkout -b "$STABLE_BRANCH" "origin/$BASE_BRANCH" 2>/dev/null || \
+# Determine the ref to build from.
+if [ -n "$BASE_COMMIT" ]; then
+  # Pinned commit: fetch it explicitly (shallow refs may not have it).
+  git fetch origin "$BASE_COMMIT" 2>/dev/null || true
+  BASE_REF="$BASE_COMMIT"
+  echo "Using pinned base commit: $BASE_COMMIT"
+else
+  BASE_REF="origin/$BASE_BRANCH"
+  echo "Using base branch HEAD: origin/$BASE_BRANCH"
+fi
+
+# Create the stable branch from the determined ref.
+git checkout -b "$STABLE_BRANCH" "$BASE_REF" 2>/dev/null || \
   git checkout -b "$STABLE_BRANCH" "refs/remotes/origin/$BASE_BRANCH"
 
 # Drop any stale origin copy of the same branch so the post-build push is

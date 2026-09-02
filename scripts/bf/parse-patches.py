@@ -128,13 +128,32 @@ def parse_base_branch(patches_file: str) -> str:
     return m.group(1) if m else "main"
 
 
+def parse_base_commit(patches_file: str) -> str:
+    """Parse BRIGHTFIRE_PATCHES.md and return the base commit from _meta.
+
+    Reads `- **Base commit:** `0a6c013be5f`` from the ## _meta section.
+    Returns empty string if not pinned (fall back to base branch HEAD).
+    """
+    try:
+        with open(patches_file, "r") as f:
+            content = f.read()
+    except FileNotFoundError:
+        return ""
+
+    m = re.search(r"##\s*_meta\s*\n.*?\*\*Base commit:\*\*\s*`([^`]+)`", content, re.DOTALL)
+    return m.group(1) if m else ""
+
+
 def main():
     patches_file = sys.argv[1] if len(sys.argv) > 1 else "BRIGHTFIRE_PATCHES.md"
     active = parse_patches(patches_file)
     base_branch = parse_base_branch(patches_file)
+    base_commit = parse_base_commit(patches_file)
 
     out = ",".join(active)
     print(f"Base branch: {base_branch}")
+    if base_commit:
+        print(f"Base commit: {base_commit}")
     print(f"Active patches ({len(active)}): {out}")
 
     # Write $GITHUB_OUTPUT file if provided
@@ -144,6 +163,8 @@ def main():
             f.write(f"count={len(active)}\n")
             f.write(f"list={out}\n")
             f.write(f"base_branch={base_branch}\n")
+            if base_commit:
+                f.write(f"base_commit={base_commit}\n")
 
 
 if __name__ == "__main__":

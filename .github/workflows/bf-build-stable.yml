@@ -22,20 +22,20 @@ name: "BF: Build Stable"
 on:
   push:
     branches:
-      - 'brightfire/ci'
+      - "brightfire/ci"
     paths:
-      - 'BRIGHTFIRE_PATCHES.md'
-      - '.github/workflows/bf-build-stable.yml'
-      - 'scripts/bf/**'
+      - "BRIGHTFIRE_PATCHES.md"
+      - ".github/workflows/bf-build-stable.yml"
+      - "scripts/bf/**"
   workflow_dispatch:
     inputs:
       force_release:
-        description: 'Tag and release even if manifest is unchanged'
+        description: "Tag and release even if manifest is unchanged"
         required: false
         type: boolean
         default: false
       skip_tests:
-        description: 'Skip the test suite (build + publish only)'
+        description: "Skip the test suite (build + publish only)"
         required: false
         type: boolean
         default: false
@@ -124,6 +124,7 @@ jobs:
         env:
           VERSION: ${{ steps.upstream-version.outputs.version }}
           BASE_BRANCH: ${{ steps.patches.outputs.base_branch }}
+          BASE_COMMIT: ${{ steps.patches.outputs.base_commit }}
         run: /tmp/bf-build-stable/prepare-stable-branch.sh
 
       - name: Compute version suffix
@@ -276,10 +277,10 @@ jobs:
       - name: Setup Node environment
         uses: ./.github/actions/setup-node-env
         with:
-          node-version: '24'
-          install-bun: 'false'
-          cache-mode: 'restore'
-          install-deps: 'false'
+          node-version: "24"
+          install-bun: "false"
+          cache-mode: "restore"
+          install-deps: "false"
 
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
