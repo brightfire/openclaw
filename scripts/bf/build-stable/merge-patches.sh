@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Squash-merge each brightfire/<patch> branch listed in PATCHES into the
+# Squash-merge each patch branch listed in PATCHES into the
 # current (stable) branch, in order. Bails loudly on conflict — patch order
 # in BRIGHTFIRE_PATCHES.md is the contract.
 #
 # Inputs (env):
-#   PATCHES — comma-separated list of patch names (without the brightfire/ prefix)
+#   PATCHES — comma-separated list of full branch names (e.g. 0a6c013be5f/upstream-test-fixes)
 #   VERSION — bare upstream version (X.Y.Z); stable branch is `stable/<VERSION>`
 #             (used only for log context)
 
@@ -20,7 +20,7 @@ IFS=',' read -ra PATCH_LIST <<< "$PATCHES"
 
 for PATCH in "${PATCH_LIST[@]}"; do
   PATCH=$(echo "$PATCH" | xargs)
-  PATCH_BRANCH="brightfire/$PATCH"
+  PATCH_BRANCH="$PATCH"  # $PATCH is already the full branch name from parse-patches.py
 
   echo ""
   echo "=== Merging $PATCH_BRANCH into $STABLE_BRANCH ==="

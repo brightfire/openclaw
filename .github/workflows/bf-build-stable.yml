@@ -1,7 +1,8 @@
 # Build Stable
 #
 # Rebuilds the stable branch by creating it fresh from origin/main
-# and merging all active brightfire/* patch branches in manifest order.
+# and merging all active patch branches in manifest order.
+# Patch branches use the <base-commit>/<patch-name> naming convention.
 #
 # Build always runs. Tests run by default (so we keep getting signal on
 # patches still merging cleanly and tests still passing, and to keep upstream
@@ -138,8 +139,8 @@ jobs:
           git config user.name "brightfire-ci"
           git config user.email "ci@brightfire.net"
 
-      - name: Fetch all brightfire branches
-        run: git fetch origin '+refs/heads/brightfire/*:refs/remotes/origin/brightfire/*'
+      - name: Fetch all branches
+        run: git fetch origin '+refs/heads/*:refs/remotes/origin/*'
 
       - name: Merge patches in order
         env:
@@ -203,7 +204,7 @@ jobs:
                   branch = cols[1].strip()
                   # Strip markdown code formatting — the manifest template
                   # wraps canonical branch cells in backticks, e.g.
-                  # `brightfire/example`. parse-patches.py uses a regex for
+                  # `0a6c013be5f/example`. parse-patches.py uses a regex for
                   # the same reason; mirror that here so git rev-parse gets
                   # the bare branch name rather than the backtick-wrapped one.
                   branch = re.sub(r'^`(.+)`$', r'\1', branch)

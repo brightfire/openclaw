@@ -13,16 +13,16 @@ is maintained, the merge-not-rebase philosophy, and the new-entry template.
 
 | Name                           | Canonical branch                           | Branch HEAD  | Source PR                                       | Last updated |
 | ------------------------------ | ------------------------------------------ | ------------ | ----------------------------------------------- | ------------ |
-| Upstream Test Fixes            | `brightfire/upstream-test-fixes`           | `9de25d81c2` | https://github.com/brightfire/openclaw/pull/150 | 2026-09-01   |
-| Slack Markdown                 | `brightfire/slack-mrkdwn`                  | `3fc05ac327` | —                                               | 2026-08-24   |
-| CLI HTTP Health Fallback       | `brightfire/cli-http-fallback`             | `d0a8dfb097` | —                                               | 2026-08-24   |
-| Webhook Session Target Support | `brightfire/webhook-sessiontarget-support` | `dd89590762` | https://github.com/brightfire/openclaw/pull/106 | 2026-08-24   |
-| OTEL Improvements              | `brightfire/otel-improvements`             | `b2ddfd8861` | https://github.com/brightfire/openclaw/pull/173 | 2026-09-01   |
-| Bundle All Plugins             | `brightfire/bundle-all-plugins`            | `af9b89c95d` | —                                               | 2026-09-01   |
+| Upstream Test Fixes            | `0a6c013be5f/upstream-test-fixes`           | `e0804f8321` | https://github.com/brightfire/openclaw/pull/150 | 2026-09-02   |
+| Slack Markdown                 | `0a6c013be5f/slack-mrkdwn`                  | `a9feaf3c96` | —                                               | 2026-09-02   |
+| CLI HTTP Health Fallback       | `0a6c013be5f/cli-http-fallback`             | `527f79177c` | —                                               | 2026-09-02   |
+| Webhook Session Target Support | `0a6c013be5f/webhook-sessiontarget-support` | `f3f5d84ec0` | https://github.com/brightfire/openclaw/pull/106 | 2026-09-02   |
+| OTEL Improvements              | `0a6c013be5f/otel-improvements`             | `eeb9682f43` | https://github.com/brightfire/openclaw/pull/173 | 2026-09-02   |
+| Bundle All Plugins             | `0a6c013be5f/bundle-all-plugins`            | `2b90d1433d` | —                                               | 2026-09-02   |
 
 ## Upstream Test Fixes
 
-(canonical: `brightfire/upstream-test-fixes`)
+(canonical: `0a6c013be5f/upstream-test-fixes`)
 
 ### Rationale
 
@@ -48,7 +48,7 @@ upstream fixed the underlying issue).
 
 ## Slack Markdown
 
-(canonical: `brightfire/slack-mrkdwn`)
+(canonical: `0a6c013be5f/slack-mrkdwn`)
 
 ### Rationale
 
@@ -64,7 +64,7 @@ The Slack extension was using `text_markup: 'mrkdwn'` (Slack's proprietary diale
 
 ## CLI HTTP Health Fallback
 
-(canonical: `brightfire/cli-http-fallback`)
+(canonical: `0a6c013be5f/cli-http-fallback`)
 
 ### Rationale
 
@@ -104,7 +104,7 @@ stops rejecting loopback connections in `trusted-proxy` mode entirely.
 
 ## Webhook Session Target Support
 
-(canonical: `brightfire/webhook-sessiontarget-support`)
+(canonical: `0a6c013be5f/webhook-sessiontarget-support`)
 
 ### Rationale
 
@@ -122,7 +122,7 @@ always using the default.
 
 ## OTEL Improvements
 
-(canonical: `brightfire/otel-improvements`)
+(canonical: `0a6c013be5f/otel-improvements`)
 
 ### Rationale
 
@@ -142,7 +142,7 @@ identity propagation. Check `extensions/diagnostics-otel/` for upstream changes.
 
 ## Bundle All Plugins
 
-(canonical: `brightfire/bundle-all-plugins`)
+(canonical: `0a6c013be5f/bundle-all-plugins`)
 
 ### Rationale
 
