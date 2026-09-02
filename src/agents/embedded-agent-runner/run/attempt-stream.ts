@@ -10,6 +10,7 @@ import { resolveToolCallArgumentsEncoding } from "../../../plugins/provider-mode
 import type { resolveProviderTextTransforms } from "../../../plugins/provider-runtime.js";
 import { createAnthropicPayloadLogger } from "../../anthropic-payload-log.js";
 import { createCacheTrace } from "../../cache-trace.js";
+import { resolveAgentIdentity } from "../../identity.js";
 import { wrapStreamFnTextTransforms } from "../../plugin-text-transforms.js";
 import type { StreamFn } from "../../runtime/index.js";
 import type { AgentSession, SessionManager } from "../../sessions/index.js";
@@ -86,7 +87,11 @@ export function installEmbeddedAttemptStreamGuards(input: {
   session: AgentSession;
   sessionAgentId: string;
   cacheTrace: CacheTrace;
-  allCustomTools: Array<{ name?: string; description?: string; parameters?: unknown }>;
+  allCustomTools: Array<{
+    name?: string;
+    description?: string;
+    parameters?: unknown;
+  }>;
   systemPromptText: string;
   transcriptPolicy: TranscriptPolicy;
   sessionManager: SessionManager | undefined;
@@ -134,7 +139,10 @@ export function installEmbeddedAttemptStreamGuards(input: {
           );
           return;
         }
-        repair = repairRejectedCompactionReplayInSessionManager({ ...repairParams, checkpoint });
+        repair = repairRejectedCompactionReplayInSessionManager({
+          ...repairParams,
+          checkpoint,
+        });
       } else {
         repair = repairRejectedThinkingReplayInSessionManager(repairParams);
       }
@@ -374,6 +382,10 @@ export function installEmbeddedAttemptStreamGuards(input: {
     runId: attempt.runId,
     ...(attempt.sessionKey && { sessionKey: attempt.sessionKey }),
     ...(attempt.sessionId && { sessionId: attempt.sessionId }),
+    agentId: input.sessionAgentId,
+    agentLabel: attempt.config
+      ? resolveAgentIdentity(attempt.config, input.sessionAgentId)?.name?.trim()
+      : undefined,
     provider: attempt.provider,
     model: attempt.modelId,
     api: attempt.model.api,
@@ -388,7 +400,9 @@ export function installEmbeddedAttemptStreamGuards(input: {
       ? { contextWindowSource: attempt.contextWindowInfo.source }
       : {}),
     ...(attempt.contextWindowInfo?.referenceTokens
-      ? { contextWindowReferenceTokens: attempt.contextWindowInfo.referenceTokens }
+      ? {
+          contextWindowReferenceTokens: attempt.contextWindowInfo.referenceTokens,
+        }
       : {}),
     trace: input.runTrace,
     contentCapture: resolveDiagnosticModelContentCapturePolicy(attempt.config),

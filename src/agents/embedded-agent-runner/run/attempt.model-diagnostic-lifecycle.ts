@@ -40,6 +40,8 @@ export type ModelCallDiagnosticContext = {
   runId: string;
   sessionKey?: string;
   sessionId?: string;
+  agentId?: string;
+  agentLabel?: string;
   provider: string;
   model: string;
   api?: string;
@@ -128,6 +130,8 @@ function baseModelCallEvent(
     callId,
     ...(ctx.sessionKey && { sessionKey: ctx.sessionKey }),
     ...(ctx.sessionId && { sessionId: ctx.sessionId }),
+    ...(ctx.agentId && { agentId: ctx.agentId }),
+    ...(ctx.agentLabel && { agentLabel: ctx.agentLabel }),
     provider: ctx.provider,
     model: ctx.model,
     ...(ctx.api && { api: ctx.api }),

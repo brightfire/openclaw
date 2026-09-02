@@ -47,6 +47,8 @@ export function createOperationsRecorders(runtime: DiagnosticsRecorderRuntime) {
     setSpanAttrs,
     completeTrackedLifecycleSpan,
     addRunAttrs,
+    addSessionAttrs,
+    resolveAgentLabelAttr,
     tracesEnabled,
   } = runtime;
 
@@ -81,7 +83,7 @@ export function createOperationsRecorders(runtime: DiagnosticsRecorderRuntime) {
     evt: Extract<DiagnosticEventPayload, { type: "session.turn.created" }>,
   ) => {
     sessionTurnCreatedCounter.add(1, {
-      "openclaw.agent": normalizeDiagnosticValue(evt.agentId, "unknown"),
+      "openclaw.agent.id": resolveAgentLabelAttr(evt),
       "openclaw.channel": normalizeDiagnosticValue(evt.channel, "unknown"),
       "openclaw.trigger": evt.trigger,
     });
@@ -182,7 +184,9 @@ export function createOperationsRecorders(runtime: DiagnosticsRecorderRuntime) {
     if (!tracesEnabled) {
       return;
     }
-    const span = spanWithDuration("openclaw.tool.loop", attrs, 0, { endTimeMs: evt.ts });
+    const spanAttrs: Record<string, string | number | boolean> = { ...attrs };
+    addSessionAttrs(spanAttrs, evt);
+    const span = spanWithDuration("openclaw.tool.loop", spanAttrs, 0, { endTimeMs: evt.ts });
     if (evt.level === "critical" || evt.action === "block") {
       span.setStatus({
         code: SpanStatusCode.ERROR,

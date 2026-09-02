@@ -1,3 +1,4 @@
+import { getRuntimeConfig } from "../../config/config.js";
 /**
  * Agent harness lifecycle diagnostics wrapper.
  *
@@ -18,6 +19,7 @@ import {
   type DiagnosticHarnessRunErrorEvent,
   type DiagnosticHarnessRunOutcome,
 } from "../../infra/diagnostic-events.js";
+import { resolveDiagnosticModelContentCapturePolicy } from "../../infra/diagnostic-llm-content.js";
 import {
   createChildDiagnosticTraceContext,
   freezeDiagnosticTraceContext,
@@ -30,6 +32,8 @@ import {
   projectAgentRunAttemptTerminal,
 } from "../agent-run-terminal-outcome.js";
 import type { EmbeddedRunAttemptResult } from "../embedded-agent-runner/run/types.js";
+import { resolveAgentIdentity } from "../identity.js";
+import { copyCoreTtsAttemptResultProvenance } from "../tools/tts-tool-result-provenance.js";
 import { recordAgentHarnessPreflightOwner } from "./errors.js";
 import { applyAgentHarnessResultClassification } from "./result-classification.js";
 import { EmptySettledTurnFinalizationError } from "./settled-turn-finalization-outcome.js";
@@ -91,6 +95,10 @@ function agentHarnessDiagnosticBase(
   return {
     runId: params.runId,
     sessionId: params.sessionId,
+    agentId: params.agentId,
+    agentLabel: params.config
+      ? resolveAgentIdentity(params.config, params.agentId ?? "")?.name?.trim()
+      : undefined,
     provider: params.provider,
     model: params.modelId,
     harnessId: harness.id,
@@ -204,10 +212,10 @@ function withFallbackDiagnosticTrace(
   if (result.diagnosticTrace || !trace) {
     return result;
   }
-  return {
+  return copyCoreTtsAttemptResultProvenance(result, {
     ...result,
     diagnosticTrace: freezeDiagnosticTraceContext(trace),
-  };
+  });
 }
 
 function withFallbackFinalizationDiagnosticTrace(
@@ -228,10 +236,16 @@ function emitAgentHarnessRunStarted(
   params: AgentHarnessAttemptParams,
   trace?: DiagnosticTraceContext,
 ): void {
-  emitTrustedDiagnosticEvent({
-    type: "harness.run.started",
-    ...agentHarnessDiagnosticBase(harness, params, trace),
-  });
+  const contentPolicy = resolveDiagnosticModelContentCapturePolicy(getRuntimeConfig());
+  const harnessContent: { userPrompt?: string; finalResponse?: string } | undefined =
+    contentPolicy.inputMessages && params.prompt ? { userPrompt: params.prompt } : undefined;
+  emitTrustedDiagnosticEventWithPrivateData(
+    {
+      type: "harness.run.started",
+      ...agentHarnessDiagnosticBase(harness, params, trace),
+    },
+    harnessContent ? { harnessContent } : undefined,
+  );
 }
 
 function emitAgentHarnessRunCompleted(params: {
@@ -248,6 +262,14 @@ function emitAgentHarnessRunCompleted(params: {
   // forward the message so the error span shows more than a bare category.
   const errorMessage =
     outcome === "error" ? diagnosticErrorMessage(terminal.promptError) : undefined;
+  const contentPolicy = resolveDiagnosticModelContentCapturePolicy(getRuntimeConfig());
+  const finalResponse =
+    contentPolicy.outputMessages && result.assistantTexts.length > 0
+      ? result.assistantTexts.filter(Boolean).join("\n") || undefined
+      : undefined;
+  const harnessContent: { userPrompt?: string; finalResponse?: string } | undefined = finalResponse
+    ? { finalResponse }
+    : undefined;
   emitTrustedDiagnosticEventWithPrivateData(
     {
       type: "harness.run.completed",
@@ -260,7 +282,10 @@ function emitAgentHarnessRunCompleted(params: {
       ...(typeof result.yieldDetected === "boolean" ? { yieldDetected: result.yieldDetected } : {}),
       itemLifecycle: { ...result.itemLifecycle },
     },
-    errorMessage ? { errorMessage } : undefined,
+    {
+      ...(errorMessage ? { errorMessage } : {}),
+      ...(harnessContent ? { harnessContent } : {}),
+    },
   );
 }
 
@@ -343,8 +368,11 @@ export async function runAgentHarnessLifecycleAttempt(
       phase = "resolve";
       // Classification happens inside the diagnostic phase so failures identify
       // whether they came from send or result resolution.
-      return normalizeAgentHarnessAttemptResult(
-        applyAgentHarnessResultClassification(harness, rawResult, params),
+      return copyCoreTtsAttemptResultProvenance(
+        rawResult,
+        normalizeAgentHarnessAttemptResult(
+          applyAgentHarnessResultClassification(harness, rawResult, params),
+        ),
       );
     };
     result = agentRunTrace
@@ -400,9 +428,9 @@ export async function runAgentHarnessLifecycleFinalization(
   try {
     const runAndValidate = async () => {
       phase = "send";
-      const rawResult = await execute();
-      phase = "resolve";
       try {
+        const rawResult = await execute();
+        phase = "resolve";
         return {
           outcome: "answered" as const,
           result: assertSettledTurnFinalizationResult(rawResult),

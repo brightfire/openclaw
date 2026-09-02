@@ -32,6 +32,8 @@ export function createModelRecorders(runtime: DiagnosticsRecorderRuntime) {
     getTrackedInternalOrTrustedSpan,
     takeTrackedTrustedSpan,
     setSpanAttrs,
+    addSessionAttrs,
+    resolveAgentLabelAttr,
     contentCapturePolicy,
     tracesEnabled,
   } = runtime;
@@ -94,6 +96,10 @@ export function createModelRecorders(runtime: DiagnosticsRecorderRuntime) {
       "openclaw.provider": evt.provider,
       "openclaw.model": evt.model,
     };
+    addSessionAttrs(spanAttrs, evt);
+    if (evt.agentId) {
+      spanAttrs["openclaw.agent.id"] = resolveAgentLabelAttr(evt);
+    }
     assignGenAiModelCallAttrs(spanAttrs, evt);
     if (evt.api) {
       spanAttrs["openclaw.api"] = evt.api;
@@ -129,6 +135,10 @@ export function createModelRecorders(runtime: DiagnosticsRecorderRuntime) {
       "openclaw.provider": evt.provider,
       "openclaw.model": evt.model,
     };
+    addSessionAttrs(spanAttrs, evt);
+    if (evt.agentId) {
+      spanAttrs["openclaw.agent.id"] = resolveAgentLabelAttr(evt);
+    }
     assignGenAiModelCallAttrs(spanAttrs, evt);
     if (evt.api) {
       spanAttrs["openclaw.api"] = evt.api;
@@ -177,6 +187,10 @@ export function createModelRecorders(runtime: DiagnosticsRecorderRuntime) {
       "openclaw.errorCategory": errorType,
       "error.type": errorType,
     };
+    addSessionAttrs(spanAttrs, evt);
+    if (evt.agentId) {
+      spanAttrs["openclaw.agent.id"] = resolveAgentLabelAttr(evt);
+    }
     if (evt.failureKind) {
       spanAttrs["openclaw.failureKind"] = normalizeDiagnosticValue(evt.failureKind, "other");
     }
