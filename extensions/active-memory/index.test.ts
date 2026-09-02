@@ -3820,9 +3820,9 @@ describe("active-memory plugin", () => {
   });
 
   it("does not cache timeout results", async () => {
-    testing.setMinimumTimeoutMsForTests(1);
+    testing.setMinimumTimeoutMsForTests(50);
     testing.setSetupGraceTimeoutMsForTests(0);
-    registerPluginConfig({ timeoutMs: 1, logging: true });
+    registerPluginConfig({ timeoutMs: 50, logging: true });
     let lastAbortSignal: AbortSignal | undefined;
     runEmbeddedAgent.mockImplementation(async (params: { abortSignal?: AbortSignal }) => {
       lastAbortSignal = params.abortSignal;
@@ -4801,7 +4801,13 @@ describe("active-memory plugin", () => {
   it("rejects completed output after a memory search returns no recall evidence", async () => {
     testing.setMinimumTimeoutMsForTests(1);
     testing.setSetupGraceTimeoutMsForTests(0);
-    registerPluginConfig({ timeoutMs: 1_000, logging: true });
+    registerPluginConfig({
+      // Use a wider budget so the test always exercises the "no recall
+      // evidence" path rather than occasionally passing via a watchdog
+      // timeout when CI is under load.
+      timeoutMs: 10_000,
+      logging: true,
+    });
     const sessionKey = "agent:main:empty-search-completed-output";
     seedSession(sessionKey, "s-empty-search-completed-output", 0);
     runEmbeddedAgent.mockImplementation(async (params: { sessionFile: string }) => {

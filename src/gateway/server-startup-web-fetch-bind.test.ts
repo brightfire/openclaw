@@ -7,7 +7,7 @@ import type { OpenClawConfig } from "../config/config.js";
 import {
   getGatewayTestPort,
   installGatewayTestHooks,
-  startTestGatewayServer,
+  startGatewayServerWithRetries,
 } from "./test-helpers.js";
 import { readClientResponseBody } from "./test-http-response.js";
 
@@ -98,7 +98,7 @@ async function writeConfig(config: OpenClawConfig): Promise<void> {
 describe("gateway startup web fetch config", () => {
   let port: number;
   let previousMinimal: string | undefined;
-  let server: Awaited<ReturnType<typeof startTestGatewayServer>> | undefined;
+  let server: Awaited<ReturnType<typeof startGatewayServerWithRetries>>["server"] | undefined;
 
   beforeAll(async () => {
     previousMinimal = process.env.OPENCLAW_TEST_MINIMAL_GATEWAY;
@@ -125,10 +125,15 @@ describe("gateway startup web fetch config", () => {
       },
     } as OpenClawConfig);
 
-    port = await getGatewayTestPort();
-    server = await startTestGatewayServer(port, {
-      auth: { mode: "none" },
+    // startGatewayServerWithRetries retries on EADDRINUSE for CI resilience
+    const started = await startGatewayServerWithRetries({
+      port: await getGatewayTestPort(),
+      opts: {
+        auth: { mode: "none" },
+      },
     });
+    port = started.port;
+    server = started.server;
   });
 
   afterAll(async () => {
