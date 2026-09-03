@@ -53,8 +53,6 @@ export function createUsageRecorders(runtime: DiagnosticsRecorderRuntime) {
     setSpanAttrs,
     completeTrackedLifecycleSpan,
     addRunAttrs,
-    addSessionAttrs,
-    resolveAgentLabelAttr,
     contentCapturePolicy,
     tracesEnabled,
   } = runtime;
@@ -66,7 +64,7 @@ export function createUsageRecorders(runtime: DiagnosticsRecorderRuntime) {
   ) => {
     const attrs = {
       "openclaw.channel": evt.channel ?? "unknown",
-      "openclaw.agent.id": resolveAgentLabelAttr(evt),
+      "openclaw.agent": normalizeDiagnosticValue(evt.agentId),
       "openclaw.provider": evt.provider ?? "unknown",
       "openclaw.model": evt.model ?? "unknown",
     };
@@ -149,7 +147,7 @@ export function createUsageRecorders(runtime: DiagnosticsRecorderRuntime) {
       spanAttrs["openclaw.plugin"] = normalizeDiagnosticValue(hostPluginId);
     }
     assignGenAiSpanIdentityAttrs(spanAttrs, evt);
-    addSessionAttrs(spanAttrs, evt);
+    addRunAttrs(spanAttrs, evt);
     assignPositiveNumberAttr(spanAttrs, "gen_ai.usage.input_tokens", genAiInputTokens);
     assignPositiveNumberAttr(spanAttrs, "gen_ai.usage.output_tokens", usage.output);
     assignPositiveNumberAttr(spanAttrs, "gen_ai.usage.cache_read.input_tokens", usage.cacheRead);
@@ -254,7 +252,7 @@ export function createUsageRecorders(runtime: DiagnosticsRecorderRuntime) {
       return;
     }
     const dispatchSpanAttrs: Record<string, string | number> = { ...attrs };
-    addSessionAttrs(dispatchSpanAttrs, evt);
+    addRunAttrs(dispatchSpanAttrs, evt);
     trackInternalOrTrustedSpan(
       evt,
       metadata,
@@ -295,7 +293,7 @@ export function createUsageRecorders(runtime: DiagnosticsRecorderRuntime) {
       return;
     }
     const spanAttrs: Record<string, string | number> = { ...attrs };
-    addSessionAttrs(spanAttrs, evt);
+    addRunAttrs(spanAttrs, evt);
     if (evt.reason) {
       spanAttrs["openclaw.reason"] = normalizeDiagnosticValue(evt.reason, "unknown");
     }

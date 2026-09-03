@@ -28,7 +28,6 @@ export function createHarnessRecorders(runtime: DiagnosticsRecorderRuntime) {
     setSpanAttrs,
     completeTrackedLifecycleSpan,
     addRunAttrs,
-    addSessionAttrs,
     contentCapturePolicy,
     tracesEnabled,
   } = runtime;
@@ -58,7 +57,7 @@ export function createHarnessRecorders(runtime: DiagnosticsRecorderRuntime) {
     const spanAttrs: Record<string, string | number | boolean> = {
       ...harnessRunMetricAttrs(evt),
     };
-    addSessionAttrs(spanAttrs, evt);
+    addRunAttrs(spanAttrs, evt);
     if (contentCapturePolicy.inputMessages && privateData.harnessContent?.userPrompt) {
       spanAttrs["input.value"] = normalizeOtelLogString(
         privateData.harnessContent.userPrompt,
@@ -87,7 +86,7 @@ export function createHarnessRecorders(runtime: DiagnosticsRecorderRuntime) {
     const spanAttrs: Record<string, string | number | boolean> = {
       ...harnessRunMetricAttrs(evt),
     };
-    addSessionAttrs(spanAttrs, evt);
+    addRunAttrs(spanAttrs, evt);
     if (evt.resultClassification) {
       spanAttrs["openclaw.harness.result_classification"] = normalizeDiagnosticValue(
         evt.resultClassification,
@@ -159,7 +158,7 @@ export function createHarnessRecorders(runtime: DiagnosticsRecorderRuntime) {
       ...(redactedError ? { "openclaw.error": redactedError } : {}),
       ...(evt.cleanupFailed ? { "openclaw.harness.cleanup_failed": true } : {}),
     };
-    addSessionAttrs(spanAttrs, evt);
+    addRunAttrs(spanAttrs, evt);
     const trustedTrace = trustedTraceContext(evt, metadata);
     const trackedSpan = trustedTrace?.spanId
       ? activeTrustedSpans.get(trustedTrace.spanId)
@@ -235,7 +234,7 @@ export function createHarnessRecorders(runtime: DiagnosticsRecorderRuntime) {
     const spanAttrs: Record<string, string | number | boolean> = {
       "openclaw.failover.reason": normalizeDiagnosticValue(evt.reason, "unknown"),
     };
-    addSessionAttrs(spanAttrs, evt);
+    addRunAttrs(spanAttrs, evt);
     if (evt.fromProvider) {
       spanAttrs["openclaw.provider"] = evt.fromProvider;
     }
