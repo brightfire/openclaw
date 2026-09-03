@@ -52,7 +52,6 @@ env:
 
 jobs:
   resolve:
-    if: false
     name: Resolve Mantis request
     runs-on: ${{ inputs.runner }}
     outputs:

@@ -41,7 +41,6 @@ env:
 
 jobs:
   publish_signed_android_apk:
-    if: false
     name: Publish signed Android APK
     runs-on: ubuntu-latest
     timeout-minutes: 45

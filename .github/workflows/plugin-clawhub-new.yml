@@ -58,7 +58,6 @@ env:
 
 jobs:
   resolve_bootstrap_plan:
-    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -319,9 +318,9 @@ jobs:
           fi
 
   validate_release_publish_approval:
-    if: false
     name: Validate release publish approval
     needs: resolve_bootstrap_plan
+    if: github.event_name == 'workflow_dispatch' && inputs.pretag_validation != true && needs.resolve_bootstrap_plan.outputs.has_bootstrap_candidates == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -395,8 +394,8 @@ jobs:
           printf '%s' "$RUN_JSON" | DIRECT_RELEASE_RECOVERY="${direct_recovery}" node scripts/validate-release-publish-approval.mjs
 
   validate_bootstrap_trusted_publisher_cli:
-    if: false
     needs: [resolve_bootstrap_plan, validate_release_publish_approval]
+    if: always() && github.event_name == 'workflow_dispatch' && needs.resolve_bootstrap_plan.outputs.has_bootstrap_candidates == 'true' && (inputs.pretag_validation == true || needs.validate_release_publish_approval.result == 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -443,9 +442,9 @@ jobs:
           done
 
   pack_bootstrap_plugins:
-    if: false
     name: Pack immutable ClawHub bootstrap artifacts
     needs: [resolve_bootstrap_plan, validate_release_publish_approval]
+    if: always() && github.event_name == 'workflow_dispatch' && needs.resolve_bootstrap_plan.outputs.has_bootstrap_candidates == 'true' && (inputs.pretag_validation == true || needs.validate_release_publish_approval.result == 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -625,7 +624,6 @@ jobs:
           echo "size=${size}" >> "${GITHUB_OUTPUT}"
 
   validate_bootstrap_artifact:
-    if: false
     name: Validate immutable bootstrap handoff
     needs:
       [
@@ -634,6 +632,7 @@ jobs:
         validate_bootstrap_trusted_publisher_cli,
         pack_bootstrap_plugins,
       ]
+    if: always() && github.event_name == 'workflow_dispatch' && needs.resolve_bootstrap_plan.outputs.has_bootstrap_candidates == 'true' && (inputs.pretag_validation == true || needs.validate_release_publish_approval.result == 'success') && needs.validate_bootstrap_trusted_publisher_cli.result == 'success' && needs.pack_bootstrap_plugins.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     environment: clawhub-plugin-bootstrap
@@ -781,7 +780,6 @@ jobs:
           if-no-files-found: error
 
   publish_bootstrap_plugins:
-    if: false
     needs:
       [
         resolve_bootstrap_plan,
@@ -790,6 +788,7 @@ jobs:
         pack_bootstrap_plugins,
         validate_bootstrap_artifact,
       ]
+    if: always() && github.event_name == 'workflow_dispatch' && inputs.pretag_validation != true && inputs.dry_run != true && needs.resolve_bootstrap_plan.outputs.has_bootstrap_candidates == 'true' && needs.validate_release_publish_approval.result == 'success' && needs.validate_bootstrap_trusted_publisher_cli.result == 'success' && needs.pack_bootstrap_plugins.result == 'success' && needs.validate_bootstrap_artifact.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 120
     environment: clawhub-plugin-bootstrap

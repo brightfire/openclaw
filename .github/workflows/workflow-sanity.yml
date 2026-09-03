@@ -22,7 +22,7 @@ env:
 
 jobs:
   no-tabs:
-    if: false
+    if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-24.04
     steps:
       - &workflow_sanity_checkout_step
@@ -58,7 +58,7 @@ jobs:
           PY
 
   actionlint:
-    if: false
+    if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-24.04
     steps:
       - *workflow_sanity_checkout_step
@@ -201,7 +201,7 @@ jobs:
         run: node scripts/check-no-conflict-markers.mjs
 
   generated-doc-baselines:
-    if: false
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     steps:
       - *workflow_sanity_checkout_step

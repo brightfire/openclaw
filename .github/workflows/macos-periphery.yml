@@ -17,7 +17,6 @@ permissions:
 
 jobs:
   scope:
-    if: false
     name: Detect macOS scan scope
     runs-on: ubuntu-24.04
     outputs:
@@ -66,9 +65,9 @@ jobs:
             core.setOutput("should-scan", String(result.exitCode === 1));
 
   scan:
-    if: false
     name: Scan macOS dead code
     needs: scope
+    if: ${{ needs.scope.outputs.should-scan == 'true' }}
     runs-on: ${{ (github.event_name == 'workflow_dispatch' || github.run_attempt > 1) && 'macos-26' || (github.repository == 'openclaw/openclaw' && 'blacksmith-12vcpu-macos-26' || 'macos-26') }}
     timeout-minutes: 45
     steps:

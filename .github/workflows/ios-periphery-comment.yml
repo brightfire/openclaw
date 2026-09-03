@@ -16,9 +16,9 @@ permissions:
 
 jobs:
   comment:
-    if: false
     name: Comment on PR
     runs-on: ubuntu-24.04
+    if: >
       github.repository == 'openclaw/openclaw' &&
       github.event.workflow_run.event == 'pull_request' &&
       (github.event.workflow_run.name == 'iOS Periphery Dead Code' ||

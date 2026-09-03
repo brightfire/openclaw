@@ -28,7 +28,6 @@ env:
 
 jobs:
   validate_macos_release_request:
-    if: false
     runs-on: ubuntu-latest
     permissions:
       contents: read

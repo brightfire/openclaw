@@ -28,7 +28,6 @@ env:
 
 jobs:
   plan:
-    if: false
     name: Plan npm placeholder publication
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -177,7 +176,6 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   verify:
-    if: false
     name: Verify npm placeholder publication
     needs: plan
     runs-on: ubuntu-latest
@@ -260,9 +258,9 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   publish:
-    if: false
     name: Publish npm placeholders
     needs: [plan, verify]
+    if: inputs.dry_run != true
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: npm-release

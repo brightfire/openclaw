@@ -439,7 +439,6 @@ env:
 
 jobs:
   resolve_package:
-    if: false
     name: Resolve package candidate
     runs-on: ubuntu-24.04
     timeout-minutes: 60
@@ -929,7 +928,6 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   package_integrity:
-    if: false
     name: Package integrity
     needs: resolve_package
     runs-on: ubuntu-24.04
@@ -974,9 +972,9 @@ jobs:
           node scripts/check-openclaw-package-tarball.mjs "$package"
 
   npm_12_install_sh:
-    if: false
     name: npm 12 install.sh acceptance
     needs: [resolve_package, package_integrity]
+    if: inputs.suite_profile != 'telegram'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -1034,9 +1032,9 @@ jobs:
           [[ ! -e "$guard" ]]
 
   docker_acceptance:
-    if: false
     name: Docker product acceptance (artifact-only)
     needs: [resolve_package, package_integrity]
+    if: inputs.suite_profile != 'telegram' && inputs.shared_image_policy == 'no-push-artifact'
     permissions:
       actions: read
       contents: read
@@ -1130,9 +1128,9 @@ jobs:
       FIREWORKS_API_KEY: ${{ secrets.FIREWORKS_API_KEY }}
 
   docker_acceptance_registry:
-    if: false
     name: Docker product acceptance (existing registry images)
     needs: [resolve_package, package_integrity]
+    if: inputs.suite_profile != 'telegram' && inputs.shared_image_policy == 'existing-only'
     permissions:
       actions: read
       contents: read
@@ -1143,9 +1141,9 @@ jobs:
     secrets: *docker_acceptance_secrets
 
   package_telegram:
-    if: false
     name: Telegram package acceptance
     needs: [resolve_package, package_integrity]
+    if: needs.resolve_package.outputs.telegram_enabled == 'true'
     uses: ./.github/workflows/npm-telegram-beta-e2e.yml
     with:
       advisory: ${{ inputs.advisory || inputs.telegram_advisory || false }}
@@ -1175,7 +1173,6 @@ jobs:
       OPENCLAW_QA_CONVEX_SECRET_CI: ${{ secrets.OPENCLAW_QA_CONVEX_SECRET_CI }}
 
   summary:
-    if: false
     name: Verify package acceptance
     needs:
       [

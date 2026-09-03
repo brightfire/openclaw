@@ -20,7 +20,6 @@ env:
 
 jobs:
   live_and_openwebui_checks:
-    if: false
     permissions:
       actions: read
       contents: read

@@ -22,7 +22,6 @@ env:
 
 jobs:
   clear:
-    if: false
     name: Clear Mantis command reaction
     runs-on: ubuntu-24.04
     permissions: {}

@@ -15,8 +15,8 @@ permissions: {}
 
 jobs:
   real-behavior-proof:
-    if: false
     name: PR context and evidence
+    if: >-
       ${{
         github.event.action != 'edited' ||
         github.event.changes.body ||

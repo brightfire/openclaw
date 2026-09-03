@@ -17,7 +17,6 @@ permissions:
 
 jobs:
   scope:
-    if: false
     name: Detect shared OpenClawKit scan scope
     runs-on: ubuntu-24.04
     outputs:
@@ -72,9 +71,9 @@ jobs:
             core.setOutput("should-scan", String(result.exitCode === 1));
 
   scan-ios:
-    if: false
     name: Scan shared kit from iOS
     needs: scope
+    if: ${{ needs.scope.outputs.should-scan == 'true' }}
     runs-on: ${{ (github.event_name == 'workflow_dispatch' || github.run_attempt > 1) && 'macos-26' || (github.repository == 'openclaw/openclaw' && 'blacksmith-12vcpu-macos-26' || 'macos-26') }}
     timeout-minutes: 45
     steps:
@@ -169,9 +168,9 @@ jobs:
           overwrite: true
 
   scan-macos:
-    if: false
     name: Scan shared kit from macOS
     needs: scope
+    if: ${{ needs.scope.outputs.should-scan == 'true' }}
     runs-on: ${{ (github.event_name == 'workflow_dispatch' || github.run_attempt > 1) && 'macos-26' || (github.repository == 'openclaw/openclaw' && 'blacksmith-12vcpu-macos-26' || 'macos-26') }}
     timeout-minutes: 45
     steps:
@@ -240,9 +239,9 @@ jobs:
           overwrite: true
 
   intersect:
-    if: false
     name: Intersect shared OpenClawKit dead code
     needs: [scope, scan-ios, scan-macos]
+    if: ${{ always() && needs.scope.outputs.should-scan == 'true' && needs.scan-ios.result != 'cancelled' && needs.scan-macos.result != 'cancelled' }}
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout

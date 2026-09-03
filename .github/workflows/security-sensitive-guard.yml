@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   security-sensitive-guard-detect:
-    if: false
+    if: ${{ !github.event.pull_request.draft }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -34,7 +34,7 @@ jobs:
         run: node scripts/github/security-sensitive-guard.mjs
 
   security-sensitive-guard:
-    if: false
+    if: ${{ !github.event.pull_request.draft && always() }}
     needs:
       - security-sensitive-guard-detect
     runs-on: ubuntu-24.04

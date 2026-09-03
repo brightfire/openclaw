@@ -84,7 +84,6 @@ env:
 
 jobs:
   validate_selected_ref:
-    if: false
     name: Validate selected ref
     runs-on: ubuntu-24.04
     outputs:
@@ -327,9 +326,9 @@ jobs:
           PYTHON
 
   publisher_preflight:
-    if: false
     name: Verify generated PR App permissions
     needs: validate_selected_ref
+    if: ${{ inputs.publish_pull_request }}
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout trusted workflow source
@@ -356,9 +355,9 @@ jobs:
           pull-request-private-key: ${{ secrets.MANTIS_GITHUB_APP_PRIVATE_KEY }}
 
   generate_qa_evidence:
-    if: false
     name: Generate full taxonomy QA evidence
     needs: [validate_selected_ref, publisher_preflight]
+    if: >-
       ${{ always() &&
         needs.validate_selected_ref.result == 'success' &&
         (!inputs.publish_pull_request || needs.publisher_preflight.result == 'success') &&
@@ -376,12 +375,12 @@ jobs:
       OPENCLAW_QA_CONVEX_SECRET_CI: ${{ secrets.OPENCLAW_QA_CONVEX_SECRET_CI }}
 
   publish:
-    if: false
     name: Publish maturity docs PR
     needs:
       - validate_selected_ref
       - publisher_preflight
       - generate_qa_evidence
+    if: >-
       ${{ always() &&
         needs.validate_selected_ref.result == 'success' &&
         (!inputs.publish_pull_request || needs.publisher_preflight.result == 'success') &&
@@ -676,12 +675,12 @@ jobs:
           if-no-files-found: error
 
   publish_generated_pr:
-    if: false
     name: Publish generated maturity PR
     needs:
       - validate_selected_ref
       - publisher_preflight
       - publish
+    if: >-
       ${{ inputs.publish_pull_request &&
         needs.publisher_preflight.result == 'success' &&
         needs.publish.result == 'success' &&

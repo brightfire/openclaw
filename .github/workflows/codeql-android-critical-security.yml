@@ -19,7 +19,6 @@ permissions:
 
 jobs:
   android:
-    if: false
     name: Critical Security (android)
     runs-on: blacksmith-8vcpu-ubuntu-2404
     timeout-minutes: 45

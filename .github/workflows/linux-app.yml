@@ -19,7 +19,6 @@ permissions:
 
 jobs:
   build:
-    if: false
     name: Build Linux companion
     # Match the release build base so PR artifacts have the same glibc floor.
     runs-on: ubuntu-22.04
@@ -99,7 +98,6 @@ jobs:
             apps/linux/src-tauri/target/release/bundle/appimage/*.AppImage
 
   test-macos:
-    if: false
     name: Test macOS companion
     # This app also ships macOS desktop-test bundles, but the only job that
     # compiles them (linux-app-release.yml build_macos) runs behind a manual

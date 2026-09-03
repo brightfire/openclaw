@@ -18,9 +18,9 @@ concurrency:
 
 jobs:
   warm:
-    if: false
     # Shared CI cache publication is isolated from pull-request execution.
     # Trusted release/proof workflows may save only through the same authority contract.
+    if: github.repository == 'openclaw/openclaw'
     runs-on: ${{ vars.OPENCLAW_CI_RUNNER_BACKEND == 'github' && 'ubuntu-24.04' || 'blacksmith-8vcpu-ubuntu-2404' }}
     timeout-minutes: 60
     steps:

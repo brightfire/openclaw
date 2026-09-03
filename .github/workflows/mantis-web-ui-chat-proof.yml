@@ -28,8 +28,8 @@ env:
 
 jobs:
   authorize_actor:
-    if: false
     name: Authorize workflow actor
+    if: >-
       ${{
         github.event_name == 'workflow_dispatch' ||
         (
@@ -69,9 +69,9 @@ jobs:
             core.setOutput("authorized", "true");
 
   resolve_request:
-    if: false
     name: Resolve Mantis request
     needs: authorize_actor
+    if: needs.authorize_actor.outputs.authorized == 'true'
     uses: ./.github/workflows/mantis-resolve-request.yml
     with:
       request-pattern: 'web-ui-chat|web ui chat|(?=[\s\S]*web ui)(?=[\s\S]*chat)|(?=[\s\S]*control ui)(?=[\s\S]*chat)'
@@ -83,9 +83,9 @@ jobs:
       MANTIS_GITHUB_APP_PRIVATE_KEY: ${{ secrets.MANTIS_GITHUB_APP_PRIVATE_KEY }}
 
   validate_candidate:
-    if: false
     name: Validate selected candidate
     needs: resolve_request
+    if: ${{ needs.resolve_request.outputs.should_run == 'true' }}
     runs-on: blacksmith-8vcpu-ubuntu-2404
     outputs:
       candidate_revision: ${{ steps.validate.outputs.candidate-revision }}
@@ -105,9 +105,9 @@ jobs:
           candidate-ref: ${{ needs.resolve_request.outputs.candidate_ref }}
 
   run_web_ui_chat:
-    if: false
     name: Run Control UI web chat proof
     needs: [resolve_request, validate_candidate]
+    if: ${{ needs.resolve_request.outputs.should_run == 'true' }}
     permissions:
       contents: read
     runs-on: blacksmith-8vcpu-ubuntu-2404
@@ -209,9 +209,9 @@ jobs:
           if-no-files-found: error
 
   publish_evidence:
-    if: false
     name: Publish Mantis web UI chat evidence
     needs: [resolve_request, run_web_ui_chat]
+    if: ${{ always() && needs.resolve_request.outputs.pr_number != '' && needs.run_web_ui_chat.outputs.artifact_name != '' }}
     runs-on: ubuntu-24.04
     environment: qa-live-shared
     steps:
@@ -265,9 +265,9 @@ jobs:
             --request-source "$REQUEST_SOURCE"
 
   clear_issue_comment_reaction:
-    if: false
     name: Clear Mantis command reaction
     needs: [resolve_request, validate_candidate, run_web_ui_chat, publish_evidence]
+    if: ${{ always() && github.event_name == 'issue_comment' && needs.resolve_request.outputs.request_source == 'issue_comment' && needs.resolve_request.outputs.reaction_id != '' }}
     permissions: {}
     uses: ./.github/workflows/mantis-clear-reaction.yml
     with:

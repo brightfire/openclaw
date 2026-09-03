@@ -37,7 +37,7 @@ concurrency:
 
 jobs:
   resolve-base:
-    if: false
+    if: >-
       github.repository == 'openclaw/openclaw' &&
       (github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
@@ -63,9 +63,9 @@ jobs:
           echo "sha=${sha}" >> "${GITHUB_OUTPUT}"
 
   publisher-preflight:
-    if: false
     name: Verify generated PR App permissions
     needs: resolve-base
+    if: needs.resolve-base.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -105,8 +105,8 @@ jobs:
           fi
 
   refresh:
-    if: false
     needs: [resolve-base, publisher-preflight]
+    if: >-
       needs.resolve-base.result == 'success' &&
       needs.publisher-preflight.result == 'success'
     strategy:
@@ -250,9 +250,9 @@ jobs:
           retention-days: 1
 
   finalize:
-    if: false
     name: Commit native locale refresh
     needs: [resolve-base, publisher-preflight, refresh]
+    if: >-
       needs.resolve-base.result == 'success' &&
       needs.publisher-preflight.result == 'success' &&
       needs.refresh.result == 'success'

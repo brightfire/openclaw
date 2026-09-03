@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   dependency-guard-detect:
-    if: false
+    if: ${{ !github.event.pull_request.draft }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
@@ -39,7 +39,7 @@ jobs:
         run: node scripts/github/dependency-guard.mjs
 
   dependency-guard-autoscrub:
-    if: false
+    if: ${{ !github.event.pull_request.draft && needs.dependency-guard-detect.outputs.autoscrub == 'true' }}
     needs: dependency-guard-detect
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -87,7 +87,7 @@ jobs:
         run: node scripts/github/dependency-guard.mjs
 
   dependency-guard:
-    if: false
+    if: ${{ !github.event.pull_request.draft && always() }}
     needs:
       - dependency-guard-detect
       - dependency-guard-autoscrub

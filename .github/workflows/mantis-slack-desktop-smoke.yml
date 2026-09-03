@@ -74,7 +74,6 @@ env:
 
 jobs:
   authorize_actor:
-    if: false
     name: Authorize workflow actor
     runs-on: ubuntu-24.04
     outputs:
@@ -104,9 +103,9 @@ jobs:
             core.setOutput("authorized", "true");
 
   validate_ref:
-    if: false
     name: Validate candidate ref
     needs: authorize_actor
+    if: needs.authorize_actor.outputs.authorized == 'true'
     runs-on: ubuntu-24.04
     outputs:
       candidate_revision: ${{ steps.validate.outputs.candidate-revision }}
@@ -126,7 +125,6 @@ jobs:
           candidate-ref: ${{ inputs.candidate_ref }}
 
   run_slack_desktop:
-    if: false
     name: Run Slack desktop smoke
     needs: validate_ref
     runs-on: ubuntu-24.04

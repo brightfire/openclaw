@@ -139,7 +139,6 @@ env:
 
 jobs:
   authorize_actor:
-    if: false
     name: Authorize workflow actor
     runs-on: blacksmith-8vcpu-ubuntu-2404
     timeout-minutes: 10
@@ -177,9 +176,9 @@ jobs:
             core.setOutput("authorized", "true");
 
   validate_selected_ref:
-    if: false
     name: Validate selected ref
     needs: authorize_actor
+    if: needs.authorize_actor.outputs.authorized == 'true'
     runs-on: blacksmith-8vcpu-ubuntu-2404
     timeout-minutes: 30
     outputs:
@@ -257,9 +256,9 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   run_mock_parity:
-    if: false
     name: Run QA Lab mock parity lane
     needs: [validate_selected_ref]
+    if: inputs.expected_sha == '' || inputs.run_mock_parity
     runs-on: blacksmith-16vcpu-ubuntu-2404
     timeout-minutes: 30
     env:
@@ -331,9 +330,9 @@ jobs:
           if-no-files-found: error
 
   run_live_runtime_token_efficiency:
-    if: false
     name: Run live runtime token-efficiency lane
     needs: [authorize_actor, validate_selected_ref]
+    if: github.event_name == 'schedule'
     runs-on: blacksmith-16vcpu-ubuntu-2404
     timeout-minutes: 45
     environment: qa-live-shared
@@ -441,9 +440,9 @@ jobs:
           if-no-files-found: error
 
   run_live_matrix:
-    if: false
     name: Run Matrix live QA lane
     needs: [authorize_actor, validate_selected_ref]
+    if: inputs.expected_sha == '' || inputs.run_matrix
     runs-on: blacksmith-16vcpu-ubuntu-2404
     timeout-minutes: 90
     concurrency:
@@ -507,9 +506,9 @@ jobs:
           if-no-files-found: error
 
   run_live_buzz:
-    if: false
     name: Run Buzz live QA lane with Convex leases
     needs: [authorize_actor, validate_selected_ref]
+    if: inputs.run_buzz
     runs-on: blacksmith-16vcpu-ubuntu-2404
     timeout-minutes: 60
     concurrency:
@@ -647,9 +646,9 @@ jobs:
           exit 1
 
   run_live_telegram:
-    if: false
     name: Run Telegram live QA lane with Convex leases
     needs: [authorize_actor, validate_selected_ref]
+    if: inputs.expected_sha == '' || inputs.run_telegram
     runs-on: blacksmith-16vcpu-ubuntu-2404
     timeout-minutes: 60
     environment: qa-live-shared
@@ -745,9 +744,9 @@ jobs:
           if-no-files-found: error
 
   run_live_discord:
-    if: false
     name: Run Discord live QA lane with Convex leases
     needs: [authorize_actor, validate_selected_ref]
+    if: inputs.expected_sha == '' || inputs.run_discord
     runs-on: blacksmith-16vcpu-ubuntu-2404
     timeout-minutes: 60
     environment: qa-live-shared
@@ -831,9 +830,9 @@ jobs:
           if-no-files-found: error
 
   run_live_whatsapp:
-    if: false
     name: Run WhatsApp live QA lane with Convex leases
     needs: [authorize_actor, validate_selected_ref]
+    if: inputs.expected_sha == '' || inputs.run_whatsapp
     runs-on: blacksmith-16vcpu-ubuntu-2404
     timeout-minutes: 60
     concurrency:
@@ -910,9 +909,9 @@ jobs:
           if-no-files-found: error
 
   run_live_slack:
-    if: false
     name: Run Slack live QA lane with Convex leases
     needs: [authorize_actor, validate_selected_ref]
+    if: inputs.expected_sha == '' || inputs.run_slack
     runs-on: blacksmith-16vcpu-ubuntu-2404
     timeout-minutes: 60
     environment: qa-live-shared

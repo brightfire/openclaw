@@ -33,7 +33,6 @@ concurrency:
 
 jobs:
   resolve:
-    if: false
     name: Resolve stable release closeout inputs
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -330,9 +329,9 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
   verify:
-    if: false
     name: Verify stable main closeout
     needs: resolve
+    if: ${{ needs.resolve.outputs.should_closeout == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:

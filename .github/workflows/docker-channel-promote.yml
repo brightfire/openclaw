@@ -17,7 +17,6 @@ env:
 
 jobs:
   resolve:
-    if: false
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -80,7 +79,6 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   approve:
-    if: false
     name: Approve ${{ inputs.tag }} to ${{ needs.resolve.outputs.channel }} (${{ needs.resolve.outputs.default_aliases }})
     needs: resolve
     # Keep human approval outside the queued writer so waiting for approval
@@ -103,7 +101,6 @@ jobs:
           echo "Browser aliases: ${BROWSER_ALIASES}"
 
   promote:
-    if: false
     needs: [resolve, approve]
     runs-on: ubuntu-24.04
     concurrency:

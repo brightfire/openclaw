@@ -148,8 +148,8 @@ permissions:
 
 jobs:
   quality-shards:
-    if: false
     name: Select Critical Quality shards
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
@@ -330,9 +330,9 @@ jobs:
           } >> "${GITHUB_OUTPUT}"
 
   core-auth-secrets:
-    if: false
     name: Critical Quality (core-auth-secrets)
     needs: quality-shards
+    if: ${{ needs.quality-shards.outputs.core_auth_secrets == 'true' && (github.event_name != 'pull_request' || !github.event.pull_request.draft) && (github.event_name == 'pull_request' || github.event_name != 'workflow_dispatch' || inputs.profile == 'all' || inputs.profile == 'core-auth-secrets') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
@@ -353,9 +353,9 @@ jobs:
           category: "/codeql-critical-quality/core-auth-secrets"
 
   config-boundary:
-    if: false
     name: Critical Quality (config-boundary)
     needs: quality-shards
+    if: ${{ needs.quality-shards.outputs.config == 'true' && (github.event_name != 'pull_request' || !github.event.pull_request.draft) && (github.event_name == 'pull_request' || github.event_name != 'workflow_dispatch' || inputs.profile == 'all' || inputs.profile == 'config-boundary') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
@@ -376,9 +376,9 @@ jobs:
           category: "/codeql-critical-quality/config-boundary"
 
   gateway-runtime-boundary:
-    if: false
     name: Critical Quality (gateway-runtime-boundary)
     needs: quality-shards
+    if: ${{ needs.quality-shards.outputs.gateway == 'true' && (github.event_name != 'pull_request' || !github.event.pull_request.draft) && (github.event_name == 'pull_request' || github.event_name != 'workflow_dispatch' || inputs.profile == 'all' || inputs.profile == 'gateway-runtime-boundary') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
@@ -399,9 +399,9 @@ jobs:
           category: "/codeql-critical-quality/gateway-runtime-boundary"
 
   channel-runtime-boundary:
-    if: false
     name: Critical Quality (channel-runtime-boundary)
     needs: quality-shards
+    if: ${{ needs.quality-shards.outputs.channel == 'true' && (github.event_name != 'pull_request' || !github.event.pull_request.draft) && (github.event_name == 'pull_request' || github.event_name != 'workflow_dispatch' || inputs.profile == 'all' || inputs.profile == 'channel-runtime-boundary') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
@@ -422,9 +422,9 @@ jobs:
           category: "/codeql-critical-quality/channel-runtime-boundary"
 
   network-runtime-boundary:
-    if: false
     name: Critical Quality (network-runtime-boundary)
     needs: quality-shards
+    if: ${{ needs.quality-shards.outputs.network_runtime == 'true' && (github.event_name != 'pull_request' || !github.event.pull_request.draft) && (github.event_name == 'pull_request' || github.event_name != 'workflow_dispatch' || inputs.profile == 'all' || inputs.profile == 'network-runtime-boundary') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
@@ -541,9 +541,9 @@ jobs:
           exit 1
 
   agent-runtime-boundary:
-    if: false
     name: Critical Quality (agent-runtime-boundary)
     needs: quality-shards
+    if: ${{ needs.quality-shards.outputs.agent == 'true' && (github.event_name != 'pull_request' || !github.event.pull_request.draft) && (github.event_name == 'pull_request' || github.event_name != 'workflow_dispatch' || inputs.profile == 'all' || inputs.profile == 'agent-runtime-boundary') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
@@ -564,9 +564,9 @@ jobs:
           category: "/codeql-critical-quality/agent-runtime-boundary"
 
   mcp-process-runtime-boundary:
-    if: false
     name: Critical Quality (mcp-process-runtime-boundary)
     needs: quality-shards
+    if: ${{ needs.quality-shards.outputs.mcp_process == 'true' && (github.event_name != 'pull_request' || !github.event.pull_request.draft) && (github.event_name == 'pull_request' || github.event_name != 'workflow_dispatch' || inputs.profile == 'all' || inputs.profile == 'mcp-process-runtime-boundary') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
@@ -587,9 +587,9 @@ jobs:
           category: "/codeql-critical-quality/mcp-process-runtime-boundary"
 
   memory-runtime-boundary:
-    if: false
     name: Critical Quality (memory-runtime-boundary)
     needs: quality-shards
+    if: ${{ needs.quality-shards.outputs.memory == 'true' && (github.event_name != 'pull_request' || !github.event.pull_request.draft) && (github.event_name == 'pull_request' || github.event_name != 'workflow_dispatch' || inputs.profile == 'all' || inputs.profile == 'memory-runtime-boundary') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
@@ -610,9 +610,9 @@ jobs:
           category: "/codeql-critical-quality/memory-runtime-boundary"
 
   session-diagnostics-boundary:
-    if: false
     name: Critical Quality (session-diagnostics-boundary)
     needs: quality-shards
+    if: ${{ needs.quality-shards.outputs.session_diagnostics == 'true' && (github.event_name != 'pull_request' || !github.event.pull_request.draft) && (github.event_name == 'pull_request' || github.event_name != 'workflow_dispatch' || inputs.profile == 'all' || inputs.profile == 'session-diagnostics-boundary') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
@@ -633,9 +633,9 @@ jobs:
           category: "/codeql-critical-quality/session-diagnostics-boundary"
 
   plugin-sdk-reply-runtime:
-    if: false
     name: Critical Quality (plugin-sdk-reply-runtime)
     needs: quality-shards
+    if: ${{ needs.quality-shards.outputs.plugin_sdk_reply == 'true' && (github.event_name != 'pull_request' || !github.event.pull_request.draft) && (github.event_name == 'pull_request' || github.event_name != 'workflow_dispatch' || inputs.profile == 'all' || inputs.profile == 'plugin-sdk-reply-runtime') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
@@ -656,9 +656,9 @@ jobs:
           category: "/codeql-critical-quality/plugin-sdk-reply-runtime"
 
   provider-runtime-boundary:
-    if: false
     name: Critical Quality (provider-runtime-boundary)
     needs: quality-shards
+    if: ${{ needs.quality-shards.outputs.provider == 'true' && (github.event_name != 'pull_request' || !github.event.pull_request.draft) && (github.event_name == 'pull_request' || github.event_name != 'workflow_dispatch' || inputs.profile == 'all' || inputs.profile == 'provider-runtime-boundary') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
@@ -679,8 +679,8 @@ jobs:
           category: "/codeql-critical-quality/provider-runtime-boundary"
 
   ui-control-plane:
-    if: false
     name: Critical Quality (ui-control-plane)
+    if: ${{ github.event_name != 'pull_request' && (github.event_name != 'workflow_dispatch' || inputs.profile == 'all') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
@@ -701,8 +701,8 @@ jobs:
           category: "/codeql-critical-quality/ui-control-plane"
 
   web-media-runtime-boundary:
-    if: false
     name: Critical Quality (web-media-runtime-boundary)
+    if: ${{ github.event_name != 'pull_request' && (github.event_name != 'workflow_dispatch' || inputs.profile == 'all') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
@@ -723,9 +723,9 @@ jobs:
           category: "/codeql-critical-quality/web-media-runtime-boundary"
 
   plugin-boundary:
-    if: false
     name: Critical Quality (plugin-boundary)
     needs: quality-shards
+    if: ${{ needs.quality-shards.outputs.plugin == 'true' && (github.event_name != 'pull_request' || !github.event.pull_request.draft) && (github.event_name == 'pull_request' || github.event_name != 'workflow_dispatch' || inputs.profile == 'all' || inputs.profile == 'plugin-boundary') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
@@ -746,9 +746,9 @@ jobs:
           category: "/codeql-critical-quality/plugin-boundary"
 
   plugin-sdk-package-contract:
-    if: false
     name: Critical Quality (plugin-sdk-package-contract)
     needs: quality-shards
+    if: ${{ needs.quality-shards.outputs.plugin_sdk_package == 'true' && (github.event_name != 'pull_request' || !github.event.pull_request.draft) && (github.event_name == 'pull_request' || github.event_name != 'workflow_dispatch' || inputs.profile == 'all' || inputs.profile == 'plugin-sdk-package-contract') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
