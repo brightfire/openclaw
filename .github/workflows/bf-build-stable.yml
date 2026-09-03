@@ -135,6 +135,13 @@ jobs:
           fi
           echo "Version from manifest: $VERSION"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+      # prepare-stable-branch switches this checkout to the newly-created
+      # stable branch (upstream base + patches). That branch deliberately has
+      # no Brightfire CI scripts, so preserve the scripts before switching.
+      # Scripts are committed executable; no chmod workaround is needed.
+      - name: Preserve Brightfire build scripts across stable checkout
+        run: cp -a scripts/bf/build-stable /tmp/bf-build-stable
+
       - name: Prepare stable branch
         env:
           VERSION: ${{ steps.upstream-version.outputs.version }}
@@ -146,7 +153,7 @@ jobs:
         id: version
         env:
           VERSION: ${{ steps.upstream-version.outputs.version }}
-        run: scripts/bf/build-stable/compute-bf-version.sh
+        run: /tmp/bf-build-stable/compute-bf-version.sh
 
       - name: Configure git
         run: |
@@ -160,19 +167,19 @@ jobs:
         env:
           PATCHES: ${{ steps.patches.outputs.list }}
           VERSION: ${{ steps.upstream-version.outputs.version }}
-        run: scripts/bf/build-stable/merge-patches.sh
+        run: /tmp/bf-build-stable/merge-patches.sh
 
       - name: Update package.json version
         env:
           VERSION: ${{ steps.version.outputs.version }}
-        run: scripts/bf/build-stable/bump-package-version.sh
+        run: /tmp/bf-build-stable/bump-package-version.sh
 
       - name: Inject brightfire CHANGELOG entry
         env:
           BF_VERSION: ${{ steps.version.outputs.version }}
           UPSTREAM_VERSION: ${{ steps.upstream-version.outputs.version }}
           REPO: https://github.com/brightfire/openclaw
-        run: python3 scripts/bf/build-stable/inject-changelog-entry.py
+        run: python3 /tmp/bf-build-stable/inject-changelog-entry.py
 
       - name: Setup Node environment
         uses: ./.github/actions/setup-node-env
@@ -186,7 +193,7 @@ jobs:
         run: pnpm install --no-frozen-lockfile
 
       - name: Regenerate build artifacts
-        run: scripts/bf/build-stable/regenerate-artifacts.sh
+        run: /tmp/bf-build-stable/regenerate-artifacts.sh
 
       - name: Restore tsgo incremental cache
         uses: actions/cache@v5
@@ -248,7 +255,7 @@ jobs:
           FORCE_RELEASE: ${{ inputs.force_release || 'false' }}
         run: |
           # check-release-needed.sh writes needs_release + manifest_sha256 to $GITHUB_OUTPUT
-          scripts/bf/build-stable/check-release-needed.sh
+          /tmp/bf-build-stable/check-release-needed.sh
 
       # Pack the tarball (same steps as the old background pack, now foreground
       # after build completes — no need to race with tests).
@@ -389,6 +396,14 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
 
+      # Stable is a bare upstream+patch tree; recover the CI-side fingerprint
+      # script from brightfire/ci for release metadata generation.
+      - name: Stage Brightfire fingerprint script
+        run: |
+          mkdir -p /tmp/bf-build-stable
+          git archive origin/brightfire/ci scripts/bf/build-stable/write-build-fingerprint.sh | tar -x -C /tmp
+          mv /tmp/scripts/bf/build-stable/write-build-fingerprint.sh /tmp/bf-build-stable/
+
       - name: Download tarball artifact
         uses: actions/download-artifact@v4
         with:
@@ -408,7 +423,7 @@ jobs:
           MANIFEST_SHA256: ${{ needs.build.outputs.manifest_sha256 }}
           RELEASE_TAG: ${{ needs.build.outputs.tag }}
           OUTPUT_PATH: bf-build-fingerprint.json
-        run: scripts/bf/build-stable/write-build-fingerprint.sh
+        run: /tmp/bf-build-stable/write-build-fingerprint.sh
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
