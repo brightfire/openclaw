@@ -6,7 +6,7 @@ tool-editable fields (Branch HEAD, Source PR, Last updated). The per-patch
 prose sections below the table carry only Rationale / Files touched /
 Upgrade guidance and are not touched by this script except when creating
 brand-new entries (using the template at
-`docs/brightfire-patches/new-entry-template.md`).
+`.github/brightfire-patches/new-entry-template.md`).
 
 Owns four modes, all dispatched via argparse:
 
@@ -73,7 +73,7 @@ from datetime import date
 _DEFAULT_PR_REPO_URL = "https://github.com/brightfire/openclaw"
 
 # Path to the externalized new-entry template (relative to repo root).
-_TEMPLATE_PATH = "docs/brightfire-patches/new-entry-template.md"
+_TEMPLATE_PATH = ".github/brightfire-patches/new-entry-template.md"
 
 
 # ---------------------------------------------------------------------------
@@ -283,9 +283,9 @@ def _load_template(manifest_path):
 
     Search order:
       1. `$BF_NEW_ENTRY_TEMPLATE` env var (test/override hook).
-      2. `<manifest-dir>/docs/brightfire-patches/new-entry-template.md`.
-      3. `<cwd>/docs/brightfire-patches/new-entry-template.md`.
-      4. `<script-dir>/../../docs/brightfire-patches/new-entry-template.md`
+      2. `<manifest-dir>/.github/brightfire-patches/new-entry-template.md`.
+      3. `<cwd>/.github/brightfire-patches/new-entry-template.md`.
+      4. `<script-dir>/../../.github/brightfire-patches/new-entry-template.md`
          (script lives at `scripts/bf/`).
 
     Returns the raw template text. Raises FileNotFoundError when no
@@ -439,7 +439,7 @@ def _append_new_entry(content, patch_name, commit_short, pr_value, pr_title,
     """Append a fresh table row + manifest section for a brand-new patch.
 
     The row template and section template both live in
-    `docs/brightfire-patches/new-entry-template.md` so the prose can be
+    `.github/brightfire-patches/new-entry-template.md` so the prose can be
     edited without touching this script.
     """
     title = _strip_conventional_prefix(pr_title) or "Manual registration"

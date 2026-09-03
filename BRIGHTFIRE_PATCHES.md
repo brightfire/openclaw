@@ -1,7 +1,8 @@
 # Brightfire Patch Registry
 
-See [docs/brightfire-patches.md](docs/brightfire-patches.md) for how this file
-is maintained and the new-entry template.
+Manifest maintenance is owned by the `openclaw-dev` skill
+(brightfire/gpt-skills). New-entry template:
+[.github/brightfire-patches/new-entry-template.md](.github/brightfire-patches/new-entry-template.md).
 
 ## _meta
 
