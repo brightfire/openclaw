@@ -4,7 +4,7 @@
 # in BRIGHTFIRE_PATCHES.md is the contract.
 #
 # Inputs (env):
-#   PATCHES — comma-separated list of full branch names (e.g. 0a6c013be5f/upstream-test-fixes)
+#   PATCHES — comma-separated list of full branch names (e.g. brightfire/0a6c013be5f/upstream-test-fixes)
 #   VERSION — bare upstream version (X.Y.Z); stable branch is `stable/<VERSION>`
 #             (used only for log context)
 

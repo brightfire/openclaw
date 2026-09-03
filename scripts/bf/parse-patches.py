@@ -18,7 +18,7 @@ import sys
 
 # Extract the full branch name from the Canonical branch table cell.
 # The cell content is wrapped in backticks — the branch name is whatever
-# is between them (e.g. `0a6c013be5f/upstream-test-fixes`).
+# is between them (e.g. `brightfire/0a6c013be5f/upstream-test-fixes`).
 _CANONICAL_BRANCH_RE = re.compile(r"`([^`]+)`")
 
 

@@ -1,6 +1,7 @@
 # Register Patch
 #
-# Triggered when a PR merges into any patch branch (brightfire/* or <base-commit>/*).
+# Triggered when a PR merges into any brightfire/<base-commit>/<name> patch branch
+# (brightfire/ci itself is excluded in the job condition).
 # Updates BRIGHTFIRE_PATCHES.md on brightfire/ci directly:
 #   - NEW patches: appends a full manifest entry
 #   - EXISTING patches: updates the squashed commit SHA and source PR number
@@ -21,8 +22,7 @@ on:
   pull_request_target:
     types: [closed]
     branches:
-      - "brightfire/*"
-      - "**/*" # Catch <base-commit>/<patch> branches that don't match brightfire/*
+      - 'brightfire/**'
   workflow_dispatch:
     inputs:
       refresh_branch_heads:
@@ -31,7 +31,7 @@ on:
         type: boolean
         default: false
       patch_branch:
-        description: "Patch branch (e.g. brightfire/sessions-history-archived). Ignored when refresh_branch_heads=true."
+        description: "Patch branch, full path (e.g. brightfire/0a6c013be5f/my-patch). Ignored when refresh_branch_heads=true."
         required: false
         type: string
       pr_number:
@@ -53,11 +53,8 @@ jobs:
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event.pull_request.merged == true &&
-      github.event.pull_request.base.ref != 'brightfire/ci' &&
-      github.event.pull_request.base.ref != 'main' &&
-      !startsWith(github.event.pull_request.base.ref, 'stable/') &&
-      !startsWith(github.event.pull_request.base.ref, 'feature/') &&
-      !startsWith(github.event.pull_request.base.ref, 'fix/'))
+      startsWith(github.event.pull_request.base.ref, 'brightfire/') &&
+      github.event.pull_request.base.ref != 'brightfire/ci')
     runs-on: ubuntu-latest
     steps:
       - name: Generate app token
@@ -92,11 +89,11 @@ jobs:
             python3 scripts/bf/update-patch-entry.py \
               -f BRIGHTFIRE_PATCHES.md --refresh --all
           else
-            PATCH_NAME="${PATCH_BRANCH#brightfire/}"
+            PATCH_NAME="$PATCH_BRANCH"  # full branch path: brightfire/<base-commit>/<name>
             ARGS=(-f BRIGHTFIRE_PATCHES.md --patch "$PATCH_NAME")
             # On a merged PR_TARGET event MERGE_SHA is authoritative; on a
             # manual workflow_dispatch it's empty and the script falls back
-            # to `git ls-remote origin refs/heads/brightfire/<patch>`.
+            # to `git ls-remote origin refs/heads/<patch>`.
             if [ -n "$MERGE_SHA" ]; then
               ARGS+=(--commit-sha "${MERGE_SHA:0:10}")
             fi

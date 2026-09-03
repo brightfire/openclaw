@@ -1,7 +1,7 @@
 # Brightfire Patch Registry
 
 See [docs/brightfire-patches.md](docs/brightfire-patches.md) for how this file
-is maintained, the merge-not-rebase philosophy, and the new-entry template.
+is maintained and the new-entry template.
 
 ## _meta
 
@@ -11,18 +11,18 @@ is maintained, the merge-not-rebase philosophy, and the new-entry template.
 
 ## Patches
 
-| Name                           | Canonical branch                           | Branch HEAD  | Source PR                                       | Last updated |
-| ------------------------------ | ------------------------------------------ | ------------ | ----------------------------------------------- | ------------ |
-| Upstream Test Fixes            | `0a6c013be5f/upstream-test-fixes`           | `e0804f8321` | https://github.com/brightfire/openclaw/pull/150 | 2026-09-02   |
-| Slack Markdown                 | `0a6c013be5f/slack-mrkdwn`                  | `a9feaf3c96` | —                                               | 2026-09-02   |
-| CLI HTTP Health Fallback       | `0a6c013be5f/cli-http-fallback`             | `527f79177c` | —                                               | 2026-09-02   |
-| Webhook Session Target Support | `0a6c013be5f/webhook-sessiontarget-support` | `f3f5d84ec0` | https://github.com/brightfire/openclaw/pull/106 | 2026-09-02   |
-| OTEL Improvements              | `0a6c013be5f/otel-improvements`             | `eeb9682f43` | https://github.com/brightfire/openclaw/pull/173 | 2026-09-02   |
-| Bundle All Plugins             | `0a6c013be5f/bundle-all-plugins`            | `2b90d1433d` | —                                               | 2026-09-02   |
+| Name                           | Canonical branch                                       | Branch HEAD  | Source PR                                       | Last updated |
+| ------------------------------ | ------------------------------------------------------ | ------------ | ----------------------------------------------- | ------------ |
+| Upstream Test Fixes            | `brightfire/0a6c013be5f/upstream-test-fixes`           | `e0804f8321` | https://github.com/brightfire/openclaw/pull/150 | 2026-09-02   |
+| Slack Markdown                 | `brightfire/0a6c013be5f/slack-mrkdwn`                  | `a9feaf3c96` | —                                               | 2026-09-02   |
+| CLI HTTP Health Fallback       | `brightfire/0a6c013be5f/cli-http-fallback`             | `527f79177c` | —                                               | 2026-09-02   |
+| Webhook Session Target Support | `brightfire/0a6c013be5f/webhook-sessiontarget-support` | `f3f5d84ec0` | https://github.com/brightfire/openclaw/pull/106 | 2026-09-02   |
+| OTEL Improvements              | `brightfire/0a6c013be5f/otel-improvements`             | `eeb9682f43` | https://github.com/brightfire/openclaw/pull/173 | 2026-09-02   |
+| Bundle All Plugins             | `brightfire/0a6c013be5f/bundle-all-plugins`            | `2b90d1433d` | —                                               | 2026-09-02   |
 
 ## Upstream Test Fixes
 
-(canonical: `0a6c013be5f/upstream-test-fixes`)
+(canonical: `brightfire/0a6c013be5f/upstream-test-fixes`)
 
 ### Rationale
 
@@ -48,7 +48,7 @@ upstream fixed the underlying issue).
 
 ## Slack Markdown
 
-(canonical: `0a6c013be5f/slack-mrkdwn`)
+(canonical: `brightfire/0a6c013be5f/slack-mrkdwn`)
 
 ### Rationale
 
@@ -64,7 +64,7 @@ The Slack extension was using `text_markup: 'mrkdwn'` (Slack's proprietary diale
 
 ## CLI HTTP Health Fallback
 
-(canonical: `0a6c013be5f/cli-http-fallback`)
+(canonical: `brightfire/0a6c013be5f/cli-http-fallback`)
 
 ### Rationale
 
@@ -104,7 +104,7 @@ stops rejecting loopback connections in `trusted-proxy` mode entirely.
 
 ## Webhook Session Target Support
 
-(canonical: `0a6c013be5f/webhook-sessiontarget-support`)
+(canonical: `brightfire/0a6c013be5f/webhook-sessiontarget-support`)
 
 ### Rationale
 
@@ -122,7 +122,7 @@ always using the default.
 
 ## OTEL Improvements
 
-(canonical: `0a6c013be5f/otel-improvements`)
+(canonical: `brightfire/0a6c013be5f/otel-improvements`)
 
 ### Rationale
 
@@ -142,7 +142,7 @@ identity propagation. Check `extensions/diagnostics-otel/` for upstream changes.
 
 ## Bundle All Plugins
 
-(canonical: `0a6c013be5f/bundle-all-plugins`)
+(canonical: `brightfire/0a6c013be5f/bundle-all-plugins`)
 
 ### Rationale
 

@@ -12,18 +12,18 @@ Owns four modes, all dispatched via argparse:
 
   1. Update existing entry (or create new one if missing):
        update-patch-entry.py -f BRIGHTFIRE_PATCHES.md \\
-         --patch sessions-history-archived --commit-sha 93987583f9 [--pr 39]
+         --patch brightfire/0a6c013be5f/sessions-history-archived --commit-sha 93987583f9 [--pr 39]
 
   2. Create new entry (auto-detected from --patch missing in manifest);
      optional title via --pr-title (conventional-commit prefixes stripped):
        update-patch-entry.py -f BRIGHTFIRE_PATCHES.md \\
-         --patch my-new-patch --commit-sha abcd1234ef --pr 42 \\
+         --patch brightfire/0a6c013be5f/my-new-patch --commit-sha abcd1234ef --pr 42 \\
          --pr-title "feat: my new feature"
 
   3. Refresh ONE entry's HEAD via `git ls-remote origin
      refs/heads/<patch>` — Source PR always preserved:
        update-patch-entry.py -f BRIGHTFIRE_PATCHES.md \\
-         --refresh --patch sessions-history-archived
+         --refresh --patch brightfire/0a6c013be5f/sessions-history-archived
 
   4. Refresh EVERY active entry's HEAD via ls-remote — Source PR always
      preserved on all entries:
@@ -234,7 +234,8 @@ _CANONICAL_BRANCH_RE = re.compile(r"`([^`]+)`")
 def _row_branch_name(row):
     """Extract the full branch name from the Canonical branch cell.
     Returns the text between backticks — the full branch path (e.g.
-    `0a6c013be5f/bundle-all-plugins` or `brightfire/old-patch`).
+    `brightfire/0a6c013be5f/bundle-all-plugins`); legacy `brightfire/<name>`
+    rows still parse.
     Returns None when the cell has no backtick-delimited value.
     """
     m = _CANONICAL_BRANCH_RE.search(row.get("Canonical branch", ""))
