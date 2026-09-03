@@ -43,7 +43,6 @@ export function createHarnessRecorders(runtime: DiagnosticsRecorderRuntime) {
     "openclaw.provider": normalizeDiagnosticValue(evt.provider, "unknown"),
     "openclaw.model": normalizeDiagnosticValue(evt.model, "unknown"),
     ...(evt.channel ? { "openclaw.channel": normalizeDiagnosticValue(evt.channel) } : {}),
-    ...(evt.agentId ? { "openclaw.agent.id": evt.agentId } : {}),
   });
 
   const recordHarnessRunStarted = (
