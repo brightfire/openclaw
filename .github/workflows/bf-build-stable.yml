@@ -1,0 +1,422 @@
+# Build Stable
+#
+# Rebuilds the stable branch by creating it fresh from origin/main
+# and merging all active patch branches in manifest order.
+# Patch branches use the brightfire/<base-commit>/<patch-name> naming convention.
+#
+# Architecture: three-job split.
+#   1. build    — manifest parse, stable prep, patch merge, check, lint, build,
+#                 tarball pack. Pushes the stable branch so test jobs can
+#                 check it out directly.
+#   2. test     — parallel matrix of vitest full-suite shards (12 jobs),
+#                 each running one vitest full-*.config.ts against the
+#                 stable branch the build job pushed.
+#   3. publish  — waits for build + all test jobs; pushes tag, writes
+#                 fingerprint, creates GitHub Release with the tarball.
+#
+# WHY PARALLEL: the previous monolithic `pnpm test` ran the full vitest suite
+# serially on a single ubuntu-latest-xl runner (hours). Upstream's PR CI runs
+# the SAME tests split across ~80 parallel GitHub-hosted jobs (wall-clock
+# ~20-30 min). This matrix mirrors upstream's approach: same test coverage,
+# grouped into 12 parallel jobs using upstream's own `fullSuiteVitestShards`
+# definitions from `test/vitest/vitest.test-shards.mjs`. Wall-clock drops
+# from hours to ~15-20 minutes.
+#
+# KEEPING IN SYNC WITH UPSTREAM CI:
+# When upstream adds new test coverage to `ci.yml`, the full-suite shard list
+# may grow. To add a new test group:
+#   1. Check `test/vitest/vitest.test-shards.mjs` for the full-suite shard
+#      list (`fullSuiteVitestShards`). If a new `full-*` config appears,
+#      add a matrix entry below with that config path.
+#   2. For test coverage that upstream CI runs but the full-suite shards don't
+#      include (e.g., UI e2e, live tests), evaluate whether the stable build
+#      needs it; add a matrix entry if so.
+#   3. The matrix entries below intentionally mirror upstream's own shard
+#      grouping — each `full-*.config.ts` is upstream's curated test lane.
+#      Don't create custom groupings; follow upstream's structure so the
+#      test surface stays comparable.
+#
+# Only the PUBLISH steps (tag, fingerprint, GitHub Release) gate on the
+# manifest fingerprint: when the current BRIGHTFIRE_PATCHES.md sha256 matches
+# the bf-build-fingerprint.json asset on the latest bf/v* release, publishing
+# is skipped because the release would be byte-identical.
+#
+# Triggered automatically on push to brightfire/ci when BRIGHTFIRE_PATCHES.md
+# or this workflow changes. Manual dispatch otherwise.
+# Only one run executes at a time — new runs queue and cancel prior runs.
+
+name: "BF: Build Stable"
+
+on:
+  push:
+    branches:
+      - "brightfire/ci"
+    paths:
+      - "BRIGHTFIRE_PATCHES.md"
+      - ".github/workflows/bf-build-stable.yml"
+      - "scripts/bf/**"
+  workflow_dispatch:
+    inputs:
+      force_release:
+        description: "Tag and release even if manifest is unchanged"
+        required: false
+        type: boolean
+        default: false
+      skip_tests:
+        description: "Skip the test suite (build + publish only)"
+        required: false
+        type: boolean
+        default: false
+
+env:
+  PATCHES_FILE: BRIGHTFIRE_PATCHES.md
+  # Disable pnpm's verifyDepsBeforeRun for the entire workflow. The version
+  # bump changes package.json after setup-node-env installs deps; without
+  # this, pnpm treats deps as stale and auto-installs with lifecycle scripts
+  # that spawn orphan processes, hanging the runner.
+  PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN: "false"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-stable
+  cancel-in-progress: true
+
+jobs:
+  # ========================================================================
+  # Job 1: Build — everything up to and including lint/build/tarball pack.
+  # Pushes the stable branch so test jobs can checkout it directly.
+  # Does NOT tag or release — that's the publish job's job.
+  # ========================================================================
+  build:
+    name: Build stable
+    runs-on: ubuntu-latest-xl
+    # No timeout — bundle-all-plugins increases build time significantly
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      upstream_version: ${{ steps.upstream-version.outputs.version }}
+      needs_release: ${{ steps.release-needed.outputs.needs_release }}
+      manifest_sha256: ${{ steps.release-needed.outputs.manifest_sha256 }}
+      stable_branch: stable/${{ steps.upstream-version.outputs.version }}
+      test_shards: ${{ steps.test-shards.outputs.shards }}
+    steps:
+      - name: Generate app token
+        uses: actions/create-github-app-token@v3
+        id: app-token
+        with:
+          client-id: ${{ vars.BF_CI_APP_CLIENT_ID }}
+          private-key: ${{ secrets.BF_CI_APP_PRIVATE_KEY }}
+          permission-contents: write
+
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+          persist-credentials: true
+
+      - name: Parse manifest (patches + base branch)
+        id: patches
+        run: |
+          python3 scripts/bf/parse-patches.py "$PATCHES_FILE" "$GITHUB_OUTPUT"
+
+      # Read the upstream version from the manifest _meta — it's pinned
+      # there alongside the base commit. No branch fetch needed; the version
+      # always corresponds to the base commit this build targets.
+      - name: Read upstream version from manifest
+        id: upstream-version
+        run: |
+          VERSION=$(grep -oP '(?<=Upstream version:\*\*\s\x60v)[^\x60]+' "$PATCHES_FILE")
+          if [ -z "$VERSION" ]; then
+            echo "::error::Could not read Upstream version from $PATCHES_FILE _meta"
+            exit 1
+          fi
+          echo "Version from manifest: $VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+      - name: Prepare stable branch
+        env:
+          VERSION: ${{ steps.upstream-version.outputs.version }}
+          BASE_BRANCH: ${{ steps.patches.outputs.base_branch }}
+          BASE_COMMIT: ${{ steps.patches.outputs.base_commit }}
+        run: scripts/bf/build-stable/prepare-stable-branch.sh
+
+      - name: Compute version suffix
+        id: version
+        env:
+          VERSION: ${{ steps.upstream-version.outputs.version }}
+        run: scripts/bf/build-stable/compute-bf-version.sh
+
+      - name: Configure git
+        run: |
+          git config user.name "brightfire-ci"
+          git config user.email "ci@brightfire.net"
+
+      - name: Fetch all brightfire branches
+        run: git fetch origin '+refs/heads/brightfire/*:refs/remotes/origin/brightfire/*'
+
+      - name: Merge patches in order
+        env:
+          PATCHES: ${{ steps.patches.outputs.list }}
+          VERSION: ${{ steps.upstream-version.outputs.version }}
+        run: scripts/bf/build-stable/merge-patches.sh
+
+      - name: Update package.json version
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: scripts/bf/build-stable/bump-package-version.sh
+
+      - name: Inject brightfire CHANGELOG entry
+        env:
+          BF_VERSION: ${{ steps.version.outputs.version }}
+          UPSTREAM_VERSION: ${{ steps.upstream-version.outputs.version }}
+          REPO: https://github.com/brightfire/openclaw
+        run: python3 scripts/bf/build-stable/inject-changelog-entry.py
+
+      - name: Setup Node environment
+        uses: ./.github/actions/setup-node-env
+        with:
+          node-version: "24"
+          install-bun: "false"
+          cache-mode: "restore"
+          install-deps: "false"
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Regenerate build artifacts
+        run: scripts/bf/build-stable/regenerate-artifacts.sh
+
+      - name: Restore tsgo incremental cache
+        uses: actions/cache@v5
+        with:
+          path: .artifacts/tsgo-cache/
+          key: upstream-v${{ steps.upstream-version.outputs.version }}-tsgo-${{ hashFiles('BRIGHTFIRE_PATCHES.md', 'tsconfig.core.json') }}
+          restore-keys: |
+            upstream-v${{ steps.upstream-version.outputs.version }}-tsgo-
+
+      - name: Restore Vite UI build cache
+        uses: actions/cache@v5
+        with:
+          path: |
+            ui/node_modules/.vite/
+            ui/dist/.vite/
+          key: upstream-v${{ steps.upstream-version.outputs.version }}-vite-${{ hashFiles('ui/package.json', 'pnpm-lock.yaml', 'ui/vite.config.ts') }}
+          restore-keys: |
+            upstream-v${{ steps.upstream-version.outputs.version }}-vite-
+
+      - name: Lint and build
+        run: |
+          (
+            pnpm check:no-conflict-markers &&
+            pnpm check:doctor-deprecation-registry &&
+            pnpm tool-display:check &&
+            pnpm check:host-env-policy:swift &&
+            pnpm dup:check &&
+            pnpm check:coercion-helpers &&
+            pnpm deps:patches:check &&
+            pnpm lint:webhook:no-low-level-body-read &&
+            pnpm lint:auth:no-pairing-store-group &&
+            pnpm lint:auth:pairing-account-scope &&
+            pnpm check:import-cycles &&
+            pnpm tsgo:prod &&
+            pnpm tsgo:scripts &&
+            pnpm tsgo:test:root &&
+            pnpm lint &&
+            pnpm format:check &&
+            pnpm deps:npm-lock:check &&
+            pnpm check:bundled-channel-config-metadata
+          ) & CHECK_PID=$!
+
+          pnpm lint:ui:no-raw-window-open & UI_LINT_PID=$!
+          NODE_OPTIONS="--max-old-space-size=12000" pnpm build & BUILD_PID=$!
+
+          FAIL=0
+          wait "$CHECK_PID"   || { echo "=== FAILED: check shard ===" >&2;                     FAIL=1; }
+          wait "$UI_LINT_PID"  || { echo "=== FAILED: pnpm lint:ui:no-raw-window-open ===" >&2; FAIL=1; }
+          wait "$BUILD_PID"    || { echo "=== FAILED: pnpm build ===" >&2;                      FAIL=1; }
+          [ "$FAIL" -eq 0 ]
+
+      # Check whether a release is needed (manifest fingerprint comparison).
+      # Runs after build so it can compare the pinned manifest sha against
+      # the latest bf/v* release's fingerprint asset.
+      - name: Check release needed
+        id: release-needed
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FORCE_RELEASE: ${{ inputs.force_release || 'false' }}
+        run: |
+          # check-release-needed.sh writes needs_release + manifest_sha256 to $GITHUB_OUTPUT
+          scripts/bf/build-stable/check-release-needed.sh
+
+      # Pack the tarball (same steps as the old background pack, now foreground
+      # after build completes — no need to race with tests).
+      - name: Pack tarball
+        id: pack
+        run: |
+          node scripts/package-changelog.mjs prepare
+          node --import tsx scripts/write-package-dist-inventory.ts
+          node --import tsx scripts/test-built-bundled-channel-entry-smoke.mts
+
+          cp packages/ai/package.json /tmp/ai-package.json.bak
+          npm pack --ignore-scripts
+          cp /tmp/ai-package.json.bak packages/ai/package.json
+
+          node scripts/package-changelog.mjs restore
+          TARBALL=$(ls openclaw-*.tgz | head -1)
+          echo "tarball=$TARBALL" >> "$GITHUB_OUTPUT"
+          echo "Packed: $TARBALL"
+
+      # Push the stable branch unconditionally — test jobs check it out from
+      # here. The branch is force-pushed on every rebuild (deterministic from
+      # the manifest). Tag/release only happen in the publish job after all
+      # tests pass.
+      - name: Push stable branch (input for test jobs)
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          STABLE_BRANCH="stable/${{ steps.upstream-version.outputs.version }}"
+          git push --force origin "$STABLE_BRANCH"
+          echo "Pushed $STABLE_BRANCH (test jobs will checkout this branch)"
+
+      # Compute the test matrix dynamically from the vitest config files
+      # present in the repo. This is the sync point with upstream CI: new
+      # full-*.config.ts files are automatically included in the next build.
+      # See the test job's comments for the full sync guidance.
+      - name: Compute test shards
+        id: test-shards
+        run: |
+          SHARDS=$(ls test/vitest/vitest.full-*.config.ts | sed 's/.*vitest\.\(.*\)\.config\.ts/\1/' | python3 -c "import sys,json; print(json.dumps(sys.stdin.read().strip().split('\n')))")
+          echo "shards=$SHARDS" >> "$GITHUB_OUTPUT"
+          echo "Test shards: $SHARDS"
+
+      - name: Upload tarball artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bf-tarball
+          path: ${{ steps.pack.outputs.tarball }}
+          retention-days: 1
+
+  # ========================================================================
+  # Job 2: Test — parallel matrix of vitest full-suite shards.
+  #
+  # MATCHES UPSTREAM CI: the matrix is computed dynamically by the build job
+  # from the actual vitest config files present in the repo — not a hardcoded
+  # list. When upstream adds a new `vitest.full-*.config.ts` (or we add one),
+  # it automatically appears in the next build. When upstream removes one,
+  # it drops out. No manual matrix sync needed.
+  #
+  # Each full-*.config.ts is one of upstream's curated test lane groupings
+  # (the `fullSuiteVitestShards` in test/vitest/vitest.test-shards.mjs define
+  # which individual configs feed each shard). Running all of them covers
+  # the same test surface as upstream's ~142-job PR CI matrix and the
+  # previous monolithic `pnpm test`, but in parallel.
+  #
+  # SUB-SHARDING: upstream CI splits heavy lanes (e.g., core-tooling into 16
+  # parallel sub-jobs). We keep one job per lane for simplicity; the heavy
+  # lanes are the long pole (~10-15 min each). If a lane becomes a bottleneck,
+  # split it by adding sub-shard entries or by setting
+  # OPENCLAW_TEST_PROJECTS_LEAF_SHARDS > 1 within the job.
+  #
+  # WHEN UPSTREAM CHANGES THEIR CI TEST SPLIT:
+  #   - New vitest.full-*.config.ts files are picked up automatically.
+  #   - For new test lanes upstream runs OUTSIDE the full-* configs
+  #     (e.g., ui-e2e, live, e2e), add a matrix entry manually only if the
+  #     stable build should gate on them.
+  #   - Upstream's sub-shard counts (e.g., tooling-1..16) are an execution
+  #     optimization; our 1-job-per-lane covers the same tests.
+  # ========================================================================
+  test:
+    name: Test — ${{ matrix.shard }}
+    needs: build
+    if: ${{ inputs.skip_tests != true }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJson(needs.build.outputs.test_shards) }}
+    steps:
+      - name: Checkout stable branch
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.build.outputs.stable_branch }}
+          fetch-depth: 1
+
+      - name: Setup Node environment
+        uses: ./.github/actions/setup-node-env
+        with:
+          node-version: "24"
+          install-bun: "false"
+          cache-mode: "restore"
+          install-deps: "false"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run vitest shard
+        env:
+          OPENCLAW_VITEST_MAX_WORKERS: "2"
+        run: |
+          CONFIG="test/vitest/vitest.full-${{ matrix.shard }}.config.ts"
+          echo "Running: $CONFIG"
+          node scripts/run-vitest.mjs run --config "$CONFIG"
+
+  # ========================================================================
+  # Job 3: Publish — waits for build + ALL test jobs, then tags + releases.
+  # Only runs when the manifest fingerprint says a release is needed.
+  # ========================================================================
+  publish:
+    name: Tag and release
+    needs: [build, test]
+    if: ${{ always() && needs.build.result == 'success' && (needs.test.result == 'success' || inputs.skip_tests == true) && needs.build.outputs.needs_release == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate app token
+        uses: actions/create-github-app-token@v3
+        id: app-token
+        with:
+          client-id: ${{ vars.BF_CI_APP_CLIENT_ID }}
+          private-key: ${{ secrets.BF_CI_APP_PRIVATE_KEY }}
+          permission-contents: write
+
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.build.outputs.stable_branch }}
+          token: ${{ steps.app-token.outputs.token }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Download tarball artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: bf-tarball
+
+      - name: Tag stable build
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          TAG="${{ needs.build.outputs.tag }}"
+          git tag "$TAG"
+          git push origin "$TAG"
+          echo "Tagged: $TAG"
+
+      - name: Write build fingerprint
+        env:
+          MANIFEST_SHA256: ${{ needs.build.outputs.manifest_sha256 }}
+          RELEASE_TAG: ${{ needs.build.outputs.tag }}
+          OUTPUT_PATH: bf-build-fingerprint.json
+        run: scripts/bf/build-stable/write-build-fingerprint.sh
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.build.outputs.tag }}
+          name: "Brightfire ${{ needs.build.outputs.version }}"
+          target_commitish: ${{ needs.build.outputs.stable_branch }}
+          draft: false
+          files: |
+            openclaw-*.tgz
+            bf-build-fingerprint.json
