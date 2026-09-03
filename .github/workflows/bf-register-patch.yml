@@ -18,6 +18,9 @@
 
 name: "BF: Register Patch"
 
+# zizmor: ignore[dangerous-triggers] — deliberately pull_request_target so the
+# post-merge manifest update runs trusted base-branch code; the workflow never
+# checks out PR content and acts only on merged==true.
 on:
   pull_request_target:
     types: [closed]
@@ -63,6 +66,7 @@ jobs:
         with:
           client-id: ${{ vars.BF_CI_APP_CLIENT_ID }}
           private-key: ${{ secrets.BF_CI_APP_PRIVATE_KEY }}
+          permission-contents: write
 
       - name: Checkout brightfire/ci
         uses: actions/checkout@v5
