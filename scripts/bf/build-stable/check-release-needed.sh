@@ -44,9 +44,8 @@
 #                              staging time; used directly when set so the
 #                              fingerprint writer and the gate share the
 #                              exact same value byte-for-byte
-#   MANIFEST_REF             — git ref fallback (default:
-#                              origin/brightfire/ci); override only for
-#                              local testing
+#   PATCHES_FILE             — preserved manifest path; preferred build input
+#   MANIFEST_REF              — git ref fallback for local testing only
 #   FORCE_RELEASE            — "true" forces needs_release=true (from
 #                              workflow_dispatch)
 
@@ -58,6 +57,8 @@
 set -euo pipefail
 
 MANIFEST_REF="${MANIFEST_REF:-origin/brightfire/ci}"
+PATCHES_FILE="${PATCHES_FILE:-BRIGHTFIRE_PATCHES.md}"
+BF_CI_INPUTS_DIR="${BF_CI_INPUTS_DIR:-.}"
 FORCE_RELEASE="${FORCE_RELEASE:-false}"
 PINNED_MANIFEST_PATH="${PINNED_MANIFEST_PATH:-}"
 PINNED_MANIFEST_SHA256="${PINNED_MANIFEST_SHA256:-}"
@@ -67,7 +68,10 @@ if [ -z "${GITHUB_OUTPUT:-}" ]; then
   exit 2
 fi
 
-if [ -n "$PINNED_MANIFEST_PATH" ] && [ -r "$PINNED_MANIFEST_PATH" ]; then
+if [ -r "$PATCHES_FILE" ]; then
+  MANIFEST_SHA=$(sha256sum "$PATCHES_FILE" | awk '{print $1}')
+  echo "Manifest source: $PATCHES_FILE"
+elif [ -n "$PINNED_MANIFEST_PATH" ] && [ -r "$PINNED_MANIFEST_PATH" ]; then
   # Preferred path: pinned file + pre-computed sha.
   if [ -n "$PINNED_MANIFEST_SHA256" ]; then
     MANIFEST_SHA="$PINNED_MANIFEST_SHA256"
@@ -99,11 +103,11 @@ echo "manifest_sha256=$MANIFEST_SHA" >> "$GITHUB_OUTPUT"
 BUILD_INPUT_SHA=$(
   {
     echo "manifest:"
-    cat BRIGHTFIRE_PATCHES.md
+    cat "$PATCHES_FILE"
     echo "workflow:"
-    cat .github/workflows/bf-build-stable.yml 2>/dev/null || echo "(absent)"
+    cat "$BF_CI_INPUTS_DIR/.github/workflows/bf-build-stable.yml" 2>/dev/null || echo "(absent)"
     echo "scripts:"
-    find scripts/bf/ -type f \( -name '*.sh' -o -name '*.py' \) 2>/dev/null | sort | while read f; do
+    find "$BF_CI_INPUTS_DIR/scripts/bf/" -type f \( -name '*.sh' -o -name '*.py' \) 2>/dev/null | sort | while read f; do
       echo "--- $f"
       cat "$f"
     done

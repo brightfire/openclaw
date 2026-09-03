@@ -11,6 +11,7 @@
 #   RELEASE_TAG     — full release tag (e.g. bf/v2026.8.2-1)
 #   OUTPUT_PATH     — where to write the JSON file
 #   WORKSPACE       — repo root (default: cwd; for hashing build inputs)
+#   PATCHES_FILE    — preserved manifest path (default: BRIGHTFIRE_PATCHES.md)
 
 set -euo pipefail
 
@@ -18,6 +19,8 @@ set -euo pipefail
 : "${RELEASE_TAG:?RELEASE_TAG required}"
 : "${OUTPUT_PATH:?OUTPUT_PATH required}"
 WORKSPACE="${WORKSPACE:-$(pwd)}"
+PATCHES_FILE="${PATCHES_FILE:-BRIGHTFIRE_PATCHES.md}"
+BF_CI_INPUTS_DIR="${BF_CI_INPUTS_DIR:-$WORKSPACE}"
 
 BUILT_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
@@ -29,11 +32,11 @@ COMPOSITE_SHA=$(
   cd "$WORKSPACE"
   {
     echo "manifest:"
-    cat BRIGHTFIRE_PATCHES.md
+    cat "$PATCHES_FILE"
     echo "workflow:"
-    cat .github/workflows/bf-build-stable.yml
+    cat "$BF_CI_INPUTS_DIR/.github/workflows/bf-build-stable.yml"
     echo "scripts:"
-    find scripts/bf/ -type f -name '*.sh' -o -name '*.py' | sort | while read f; do
+    find "$BF_CI_INPUTS_DIR/scripts/bf/" -type f \( -name '*.sh' -o -name '*.py' \) | sort | while read f; do
       echo "--- $f"
       cat "$f"
     done

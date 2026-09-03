@@ -17,7 +17,7 @@ import os, re, subprocess, sys
 version  = os.environ['BF_VERSION']
 upstream = os.environ['UPSTREAM_VERSION']
 repo     = os.environ['REPO']
-manifest = os.environ['PATCHES_FILE']
+manifest = os.environ.get('PATCHES_FILE', 'BRIGHTFIRE_PATCHES.md')
 changelog = 'CHANGELOG.md'
 
 # Parse patch table: Name | Canonical branch | Branch HEAD | ...
