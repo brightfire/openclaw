@@ -1,0 +1,57 @@
+# Branch Prune
+#
+# Prunes ephemeral PR head branches after their PR is closed/merged.
+# Matches: feature/*, fix/*, claw/*/* (e.g. claw/vash/<topic>).
+# Does NOT touch brightfire/* or stable/* branches.
+#
+# This replaces GitHub's "auto-prune head branches" setting since we need
+# brightfire/* branches to persist across releases.
+
+name: "BF: Branch Prune"
+
+# zizmor: ignore[dangerous-triggers] — post-merge CI automation on trusted base-branch code;
+# never checks out PR content.
+on:
+  pull_request_target:
+    types: [closed]
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch to prune (e.g. feature/my-branch)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  prune:
+    # Only prune same-repo head branches. Fork PRs (head.repo != base repo)
+    # would otherwise let a colliding branch name (e.g. claw/vash/foo on a fork)
+    # delete the unrelated branch of the same name in the base repo.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.merged == true &&
+       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Prune head branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_REF: ${{ inputs.branch || github.event.pull_request.head.ref }}
+          HEAD_OWNER: ${{ github.event.pull_request.head.repo.owner.login || github.repository_owner }}
+        run: |
+          BRANCH="$HEAD_REF"
+
+          case "$BRANCH" in
+            feature/*|fix/*|claw/*/*)
+              echo "PR #${{ github.event.pull_request.number }} merged — deleting head branch: $BRANCH"
+              gh api -X DELETE repos/${{ github.repository }}/git/refs/heads/"$BRANCH" || true
+              ;;
+            brightfire/*|stable/*|ci|main)
+              echo "Skipping branch: $BRANCH (permanent branches are not pruned)"
+              ;;
+            *)
+              echo "Skipping branch: $BRANCH (no match for feature/*, fix/*, or claw/*/*)"
+              ;;
+          esac
