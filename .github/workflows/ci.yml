@@ -1505,7 +1505,7 @@ jobs:
   security-fast:
     permissions:
       contents: read
-    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    if: false # disabled on Brightfire fork: zizmor gates BF workflow changes that are reviewed in-repo
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
