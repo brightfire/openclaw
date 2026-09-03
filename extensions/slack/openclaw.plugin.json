@@ -24,6 +24,5 @@
     "type": "object",
     "additionalProperties": false,
     "properties": {}
-  },
-  "enabledByDefault": true
+  }
 }
