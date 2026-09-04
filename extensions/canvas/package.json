@@ -26,6 +26,9 @@
         "src/host/a2ui/a2ui-v0.9.bundle.js"
       ],
       "copy": "node scripts/copy-a2ui.mjs"
+    },
+    "build": {
+      "bundledDist": true
     }
   }
 }

@@ -21,7 +21,8 @@
           "source": "./vault-secret-id.js",
           "output": "vault-secret-id.js"
         }
-      ]
+      ],
+      "bundledDist": true
     }
   }
 }

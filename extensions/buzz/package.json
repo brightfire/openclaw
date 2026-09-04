@@ -74,7 +74,9 @@
               "flags": "--use-env",
               "description": "Use BUZZ_PRIVATE_KEY with the supplied relay URL"
             },
-            "envVars": ["BUZZ_PRIVATE_KEY"]
+            "envVars": [
+              "BUZZ_PRIVATE_KEY"
+            ]
           }
         ]
       }
@@ -89,7 +91,8 @@
       "pluginApi": ">=2026.8.1"
     },
     "build": {
-      "openclawVersion": "2026.8.1"
+      "openclawVersion": "2026.8.1",
+      "bundledDist": true
     },
     "release": {
       "publishToClawHub": true,

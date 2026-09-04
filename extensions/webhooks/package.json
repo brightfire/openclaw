@@ -10,7 +10,10 @@
   "openclaw": {
     "extensions": [
       "./index.ts"
-    ]
+    ],
+    "build": {
+      "bundledDist": true
+    }
   },
   "dependencies": {
     "zod": "4.4.3"
