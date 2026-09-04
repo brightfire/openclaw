@@ -100,7 +100,6 @@ jobs:
       needs_release: ${{ steps.release-needed.outputs.needs_release }}
       manifest_sha256: ${{ steps.release-needed.outputs.manifest_sha256 }}
       stable_branch: stable/${{ steps.upstream-version.outputs.version }}
-      test_shards: ${{ steps.test-shards.outputs.shards }}
     steps:
       - name: Generate app token
         uses: actions/create-github-app-token@v3
@@ -299,43 +298,6 @@ jobs:
       # present in the repo. This is the sync point with upstream CI: new
       # full-*.config.ts files are automatically included in the next build.
       # See the test job's comments for the full sync guidance.
-      # Compute the test matrix using upstream's own shard planner
-      # (scripts/lib/ci-node-test-plan.mts — an UPSTREAM file that exists
-      # on the stable branch). Calls the same createNodeTestShards function
-      # upstream CI's preflight uses. Blacksmith runners are mapped to
-      # standard ubuntu-24.04.
-      #
-      # NOTE: This step runs AFTER the stable checkout, where upstream's
-      # test infrastructure is present. No Brightfire script dependency.
-      - name: Compute test matrix (upstream plan)
-        id: test-shards
-        run: |
-          node --import tsx -e "
-            const plan = await import('./scripts/lib/ci-node-test-plan.mts');
-            const create = typeof plan.createNodeTestShardBundles === 'function'
-              ? plan.createNodeTestShardBundles
-              : plan.createNodeTestShards;
-            const shards = await create({ runnerBackend: 'github' });
-            const runnerMap = {
-              'blacksmith-4vcpu-ubuntu-2404': 'ubuntu-24.04',
-              'blacksmith-8vcpu-ubuntu-2404': 'ubuntu-24.04',
-              'blacksmith-16vcpu-ubuntu-2404': 'ubuntu-24.04',
-            };
-            const matrix = shards.map(s => ({
-              shard_name: s.shardName ?? s.checkName,
-              configs: JSON.stringify(s.configs ?? []),
-              runner: runnerMap[s.runner] ?? s.runner ?? 'ubuntu-24.04',
-              timeout_minutes: s.timeoutMinutes ?? 30,
-              env: JSON.stringify(s.env ?? {}),
-              include_patterns: JSON.stringify(s.includePatterns ?? []),
-            }));
-            console.log(JSON.stringify(matrix));
-          " > /tmp/test-matrix.json
-          SHARDS=$(cat /tmp/test-matrix.json)
-          echo "shards=$SHARDS" >> "$GITHUB_OUTPUT"
-          SHARD_COUNT=$(echo "$SHARDS" | python3 -c "import json,sys; print(len(json.load(sys.stdin)))")
-          echo "Test shards ($SHARD_COUNT)"
-
       - name: Upload tarball artifact
         uses: actions/upload-artifact@v4
         with:
@@ -372,59 +334,22 @@ jobs:
   #   - Upstream's sub-shard counts (e.g., tooling-1..16) are an execution
   #     optimization; our 1-job-per-lane covers the same tests.
   # ========================================================================
+  # Invoke the upstream CI workflow as a reusable child. This runs
+  # upstream's exact 142-job test matrix (all shards, all lanes) against
+  # the stable branch the build job pushed — same computation, same runners,
+  # same execution as upstream CI. The publish job gates on this result.
+  #
+  # The workflow_call trigger was added to ci.yml by this overlay.
+  # When upstream changes their test split, this automatically follows
+  # because we're calling their workflow, not replicating it.
   test:
-    name: Test — ${{ matrix.shard_name }}
+    name: Run upstream CI test suite
     needs: build
     if: ${{ inputs.skip_tests != true }}
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: ${{ matrix.timeout_minutes }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include: ${{ fromJson(needs.build.outputs.test_shards) }}
-    steps:
-      - name: Checkout stable branch
-        uses: actions/checkout@v5
-        with:
-          ref: ${{ needs.build.outputs.stable_branch }}
-          fetch-depth: 1
-
-      - name: Setup Node environment
-        uses: ./.github/actions/setup-node-env
-        with:
-          node-version: "24"
-          install-bun: "false"
-          cache-mode: "restore"
-          install-deps: "false"
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      # Each job runs the configs assigned by upstream's shard planner.
-      # The planner assigns configs, include patterns, and environment
-      # per shard — this is the same execution upstream CI performs.
-      - name: Run vitest shard
-        run: |
-          # Parse matrix values
-          CONFIGS=$(echo '${{ matrix.configs }}' | python3 -c "import json,sys; print(' '.join(json.load(sys.stdin)))")
-          PATTERNS=$(echo '${{ matrix.include_patterns }}' | python3 -c "import json,sys; p=json.load(sys.stdin); print(' '.join(p) if p else '')")
-          ENV_JSON='${{ matrix.env }}'
-
-          # Set env vars from the plan
-          echo "$ENV_JSON" | python3 -c "
-          import json,sys,os
-          env = json.load(sys.stdin)
-          for k,v in env.items():
-              print(f'{k}={v}')
-          " >> "$GITHUB_ENV"
-
-          echo "Running configs: $CONFIGS"
-          if [ -n "$PATTERNS" ]; then
-            echo "Include patterns: $PATTERNS"
-            OPENCLAW_VITEST_MAX_WORKERS=1 node scripts/run-vitest.mjs run $CONFIGS $PATTERNS
-          else
-            OPENCLAW_VITEST_MAX_WORKERS=1 node scripts/run-vitest.mjs run $CONFIGS
-          fi
+    uses: ./.github/workflows/ci.yml
+    with:
+      force_release: false
+      skip_tests: false
 
   # ========================================================================
   # Job 3: Publish — waits for build + ALL test jobs, then tags + releases.

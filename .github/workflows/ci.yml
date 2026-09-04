@@ -1,6 +1,9 @@
 name: CI
 
 on:
+  workflow_call:
+    # Added by Brightfire overlay: lets bf-build-stable
+    # invoke this workflow as a reusable child job.
   workflow_dispatch:
     inputs:
       target_ref:
