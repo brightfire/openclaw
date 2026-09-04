@@ -347,9 +347,6 @@ jobs:
     needs: build
     if: ${{ inputs.skip_tests != true }}
     uses: ./.github/workflows/ci.yml
-    with:
-      force_release: false
-      skip_tests: false
 
   # ========================================================================
   # Job 3: Publish — waits for build + ALL test jobs, then tags + releases.
