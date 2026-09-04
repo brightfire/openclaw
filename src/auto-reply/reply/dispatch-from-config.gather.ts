@@ -53,7 +53,6 @@ import { resolveEffectiveReplyRoute } from "./effective-reply-route.js";
 import type { ReplySessionBinding } from "./get-reply.types.js";
 import { finalizeInboundContext, isFinalizedInboundContext } from "./inbound-context.js";
 import { hasInboundAudio } from "./inbound-media.js";
-import { resolveCanonicalInboundText } from "./inbound-text.js";
 import { bindReplyDispatcherConversationContext } from "./reply-dispatcher.js";
 import {
   resolveReplyOperationRunState,

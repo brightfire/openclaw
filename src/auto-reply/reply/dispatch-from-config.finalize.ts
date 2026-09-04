@@ -88,6 +88,10 @@ export async function finalizeDispatchAndAudit(state: ExecuteDispatchReadyState)
   let allQueuedFinalsObserved = true;
   const sentFinalPayloadDedupeKeys = new Set<string>();
   let deferredTtsTextPending = state.progressState.accumulatedBlockTtsText;
+  // Accumulate the agent's final response text for OTEL message.processed
+  // I/O capture. Only non-reasoning, non-commentary payloads carry the
+  // user-visible response.
+  const replyTextParts: string[] = [];
   for (const [replyIndex, reply] of replies.entries()) {
     throwIfDispatchOperationAborted();
     // Durable reasoning is a channel-owned lane; generic channels keep the
@@ -124,6 +128,10 @@ export async function finalizeDispatchAndAudit(state: ExecuteDispatchReadyState)
       continue;
     }
     sentFinalPayloadDedupeKeys.add(finalPayloadDedupeKey);
+    // Capture the reply text for message.processed I/O
+    if (typeof reply.text === "string" && reply.text.trim()) {
+      replyTextParts.push(reply.text);
+    }
     const shouldAttachDeferredText = deferFinalTtsText && isReplyPayloadTerminalContent(reply);
     const finalReply = await state.sendFinalPayload(reply, {
       deliveryId: String(replyIndex),
