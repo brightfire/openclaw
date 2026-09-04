@@ -100,6 +100,7 @@ jobs:
       needs_release: ${{ steps.release-needed.outputs.needs_release }}
       manifest_sha256: ${{ steps.release-needed.outputs.manifest_sha256 }}
       stable_branch: stable/${{ steps.upstream-version.outputs.version }}
+      test_shards: ${{ steps.test-shards.outputs.shards }}
     steps:
       - name: Generate app token
         uses: actions/create-github-app-token@v3
@@ -298,6 +299,44 @@ jobs:
       # present in the repo. This is the sync point with upstream CI: new
       # full-*.config.ts files are automatically included in the next build.
       # See the test job's comments for the full sync guidance.
+      # Compute the test matrix using upstream's own shard planner.
+      # This runs on the stable branch where upstream's test infrastructure
+      # is present. The output feeds the ci-test-suite workflow via workflow_call.
+      - name: Compute test matrix
+        id: test-shards
+        run: |
+          node --import tsx -e "
+            const plan = await import('./scripts/lib/ci-node-test-plan.mts');
+            const create = typeof plan.createNodeTestShardBundles === 'function'
+              ? plan.createNodeTestShardBundles
+              : plan.createNodeTestShards;
+            const shards = await create({ runnerBackend: 'github' });
+            const runnerMap = {
+              'blacksmith-4vcpu-ubuntu-2404': 'ubuntu-24.04',
+              'blacksmith-8vcpu-ubuntu-2404': 'ubuntu-24.04',
+              'blacksmith-16vcpu-ubuntu-2404': 'ubuntu-24.04',
+            };
+            const matrix = shards.map(s => ({
+              shard_name: s.shardName ?? s.checkName,
+              groups: s.groups ?? null,
+              configs: s.configs ?? [],
+              runner: runnerMap[s.runner] ?? s.runner ?? 'ubuntu-24.04',
+              timeout_minutes: s.timeoutMinutes ?? 60,
+              env: s.env ?? {},
+              includePatterns: s.includePatterns ?? [],
+              targets: s.targets ?? [],
+              plan_concurrency: s.planConcurrency ?? null,
+              pretest_build_mode: s.pretestBuildMode ?? null,
+              requires_go: s.requiresGo ?? false,
+              requires_ripgrep: s.requiresRipgrep ?? false,
+            }));
+            console.log(JSON.stringify(matrix));
+          " > /tmp/test-matrix.json
+          SHARDS=$(cat /tmp/test-matrix.json)
+          echo "shards=$SHARDS" >> "$GITHUB_OUTPUT"
+          SHARD_COUNT=$(echo "$SHARDS" | python3 -c "import json,sys; print(len(json.load(sys.stdin)))")
+          echo "Test shards ($SHARD_COUNT)"
+
       - name: Upload tarball artifact
         uses: actions/upload-artifact@v4
         with:
@@ -334,62 +373,24 @@ jobs:
   #   - Upstream's sub-shard counts (e.g., tooling-1..16) are an execution
   #     optimization; our 1-job-per-lane covers the same tests.
   # ========================================================================
-  # Dispatch the upstream CI workflow against the stable branch and wait
-  # for its result. This runs upstream's exact 142-job test matrix — same
-  # computation, same runners, same execution — because ci.yml is invoked
-  # as a normal workflow_dispatch (its event context works correctly).
+  # Invoke the extracted CI test suite as a reusable workflow child.
+  # ci-test-suite.yml contains upstream's exact test execution (runner script,
+  # resource configuration, pretest builds) without the PR/push event context
+  # coupling that made calling ci.yml directly fail.
   #
-  # workflow_call was tried first but failed: ci.yml's preflight references
-  # github.event.pull_request.* and github.event.push.* which are undefined
-  # in workflow_call context.
-  #
-  # When upstream changes their test split, this automatically follows
-  # because we dispatch their workflow, not a replica.
+  # The test matrix is computed in the build job (which has the stable tree
+  # checked out) using upstream's own ci-node-test-plan.mts, then passed here.
+  # When upstream changes their test split, the plan follows automatically.
   test:
     name: Run upstream CI test suite
     needs: build
     if: ${{ inputs.skip_tests != true }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 90
-    steps:
-      - name: Dispatch CI and wait for result
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          BRANCH="${{ needs.build.outputs.stable_branch }}"
-          echo "Dispatching CI against $BRANCH..."
+    uses: ./.github/workflows/ci-test-suite.yml
+    with:
+      test_ref: ${{ needs.build.outputs.stable_branch }}
+      test_matrix: ${{ needs.build.outputs.test_shards }}
 
-          # Trigger the CI workflow on the stable branch
-          gh workflow run ci.yml --repo "$GITHUB_REPOSITORY" --ref "$BRANCH"
-
-          # Poll for the new run to appear (it may take a few seconds)
-          echo "Waiting for CI run to register..."
-          sleep 10
-          RUN_ID=""
-          for attempt in $(seq 1 30); do
-            RUN_ID=$(gh run list \
-              --repo "$GITHUB_REPOSITORY" \
-              --workflow ci.yml \
-              --branch "$BRANCH" \
-              --limit 5 \
-              --json databaseId,createdAt,status \
-              --jq "[.[] | select(.status != "completed")] | .[0].databaseId // empty" 2>/dev/null)
-            [ -n "$RUN_ID" ] && break
-            echo "  attempt $attempt: no active run yet..."
-            sleep 10
-          done
-
-          if [ -z "$RUN_ID" ]; then
-            echo "::error::Could not find the dispatched CI run on $BRANCH"
-            exit 1
-          fi
-
-          echo "Watching CI run $RUN_ID..."
-          # gh run watch polls until completion; --exit-status makes it
-          # return non-zero if the run fails
-          gh run watch "$RUN_ID" --repo "$GITHUB_REPOSITORY" --exit-status
-
-    # ========================================================================
+  # ========================================================================
   # Job 3: Publish — waits for build + ALL test jobs, then tags + releases.
   # Only runs when the manifest fingerprint says a release is needed.
   # ========================================================================

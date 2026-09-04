@@ -1,0 +1,130 @@
+# CI Test Suite (Reusable)
+#
+# Extracted from upstream's ci.yml test execution — same runner script
+# (ci-run-node-test-shard.mts), same resource configuration, same pretest
+# builds, same composite action setup. This workflow has no PR/push event
+# context coupling; it receives the test ref and matrix from the caller.
+#
+# bf-build-stable invokes this via workflow_call after pushing the stable
+# branch. The caller's publish job gates on this workflow's conclusion.
+#
+# WHEN UPSTREAM CI CHANGES: this file extracts the test job structure from
+# ci.yml's `checks-node-core-test-nondist-shard` job. When upstream changes
+# that job (new steps, different env vars, different resource configuration),
+# update the corresponding sections here. The matrix computation stays in
+# the caller (bf-build-stable's build job) because it depends on the
+# checked-out tree.
+
+name: "CI Test Suite"
+
+on:
+  workflow_call:
+    inputs:
+      test_ref:
+        description: "Branch or SHA to run tests against"
+        required: true
+        type: string
+      test_matrix:
+        description: "JSON array of test shard entries from ci-node-test-plan.mts"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  # The main node test shard job — same structure as upstream's
+  # checks-node-core-test-nondist-shard, including the runner script,
+  # resource scaling, pretest builds, and toolchain setup.
+  test:
+    name: Test — ${{ matrix.shard_name }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: ${{ matrix.timeout_minutes || 60 }}
+    strategy:
+      fail-fast: false
+      max-parallel: 96
+      matrix:
+        include: ${{ fromJson(inputs.test_matrix) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.test_ref }}
+          fetch-depth: 1
+
+      - name: Setup Node environment
+        uses: ./.github/actions/setup-node-env
+        with:
+          node-version: "24"
+          install-bun: "false"
+          cache-mode: "restore"
+          install-deps: "false"
+          vitest-fs-cache: "true"
+          node-compile-cache: "true"
+          node-compile-cache-scope: "test"
+
+      - name: Setup Go for docs i18n
+        if: matrix.requires_go == true
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.0"
+          cache: false
+
+      - name: Configure Node test resources
+        env:
+          SHARD_PLAN_CONCURRENCY: ${{ matrix.plan_concurrency || '' }}
+        run: |
+          cores="$(nproc)"
+          if [ "$SHARD_PLAN_CONCURRENCY" != "1" ]; then
+            workers=2
+          elif [ "$cores" -ge 12 ]; then
+            workers=6
+          elif [ "$cores" -ge 6 ]; then
+            workers=4
+          else
+            workers=3
+          fi
+          if [ "$workers" -gt "$cores" ]; then
+            workers="$cores"
+          fi
+          echo "cores=$cores plan_concurrency=${SHARD_PLAN_CONCURRENCY:-default} -> workers=$workers"
+          echo "OPENCLAW_VITEST_MAX_WORKERS=$workers" >> "$GITHUB_ENV"
+
+      - name: Build Node test runtime
+        if: matrix.pretest_build_mode != null
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
+          OPENCLAW_BUILD_PRIVATE_QA: ${{ matrix.pretest_build_mode == 'private-qa' && '1' || '0' }}
+          VITEST: "1"
+        run: pnpm build qaRuntime
+
+      - name: Install ripgrep
+        if: matrix.requires_ripgrep == true && runner.os == 'Linux'
+        shell: bash
+        run: |
+          if command -v rg >/dev/null 2>&1; then
+            exit 0
+          fi
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ripgrep
+
+      # This is the critical step: run upstream's own shard runner, which
+      # handles group-level execution, per-group env, include pattern files,
+      # FS module caching, plan concurrency, and worker lifecycle.
+      - name: Run Node test shard
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
+          OPENCLAW_NODE_TEST_GROUPS_JSON: ${{ toJson(matrix.groups || null) }}
+          OPENCLAW_NODE_TEST_CONFIGS_JSON: ${{ toJson(matrix.configs) }}
+          OPENCLAW_NODE_TEST_ENV_JSON: ${{ toJson(matrix.env) }}
+          OPENCLAW_NODE_TEST_INCLUDE_PATTERNS_JSON: ${{ toJson(matrix.includePatterns) }}
+          OPENCLAW_NODE_TEST_TARGETS_JSON: ${{ toJson(matrix.targets) }}
+          OPENCLAW_NODE_TEST_VITEST_ARGS_JSON: "[]"
+          OPENCLAW_VITEST_SHARD_NAME: ${{ matrix.shard_name }}
+          OPENCLAW_VITEST_NO_OUTPUT_TIMEOUT_MS: "300000"
+          OPENCLAW_VITEST_NO_OUTPUT_RETRY: "1"
+          OPENCLAW_NODE_TEST_PLAN_CONCURRENCY: ${{ matrix.plan_concurrency }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --import tsx scripts/ci-run-node-test-shard.mts
