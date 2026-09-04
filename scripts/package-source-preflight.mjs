@@ -66,6 +66,10 @@ export function validatePackageSource({
   if (typeof rootManifest.version !== "string") {
     throw new Error(`${ROOT_MANIFEST_PATH} version must be a string.`);
   }
+  // Strip Brightfire build suffix (-N) for canonical version comparison and
+  // return value. The suffix is a CI artifact from bf-build-stable; the
+  // canonical upstream version is the base X.Y.Z.
+  const baseVersion = rootManifest.version.replace(/-[0-9]+$/u, "");
   extractCurrentPackageChangelog(changelogContent, rootManifest.version, {
     allowUnreleased: allowUnreleasedChangelog,
   });
@@ -74,7 +78,7 @@ export function validatePackageSource({
   const aiDependency = rootDependencies["@openclaw/ai"];
   if (aiManifestContent === null) {
     if (aiDependency === undefined) {
-      return rootManifest.version;
+      return baseVersion;
     }
     throw new Error(`${ROOT_MANIFEST_PATH} declares @openclaw/ai without ${AI_MANIFEST_PATH}.`);
   }
@@ -85,7 +89,7 @@ export function validatePackageSource({
       `${ROOT_MANIFEST_PATH} must depend on @openclaw/ai via workspace:*; found ${JSON.stringify(aiDependency)}.`,
     );
   }
-  if (aiManifest.version !== rootManifest.version) {
+  if (aiManifest.version !== rootManifest.version && aiManifest.version !== baseVersion) {
     throw new Error(
       `${AI_MANIFEST_PATH} version must match ${ROOT_MANIFEST_PATH}: expected ${rootManifest.version}, found ${String(aiManifest.version ?? "<missing>")}.`,
     );
@@ -97,7 +101,7 @@ export function validatePackageSource({
     rootDependencies,
     rootPackageLabel: ROOT_MANIFEST_PATH,
   });
-  return rootManifest.version;
+  return baseVersion;
 }
 
 function readGitFile(ref, file, { optional = false } = {}) {

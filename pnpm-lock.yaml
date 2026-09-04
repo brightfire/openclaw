@@ -247,6 +247,9 @@ importers:
       file-type:
         specifier: 22.0.2
         version: 22.0.2(supports-color@10.2.2)
+      get-east-asian-width:
+        specifier: 1.3.1
+        version: 1.3.1
       grammy:
         specifier: 1.46.0
         version: 1.46.0(supports-color@10.2.2)
@@ -6717,6 +6720,10 @@ packages:
   get-caller-file@2.0.5:
     resolution: {integrity: sha512-DyFP3BM/3YHTQOCUL/w0OZHR0lpKeGrxotcHWcqNEdnltqFwXVfhEBQ94eIo34AfQpo0rGki4cyIiftY06h2Fg==}
     engines: {node: 6.* || 8.* || >= 10.*}
+
+  get-east-asian-width@1.3.1:
+    resolution: {integrity: sha512-R1QfovbPsKmosqTnPoRFiJ7CF9MLRgb53ChvMZm+r4p76/+8yKDy17qLL2PKInORy2RkZZekuK0efYgmzTkXyQ==}
+    engines: {node: '>=18'}
 
   get-east-asian-width@1.6.0:
     resolution: {integrity: sha512-QRbvDIbx6YklUe6RxeTeleMR0yv3cYH6PsPZHcnVn7xv7zO1BHN8r0XETu8n6Ye3Q+ahtSarc3WgtNWmehIBfA==}
@@ -13703,6 +13710,8 @@ snapshots:
       is-property: 1.0.2
 
   get-caller-file@2.0.5: {}
+
+  get-east-asian-width@1.3.1: {}
 
   get-east-asian-width@1.6.0: {}
 

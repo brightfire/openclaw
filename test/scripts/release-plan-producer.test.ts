@@ -1237,8 +1237,8 @@ mutateModule.syncBuiltinESMExports();
     const clawHubPackages = plan.inventory.packages.filter((entry) =>
       entry.targets.includes("clawhub"),
     );
-    expect(npmPackages).toHaveLength(93);
-    expect(clawHubPackages).toHaveLength(89);
+    expect(npmPackages).toHaveLength(32);
+    expect(clawHubPackages).toHaveLength(28);
     const coreNpmPackages = new Set([
       "@openclaw/ai",
       "@openclaw/gateway-client",
