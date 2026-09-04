@@ -274,12 +274,107 @@ jobs:
           node --import tsx scripts/write-package-dist-inventory.ts
           node --import tsx scripts/test-built-bundled-channel-entry-smoke.mts
 
-          cp packages/ai/package.json /tmp/ai-package.json.bak
+          # Bundle @openclaw/ai into the tarball and rewrite workspace:*
+          # deps to exact versions. npm pack --ignore-scripts bypasses
+          # prepack (which would re-run build), but prepack is also what
+          # normally handles workspace deps. Without this, the tarball ships
+          # with workspace:* in package.json and @openclaw/ai is not bundled,
+          # so npm can't install it globally. This mirrors what upstream's
+          # package-openclaw-for-docker.mts (prepareBundledAiRuntimePackage)
+          # and preparePackageManifest do together.
+          #
+          # (Restored from the pre-v2026.8.2 workflow — the three-job rewrite
+          # in #176 dropped this block; bf/v2026.8.2-50 shipped an uninstallable
+          # tarball as a result.)
+          #
+          # Save packages/ai/package.json before pnpm pack, which temporarily
+          # rewrites workspace:* to resolved versions (0.0.0-private). Restore
+          # immediately after so nothing else sees the mutated manifest.
+          cp packages/ai/package.json /tmp/ai-pkg-backup.json
+          node --input-type=module -e '
+            import { readFileSync, writeFileSync, mkdirSync, renameSync, rmSync, readdirSync, copyFileSync } from "node:fs";
+            import { execSync } from "node:child_process";
+
+            const pkg = JSON.parse(readFileSync("package.json", "utf8"));
+
+            // 1. Pack packages/ai into a tarball
+            execSync("pnpm --dir packages/ai pack --loglevel=error --use-stderr --pack-destination /tmp/ai-pack", {
+              stdio: "inherit",
+              timeout: 120000,
+            });
+            // 1b. Restore packages/ai/package.json — pnpm pack rewrites
+            // workspace:* to 0.0.0-private in the source file temporarily.
+            copyFileSync("/tmp/ai-pkg-backup.json", "packages/ai/package.json");
+
+            // 2. Find the packed tarball
+            const aiTarballs = readdirSync("/tmp/ai-pack").filter(f => f.startsWith("openclaw-ai-") && f.endsWith(".tgz"));
+            if (aiTarballs.length !== 1) {
+              console.error(`Expected 1 @openclaw/ai tarball, found ${aiTarballs.length}: ${aiTarballs.join(", ")}`);
+              process.exit(1);
+            }
+            const aiTarball = `/tmp/ai-pack/${aiTarballs[0]}`;
+
+            // 3. Extract into node_modules/@openclaw/ai/
+            const aiDest = "node_modules/@openclaw/ai";
+            mkdirSync(aiDest, { recursive: true });
+            execSync(`tar -xzf ${aiTarball} -C ${aiDest} --strip-components=1`, {
+              stdio: "inherit",
+            });
+
+            // 4. Read the staged package.json to get version + deps
+            const stagedPkg = JSON.parse(readFileSync(`${aiDest}/package.json`, "utf8"));
+            if (typeof stagedPkg.version !== "string" || !stagedPkg.version) {
+              console.error("Packed @openclaw/ai package must declare a version");
+              process.exit(1);
+            }
+
+            // 5. Hoist @openclaw/ai deps to root, strip from staged copy
+            //    (root owns these — same pattern as upstream)
+            for (const [name, version] of Object.entries(stagedPkg.dependencies ?? {})) {
+              if (version === "0.0.0-private") continue;
+              pkg.dependencies[name] = version;
+            }
+            delete stagedPkg.dependencies;
+            writeFileSync(`${aiDest}/package.json`, JSON.stringify(stagedPkg, null, 2) + "\n");
+
+            // 6. Set @openclaw/ai to exact version and add to bundleDependencies
+            //    bundleDependencies tells npm pack to include node_modules/@openclaw/ai
+            //    inside the tarball
+            pkg.dependencies["@openclaw/ai"] = stagedPkg.version;
+            const bundleDeps = pkg.bundleDependencies ?? [];
+            if (!Array.isArray(bundleDeps)) {
+              console.error("root package.json bundleDependencies must be an array when present");
+              process.exit(1);
+            }
+            pkg.bundleDependencies = [...new Set([...bundleDeps, "@openclaw/ai"])];
+
+            // 7. Strip workspace:* from devDependencies (preparePackageManifest does this)
+            const devDeps = pkg.devDependencies;
+            if (devDeps && typeof devDeps === "object") {
+              const cleaned = Object.entries(devDeps).filter(([, spec]) =>
+                typeof spec !== "string" || !spec.startsWith("workspace:"));
+              if (cleaned.length === 0) {
+                delete pkg.devDependencies;
+              } else {
+                pkg.devDependencies = Object.fromEntries(cleaned);
+              }
+            }
+
+            writeFileSync("package.json", JSON.stringify(pkg, null, 2) + "\n");
+            console.error(`Bundled @openclaw/ai@${stagedPkg.version} into node_modules and added to bundleDependencies`);
+          '
           npm pack --ignore-scripts
-          cp /tmp/ai-package.json.bak packages/ai/package.json
+
+          # Guard: the packed tarball must contain no workspace: references.
+          # Would have caught the bf/v2026.8.2-50 regression at build time.
+          TARBALL=$(ls openclaw-*.tgz | head -1)
+          if tar -xzOf "$TARBALL" package/package.json | grep -q 'workspace:'; then
+            echo "::error::packed tarball still contains workspace: references — @openclaw/ai bundling failed"
+            tar -xzOf "$TARBALL" package/package.json | grep -n 'workspace:' | head -5
+            exit 1
+          fi
 
           node scripts/package-changelog.mjs restore
-          TARBALL=$(ls openclaw-*.tgz | head -1)
           echo "tarball=$TARBALL" >> "$GITHUB_OUTPUT"
           echo "Packed: $TARBALL"
 
