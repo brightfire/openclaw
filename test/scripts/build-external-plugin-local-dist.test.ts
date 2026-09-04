@@ -9,7 +9,9 @@ import {
 } from "../../scripts/lib/bundled-plugin-build-entries.mjs";
 
 describe("external plugin local dist build", () => {
-  it("selects every externalized first-party plugin behind a package exclusion", () => {
+  // Skipped by bundle-all-plugins: asserts !dist/extensions/* exclusions
+  // which this patch intentionally removes (all plugins ship in tarball).
+  it.skip("selects every externalized first-party plugin behind a package exclusion", () => {
     const packageDirs = listExternalPluginLocalDistPackageDirs();
     const excludedPluginIds = collectRootPackageExcludedExtensionDirs();
 
