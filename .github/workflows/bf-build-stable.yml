@@ -302,7 +302,7 @@ jobs:
       - name: Compute test shards
         id: test-shards
         run: |
-          SHARDS=$(ls test/vitest/vitest.full-*.config.ts | sed 's/.*vitest\.\(.*\)\.config\.ts/\1/' | python3 -c "import sys,json; print(json.dumps(sys.stdin.read().strip().split('\n')))")
+          SHARDS=$(ls test/vitest/vitest.full-*.config.ts | sed 's/.*vitest\.full-\(.*\)\.config\.ts/\1/' | python3 -c "import sys,json; print(json.dumps(sys.stdin.read().strip().split('\n')))")
           echo "shards=$SHARDS" >> "$GITHUB_OUTPUT"
           echo "Test shards: $SHARDS"
 
