@@ -300,18 +300,37 @@ jobs:
       # full-*.config.ts files are automatically included in the next build.
       # See the test job's comments for the full sync guidance.
       # Compute the test matrix using upstream's own shard planner
-      # (scripts/lib/ci-node-test-plan.mts). This produces the same shard
-      # split, runner assignments, and timeouts as upstream CI — currently
-      # ~118 jobs. When upstream changes their test split, this automatically
-      # follows because we call the same plan computation.
+      # (scripts/lib/ci-node-test-plan.mts — an UPSTREAM file that exists
+      # on the stable branch). Calls the same createNodeTestShards function
+      # upstream CI's preflight uses. Blacksmith runners are mapped to
+      # standard ubuntu-24.04.
       #
-      # Blacksmith runner classes are mapped to standard ubuntu-24.04 since
-      # brightfire/openclaw uses GitHub-hosted runners (same as upstream's
-      # fallback for non-openclaw repos).
+      # NOTE: This step runs AFTER the stable checkout, where upstream's
+      # test infrastructure is present. No Brightfire script dependency.
       - name: Compute test matrix (upstream plan)
         id: test-shards
         run: |
-          node --import tsx scripts/bf/build-stable/compute-test-matrix.mjs > /tmp/test-matrix.json
+          node --import tsx -e "
+            const plan = await import('./scripts/lib/ci-node-test-plan.mts');
+            const create = typeof plan.createNodeTestShardBundles === 'function'
+              ? plan.createNodeTestShardBundles
+              : plan.createNodeTestShards;
+            const shards = await create({ runnerBackend: 'github' });
+            const runnerMap = {
+              'blacksmith-4vcpu-ubuntu-2404': 'ubuntu-24.04',
+              'blacksmith-8vcpu-ubuntu-2404': 'ubuntu-24.04',
+              'blacksmith-16vcpu-ubuntu-2404': 'ubuntu-24.04',
+            };
+            const matrix = shards.map(s => ({
+              shard_name: s.shardName ?? s.checkName,
+              configs: JSON.stringify(s.configs ?? []),
+              runner: runnerMap[s.runner] ?? s.runner ?? 'ubuntu-24.04',
+              timeout_minutes: s.timeoutMinutes ?? 30,
+              env: JSON.stringify(s.env ?? {}),
+              include_patterns: JSON.stringify(s.includePatterns ?? []),
+            }));
+            console.log(JSON.stringify(matrix));
+          " > /tmp/test-matrix.json
           SHARDS=$(cat /tmp/test-matrix.json)
           echo "shards=$SHARDS" >> "$GITHUB_OUTPUT"
           SHARD_COUNT=$(echo "$SHARDS" | python3 -c "import json,sys; print(len(json.load(sys.stdin)))")
