@@ -372,7 +372,12 @@ jobs:
 
       - name: Run vitest shard
         env:
-          OPENCLAW_VITEST_MAX_WORKERS: "2"
+          # Heavy shards (agentic, auto-reply, core-runtime, core-tooling,
+          # extensions) run the full lane in one job — upstream splits these
+          # across 60+ smaller jobs. Use 1 worker + 8GB heap to avoid the
+          # OOM worker crashes seen with 2 workers at default heap.
+          NODE_OPTIONS: "--max-old-space-size=8192"
+          OPENCLAW_VITEST_MAX_WORKERS: "1"
         run: |
           CONFIG="test/vitest/vitest.full-${{ matrix.shard }}.config.ts"
           echo "Running: $CONFIG"
