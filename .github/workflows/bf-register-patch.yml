@@ -124,8 +124,4 @@ jobs:
             exit 0
           fi
           git commit -m "ci: update patch manifest"
-          git push origin brightfire/ci || {
-              echo "Push rejected — pulling and retrying..."
-              git pull --rebase origin brightfire/ci
-              git push origin brightfire/ci
-            }
+          git push origin brightfire/ci
