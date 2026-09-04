@@ -91,7 +91,7 @@ jobs:
   # ========================================================================
   build:
     name: Build stable
-    runs-on: ubuntu-latest-xl
+    runs-on: ubuntu-24.04-xl
     # No timeout — bundle-all-plugins increases build time significantly
     outputs:
       version: ${{ steps.version.outputs.version }}
@@ -358,7 +358,7 @@ jobs:
     name: Test — ${{ matrix.shard }}
     needs: build
     if: ${{ inputs.skip_tests != true }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -387,7 +387,7 @@ jobs:
       # matching upstream's per-job settings.
       - name: Run vitest shard
         env:
-          OPENCLAW_VITEST_MAX_WORKERS: "2"
+          OPENCLAW_VITEST_MAX_WORKERS: "1"
         run: |
           CONFIG="test/vitest/vitest.${{ matrix.shard }}.config.ts"
           echo "Running: $CONFIG"
@@ -401,7 +401,7 @@ jobs:
     name: Tag and release
     needs: [build, test]
     if: ${{ always() && needs.build.result == 'success' && (needs.test.result == 'success' || inputs.skip_tests == true) && needs.build.outputs.needs_release == 'true' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Generate app token
         uses: actions/create-github-app-token@v3
