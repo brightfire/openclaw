@@ -389,7 +389,10 @@ export async function finalizeDispatchAndAudit(state: ExecuteDispatchReadyState)
     dispatchOutcome,
     dispatchReason ? { reason: dispatchReason } : undefined,
   );
-  state.recordProcessed(dispatchOutcome, dispatchReason ? { reason: dispatchReason } : undefined);
+  state.recordProcessed(dispatchOutcome, {
+    reason: dispatchReason,
+    ...(replyTextParts.length > 0 ? { finalResponse: replyTextParts.join("\n") } : {}),
+  });
   state.markIdle(
     dispatchOutcome === "error"
       ? "message_error"
