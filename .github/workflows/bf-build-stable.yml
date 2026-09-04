@@ -299,12 +299,24 @@ jobs:
       # present in the repo. This is the sync point with upstream CI: new
       # full-*.config.ts files are automatically included in the next build.
       # See the test job's comments for the full sync guidance.
+      # Discover ALL individual vitest project configs — this matches
+      # upstream CI's test job split (~117 configs, each a separate job).
+      # Upstream CI runs each config as its own job; we replicate that here.
+      # The full-*.config.ts files are aggregations used by `pnpm test`
+      # (the monolithic run); individual configs are what upstream CI uses.
       - name: Compute test shards
         id: test-shards
         run: |
-          SHARDS=$(ls test/vitest/vitest.full-*.config.ts | sed 's/.*vitest\.full-\(.*\)\.config\.ts/\1/' | python3 -c "import sys,json; print(json.dumps(sys.stdin.read().strip().split('\n')))")
+          SHARDS=$(ls test/vitest/vitest.*.config.ts \
+            | grep -v 'vitest\.full-' \
+            | grep -v 'vitest\.e2e\.' \
+            | grep -v 'vitest\.live\.' \
+            | grep -v 'vitest\.ui-e2e\.' \
+            | sed 's|.*/vitest\.\(.*\)\.config\.ts|\1|' \
+            | python3 -c "import sys,json; print(json.dumps(sys.stdin.read().strip().split('\n')))")
           echo "shards=$SHARDS" >> "$GITHUB_OUTPUT"
-          echo "Test shards: $SHARDS"
+          SHARD_COUNT=$(echo "$SHARDS" | python3 -c "import json,sys; print(len(json.load(sys.stdin)))")
+          echo "Test shards ($SHARD_COUNT): $SHARDS"
 
       - name: Upload tarball artifact
         uses: actions/upload-artifact@v4
@@ -346,7 +358,7 @@ jobs:
     name: Test — ${{ matrix.shard }}
     needs: build
     if: ${{ inputs.skip_tests != true }}
-    runs-on: ${{ contains(fromJSON('["agentic","auto-reply","core-runtime","core-tooling","extensions"]'), matrix.shard) && 'ubuntu-latest-xl' || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -370,16 +382,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Each job runs one individual vitest project config — same weight
+      # as upstream CI's individual test jobs. Standard runner, 2 workers,
+      # matching upstream's per-job settings.
       - name: Run vitest shard
         env:
-          # Heavy shards (agentic, auto-reply, core-runtime, core-tooling,
-          # extensions) run the full lane in one job — upstream splits these
-          # across 60+ smaller jobs. Use 1 worker + 8GB heap to avoid the
-          # OOM worker crashes seen with 2 workers at default heap.
-          NODE_OPTIONS: "--max-old-space-size=8192"
-          OPENCLAW_VITEST_MAX_WORKERS: "1"
+          OPENCLAW_VITEST_MAX_WORKERS: "2"
         run: |
-          CONFIG="test/vitest/vitest.full-${{ matrix.shard }}.config.ts"
+          CONFIG="test/vitest/vitest.${{ matrix.shard }}.config.ts"
           echo "Running: $CONFIG"
           node scripts/run-vitest.mjs run --config "$CONFIG"
 
