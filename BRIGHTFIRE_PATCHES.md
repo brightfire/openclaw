@@ -18,7 +18,7 @@ Manifest maintenance is owned by the `openclaw-dev` skill
 | Slack Markdown                 | `brightfire/999239d745d/slack-mrkdwn`                  | `fecacdbea7` | —                                               | 2026-09-03   |
 | CLI HTTP Health Fallback       | `brightfire/999239d745d/cli-http-fallback`             | `a1944b1e85` | —                                               | 2026-09-03   |
 | Webhook Session Target Support | `brightfire/999239d745d/webhook-sessiontarget-support` | `9fc472984f` | https://github.com/brightfire/openclaw/pull/106 | 2026-09-03   |
-| OTEL Improvements              | `brightfire/999239d745d/otel-improvements`             | `719f1ad767` | https://github.com/brightfire/openclaw/pull/173 | 2026-09-03   |
+| OTEL Improvements              | `brightfire/999239d745d/otel-improvements`             | `903008301d` | https://github.com/brightfire/openclaw/pull/173 | 2026-09-03   |
 | Bundle All Plugins             | `brightfire/999239d745d/bundle-all-plugins`            | `43c8b3b545` | —                                               | 2026-09-03   |
 
 ## Upstream Test Fixes
