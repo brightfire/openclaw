@@ -299,24 +299,23 @@ jobs:
       # present in the repo. This is the sync point with upstream CI: new
       # full-*.config.ts files are automatically included in the next build.
       # See the test job's comments for the full sync guidance.
-      # Discover ALL individual vitest project configs — this matches
-      # upstream CI's test job split (~117 configs, each a separate job).
-      # Upstream CI runs each config as its own job; we replicate that here.
-      # The full-*.config.ts files are aggregations used by `pnpm test`
-      # (the monolithic run); individual configs are what upstream CI uses.
-      - name: Compute test shards
+      # Compute the test matrix using upstream's own shard planner
+      # (scripts/lib/ci-node-test-plan.mts). This produces the same shard
+      # split, runner assignments, and timeouts as upstream CI — currently
+      # ~118 jobs. When upstream changes their test split, this automatically
+      # follows because we call the same plan computation.
+      #
+      # Blacksmith runner classes are mapped to standard ubuntu-24.04 since
+      # brightfire/openclaw uses GitHub-hosted runners (same as upstream's
+      # fallback for non-openclaw repos).
+      - name: Compute test matrix (upstream plan)
         id: test-shards
         run: |
-          SHARDS=$(ls test/vitest/vitest.*.config.ts \
-            | grep -v 'vitest\.full-' \
-            | grep -v 'vitest\.e2e\.' \
-            | grep -v 'vitest\.live\.' \
-            | grep -v 'vitest\.ui-e2e\.' \
-            | sed 's|.*/vitest\.\(.*\)\.config\.ts|\1|' \
-            | python3 -c "import sys,json; print(json.dumps(sys.stdin.read().strip().split('\n')))")
+          node --import tsx scripts/bf/build-stable/compute-test-matrix.mjs > /tmp/test-matrix.json
+          SHARDS=$(cat /tmp/test-matrix.json)
           echo "shards=$SHARDS" >> "$GITHUB_OUTPUT"
           SHARD_COUNT=$(echo "$SHARDS" | python3 -c "import json,sys; print(len(json.load(sys.stdin)))")
-          echo "Test shards ($SHARD_COUNT): $SHARDS"
+          echo "Test shards ($SHARD_COUNT)"
 
       - name: Upload tarball artifact
         uses: actions/upload-artifact@v4
@@ -355,15 +354,15 @@ jobs:
   #     optimization; our 1-job-per-lane covers the same tests.
   # ========================================================================
   test:
-    name: Test — ${{ matrix.shard }}
+    name: Test — ${{ matrix.shard_name }}
     needs: build
     if: ${{ inputs.skip_tests != true }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: ${{ matrix.timeout_minutes }}
     strategy:
       fail-fast: false
       matrix:
-        shard: ${{ fromJson(needs.build.outputs.test_shards) }}
+        include: ${{ fromJson(needs.build.outputs.test_shards) }}
     steps:
       - name: Checkout stable branch
         uses: actions/checkout@v5
@@ -382,16 +381,31 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # Each job runs one individual vitest project config — same weight
-      # as upstream CI's individual test jobs. Standard runner, 2 workers,
-      # matching upstream's per-job settings.
+      # Each job runs the configs assigned by upstream's shard planner.
+      # The planner assigns configs, include patterns, and environment
+      # per shard — this is the same execution upstream CI performs.
       - name: Run vitest shard
-        env:
-          OPENCLAW_VITEST_MAX_WORKERS: "1"
         run: |
-          CONFIG="test/vitest/vitest.${{ matrix.shard }}.config.ts"
-          echo "Running: $CONFIG"
-          node scripts/run-vitest.mjs run --config "$CONFIG"
+          # Parse matrix values
+          CONFIGS=$(echo '${{ matrix.configs }}' | python3 -c "import json,sys; print(' '.join(json.load(sys.stdin)))")
+          PATTERNS=$(echo '${{ matrix.include_patterns }}' | python3 -c "import json,sys; p=json.load(sys.stdin); print(' '.join(p) if p else '')")
+          ENV_JSON='${{ matrix.env }}'
+
+          # Set env vars from the plan
+          echo "$ENV_JSON" | python3 -c "
+          import json,sys,os
+          env = json.load(sys.stdin)
+          for k,v in env.items():
+              print(f'{k}={v}')
+          " >> "$GITHUB_ENV"
+
+          echo "Running configs: $CONFIGS"
+          if [ -n "$PATTERNS" ]; then
+            echo "Include patterns: $PATTERNS"
+            OPENCLAW_VITEST_MAX_WORKERS=1 node scripts/run-vitest.mjs run $CONFIGS $PATTERNS
+          else
+            OPENCLAW_VITEST_MAX_WORKERS=1 node scripts/run-vitest.mjs run $CONFIGS
+          fi
 
   # ========================================================================
   # Job 3: Publish — waits for build + ALL test jobs, then tags + releases.
