@@ -49,6 +49,14 @@ on:
 
 permissions:
   contents: write
+
+# Serialize register-patch runs: when two PRs merge close together,
+# both trigger this workflow and one push was rejected as non-fast-forward
+# because the other had already advanced brightfire/ci. Queueing prevents
+# the race; the retry logic below handles any residual conflict.
+concurrency:
+  group: register-patch
+  cancel-in-progress: false
   pull-requests: write
 
 jobs:
@@ -116,4 +124,8 @@ jobs:
             exit 0
           fi
           git commit -m "ci: update patch manifest"
-          git push origin brightfire/ci
+          git push origin brightfire/ci || {
+              echo "Push rejected — pulling and retrying..."
+              git pull --rebase origin brightfire/ci
+              git push origin brightfire/ci
+            }
