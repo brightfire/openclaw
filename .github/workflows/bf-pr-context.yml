@@ -13,9 +13,8 @@ name: "BF: PR Context CI"
 #
 # Raw-tree upstream CI still runs on patch PRs and catches patch-local
 # hygiene (lint, knip, max-lines). This workflow answers the integration
-# question. Failures are compared against the expected-failures ledger
-# (.github/brightfire-ci/expected-test-failures.json); only NEW failures
-# gate. See docs/brightfire-ci.md.
+# question. Green means green: any failing test on the assembled tree
+# gates the PR. Nothing is ledgered or exempted. See docs/brightfire-ci.md.
 
 on:
   pull_request:
@@ -185,11 +184,11 @@ jobs:
       test_matrix: ${{ needs.assemble.outputs.test_shards }}
 
   # ========================================================================
-  # Summary: compare failing test FILES against the expected-failures
-  # ledger. Only NEW failing files gate; ledger entries are informational.
+  # Summary: any failing test on the assembled tree gates the PR. Green
+  # means green — no ledger, no exemptions.
   # ========================================================================
   summary:
-    name: Compare failures with expected ledger
+    name: Report assembled-tree result
     needs: [assemble, test]
     if: always() && needs.assemble.result == 'success'
     runs-on: ubuntu-24.04
@@ -197,14 +196,9 @@ jobs:
     env:
       GITHUB_TOKEN: ${{ github.token }}
     steps:
-      - name: Checkout brightfire/ci
-        uses: actions/checkout@v5
-
       - name: Collect failing test files
         id: failures
         run: |
-          BASE_COMMIT=$(python3 scripts/bf/parse-patches.py BRIGHTFIRE_PATCHES.md /dev/stdout | grep -oP '(?<=base_commit=).*' | head -1)
-          echo "base=$BASE_COMMIT" >> "$GITHUB_OUTPUT"
           mkdir -p /tmp/prctx
           FAILED_FILES="$(mktemp)"
           for job_id in $(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs?per_page=200" --paginate --jq '.jobs[] | select(.conclusion == "FAILURE" and (.name | startswith("Run upstream CI test suite"))) | .databaseId'); do
@@ -218,56 +212,21 @@ jobs:
           echo "actual_count=$ACTUAL_COUNT" >> "$GITHUB_OUTPUT"
           cat /tmp/prctx/actual-failures.txt
 
-      - name: Diff against ledger
-        id: ledger
-        run: |
-          BASE="${{ steps.failures.outputs.base }}"
-          LEDGER=".github/brightfire-ci/expected-test-failures.json"
-          python3 - "$LEDGER" "$BASE" /tmp/prctx/actual-failures.txt > /tmp/prctx/result.json <<'EOF'
-          import json, sys
-          ledger_path, base, actual_path = sys.argv[1], sys.argv[2], sys.argv[3]
-          ledger = json.load(open(ledger_path))
-          known = set(ledger.get(base, []))
-          try:
-              actual = set(line.strip() for line in open(actual_path) if line.strip())
-          except FileNotFoundError:
-              actual = set()
-          new = sorted(actual - known)
-          stale = sorted(known - actual)
-          json.dump({"new": new, "stale": stale, "known_count": len(known & actual)}, open("/tmp/prctx/result.json", "w"))
-          print(f"new={len(new)}")
-          EOF
-          NEW_COUNT=$(python3 -c "import json; print(len(json.load(open('/tmp/prctx/result.json'))['new']))")
-          echo "new_count=$NEW_COUNT" >> "$GITHUB_OUTPUT"
-          if [ "$NEW_COUNT" -gt 0 ]; then
-            echo "new_failures=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "new_failures=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Comment on PR
         run: |
           PR="${{ github.event.pull_request.number }}"
-          NEW_COUNT="${{ steps.ledger.outputs.new_count }}"
           ACTUAL_COUNT="${{ steps.failures.outputs.actual_count }}"
-          NEW_LIST=$(python3 -c "import json; print('\n'.join('- '+f for f in json.load(open('/tmp/prctx/result.json'))['new']))")
-          STALE_LIST=$(python3 -c "import json; print('\n'.join('- '+f for f in json.load(open('/tmp/prctx/result.json'))['stale'][:10]))")
-          if [ "$NEW_COUNT" -gt 0 ]; then
+          if [ "$ACTUAL_COUNT" -gt 0 ]; then
+            FAIL_LIST=$(sed 's/^/- /' /tmp/prctx/actual-failures.txt)
             gh pr comment "$PR" --body "$(cat <<EOM
-          **PR Context CI: $NEW_COUNT NEW failing test file(s) — stable will fail if this merges.**
+          **PR Context CI: assembled tree RED — $ACTUAL_COUNT failing test file(s). Stable will fail if this merges.**
 
-          New failures (introduced by this PR):
-          $NEW_LIST
-
-          Known/ledgered failures: $ACTUAL_COUNT file(s) total (see .github/brightfire-ci/expected-test-failures.json).
+          $FAIL_LIST
           EOM
           )"
             exit 1
           else
-            gh pr comment "$PR" --body "$(cat <<EOM
-          **PR Context CI: assembled tree green.** All $ACTUAL_COUNT known/ledgered failures resolved or unchanged; no new failures. The next build-stable after merge is expected green for this PR's changes.
-          EOM
-          )"
+            gh pr comment "$PR" --body "**PR Context CI: assembled tree green.** The next build-stable after merge is expected green for this PR's changes."
           fi
 
   # ========================================================================
