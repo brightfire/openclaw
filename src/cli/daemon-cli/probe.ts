@@ -194,11 +194,14 @@ export async function probeGatewayStatus(opts: {
       } as const;
     }
 
-    // When the WS probe fails with an auth error on a loopback URL, fall back
-    // to an HTTP /ready check.  This handles trusted-proxy deployments where
-    // loopback WS connections are rejected because no token auth is configured
-    // alongside the proxy.  The HTTP health endpoints are unauthenticated.
-    if (isAuthFailure(result) && isLoopbackUrl(opts.url)) {
+    // When a credential-less WS probe fails with an auth error on a loopback
+    // URL, fall back to an HTTP /ready check. This handles trusted-proxy
+    // deployments where loopback WS connections are rejected because no
+    // token auth is configured alongside the proxy. The HTTP health
+    // endpoints are unauthenticated. An explicit credential that was
+    // REJECTED (token or password supplied) must surface as
+    // auth-rejected — never mask a bad credential with a health-check ok.
+    if (isAuthFailure(result) && isLoopbackUrl(opts.url) && !opts.token && !opts.password) {
       const health = await httpHealthFallback(opts.url, opts.timeoutMs);
       if (health.ok) {
         return { ok: true, kind, httpFallback: true, ready: health.ready } as const;
