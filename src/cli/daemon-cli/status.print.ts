@@ -329,7 +329,11 @@ export function printDaemonStatus(status: DaemonStatus, opts: { json: boolean; d
   }
   if (rpc) {
     const probeLabel = formatProbeKindLabel(rpc.kind);
-    if (rpc.ok) {
+    if (rpc.ok && rpc.httpFallback) {
+      defaultRuntime.log(
+        `${label(probeLabel)} ${warnText("ok (health-check only — WS auth unavailable on loopback)")}`,
+      );
+    } else if (rpc.ok) {
       defaultRuntime.log(`${label(probeLabel)} ${okText("ok")}`);
     } else {
       defaultRuntime.error(`${label(probeLabel)} ${errorText("failed")}`);
