@@ -1,0 +1,4 @@
+{
+  "$comment": "Expected failing test FILES on the assembled PR-context tree, keyed by the manifest's pinned base commit. A file listed here is reported as a known failure and does not gate the PR-context summary; any failing file NOT listed here is treated as a new failure introduced by the PR and fails the summary job. Compare against https://github.com/brightfire/openclaw/blob/stable/ <base> — remove entries as they are fixed; add entries only for failures verified to exist on the assembled tree independent of the PR under review (e.g. pre-existing upstream breakage at this base). Keep this list shrinking.",
+  "v2026.8.2-999239d745d": []
+}

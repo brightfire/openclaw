@@ -1,0 +1,293 @@
+name: "BF: PR Context CI"
+
+# Assembles the REPRESENTATIVE tree for patch-branch PRs — the same tree
+# bf-build-stable would build on merge: upstream base + all manifest
+# patches (at their recorded SHAs) + this PR's head — and runs the
+# upstream test suite against THAT, instead of the raw base+one-patch
+# tree that upstream PR CI sees.
+#
+# Why: PRs against brightfire/<patch> inherit a background failure set
+# from the missing patch context (other patches' skips and fixes don't
+# apply), which buries the signal ("did MY change break this?"). A
+# failure on the assembled tree means "stable will fail if this merges".
+#
+# Raw-tree upstream CI still runs on patch PRs and catches patch-local
+# hygiene (lint, knip, max-lines). This workflow answers the integration
+# question. Failures are compared against the expected-failures ledger
+# (.github/brightfire-ci/expected-test-failures.json); only NEW failures
+# gate. See docs/brightfire-ci.md.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    branches:
+      - "brightfire/**"
+      - "!brightfire/ci"
+
+concurrency:
+  group: pr-context-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+env:
+  PATCHES_FILE: BRIGHTFIRE_PATCHES.md
+  PNPM_CONFIG_VERIFY_DEPS_BEFORE_RUN: "false"
+
+jobs:
+  # ========================================================================
+  # Assemble: base + all manifest patches (recorded SHAs) + PR head,
+  # regenerate artifacts, compute the test matrix, push to a temp ref.
+  # ========================================================================
+  assemble:
+    name: Assemble PR context tree
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.action != 'closed' &&
+      github.event.pull_request.base.ref != 'brightfire/ci'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    outputs:
+      context_ref: ${{ steps.push.outputs.ref }}
+      test_shards: ${{ steps.test-shards.outputs.shards }}
+    steps:
+      - name: Checkout brightfire/ci
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Parse manifest (patches + base branch)
+        id: patches
+        run: |
+          python3 scripts/bf/parse-patches.py "$PATCHES_FILE" "$GITHUB_OUTPUT"
+
+      - name: Read upstream version from manifest
+        id: upstream-version
+        run: |
+          VERSION=$(grep -oP '(?<=Upstream version:\*\*\s\x60v)[^\x60]+' "$PATCHES_FILE")
+          if [ -z "$VERSION" ]; then
+            echo "::error::Could not read Upstream version from $PATCHES_FILE _meta"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      # Preserve every CI-side input from this exact brightfire/ci revision
+      # before switching to the assembled tree (same pattern as
+      # bf-build-stable).
+      - name: Preserve Brightfire CI inputs
+        run: |
+          INPUTS=/tmp/bf-ci-inputs
+          mkdir -p "$INPUTS/scripts"
+          cp "$PATCHES_FILE" "$INPUTS/BRIGHTFIRE_PATCHES.md"
+          cp -a scripts/bf "$INPUTS/scripts/"
+          echo "BF_CI_INPUTS_DIR=$INPUTS" >> "$GITHUB_ENV"
+          echo "PATCHES_FILE=$INPUTS/BRIGHTFIRE_PATCHES.md" >> "$GITHUB_ENV"
+
+      - name: Fetch patch branches and PR head
+        run: |
+          git fetch origin '+refs/heads/brightfire/*:refs/remotes/origin/brightfire/*'
+          git fetch origin "${{ github.event.pull_request.head.sha }}"
+
+      - name: Prepare base checkout
+        env:
+          BASE_COMMIT: ${{ steps.patches.outputs.base_commit }}
+        run: |
+          git config user.name "brightfire-ci"
+          git config user.email "ci@brightfire.net"
+          git checkout -B pr-context-work "$BASE_COMMIT"
+
+      # Merge every patch at its RECORDED manifest SHA (the contract),
+      # then the PR head on top — exactly what the next build-stable
+      # would assemble after this PR merges and register-patch records it.
+      - name: Merge patches in manifest order
+        env:
+          PATCHES: ${{ steps.patches.outputs.list }}
+          VERSION: ${{ steps.upstream-version.outputs.version }}
+        run: /tmp/bf-ci-inputs/scripts/bf/build-stable/merge-patches.sh
+
+      - name: Merge PR head
+        run: |
+          git merge --no-edit "${{ github.event.pull_request.head.sha }}"
+          echo "Assembled: $(git rev-parse HEAD)"
+
+      - name: Setup Node environment
+        uses: ./.github/actions/setup-node-env
+        with:
+          node-version: "24"
+          install-bun: "false"
+          cache-mode: "restore"
+          install-deps: "false"
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Regenerate build artifacts
+        run: /tmp/bf-ci-inputs/scripts/bf/build-stable/regenerate-artifacts.sh
+
+      - name: Compute test matrix
+        id: test-shards
+        run: |
+          node --import tsx -e "
+            const plan = await import('./scripts/lib/ci-node-test-plan.mts');
+            const create = typeof plan.createNodeTestShardBundles === 'function'
+              ? plan.createNodeTestShardBundles
+              : plan.createNodeTestShards;
+            const shards = await create({ runnerBackend: 'github' });
+            const runnerMap = {
+              'blacksmith-4vcpu-ubuntu-2404': 'ubuntu-24.04',
+              'blacksmith-8vcpu-ubuntu-2404': 'ubuntu-24.04',
+              'blacksmith-16vcpu-ubuntu-2404': 'ubuntu-24.04',
+            };
+            const matrix = shards.map(s => ({
+              shard_name: s.shardName ?? s.checkName,
+              groups: s.groups ?? null,
+              configs: s.configs ?? [],
+              runner: runnerMap[s.runner] ?? s.runner ?? 'ubuntu-24.04',
+              timeout_minutes: s.timeoutMinutes ?? 60,
+              env: s.env ?? {},
+              includePatterns: s.includePatterns ?? [],
+              targets: s.targets ?? [],
+              plan_concurrency: s.planConcurrency ?? null,
+              pretest_build_mode: s.pretestBuildMode ?? null,
+              requires_dist: s.requiresDist ?? false,
+              requires_go: s.requiresGo ?? false,
+              requires_ripgrep: s.requiresRipgrep ?? false,
+            }));
+            console.log(JSON.stringify(matrix));
+          " > /tmp/test-matrix.json
+          SHARDS=$(cat /tmp/test-matrix.json)
+          echo "shards=$SHARDS" >> "$GITHUB_OUTPUT"
+          SHARD_COUNT=$(echo "$SHARDS" | python3 -c "import json,sys; print(len(json.load(sys.stdin)))")
+          echo "Test shards ($SHARD_COUNT)"
+
+      # GITHUB_TOKEN push: does not trigger downstream workflows (fine —
+      # nothing triggers on pr-context/*), and branch protection doesn't
+      # cover pr-context/* refs. Force-push overwrites stale assemblies.
+      - name: Push context ref
+        id: push
+        run: |
+          REF="pr-context/${{ github.event.pull_request.number }}"
+          git push --force origin "HEAD:refs/heads/$REF"
+          echo "ref=$REF" >> "$GITHUB_OUTPUT"
+
+  # ========================================================================
+  # Test: the extracted suite against the assembled ref. cache-mode stays
+  # at its default (restore): PR runs never write the dist cache — warming
+  # release caches is the release lane's job.
+  # ========================================================================
+  test:
+    name: Run upstream CI test suite (assembled tree)
+    needs: assemble
+    uses: ./.github/workflows/ci-test-suite.yml
+    with:
+      test_ref: ${{ needs.assemble.outputs.context_ref }}
+      test_matrix: ${{ needs.assemble.outputs.test_shards }}
+
+  # ========================================================================
+  # Summary: compare failing test FILES against the expected-failures
+  # ledger. Only NEW failing files gate; ledger entries are informational.
+  # ========================================================================
+  summary:
+    name: Compare failures with expected ledger
+    needs: [assemble, test]
+    if: always() && needs.assemble.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout brightfire/ci
+        uses: actions/checkout@v5
+
+      - name: Collect failing test files
+        id: failures
+        run: |
+          BASE_COMMIT=$(python3 scripts/bf/parse-patches.py BRIGHTFIRE_PATCHES.md /dev/stdout | grep -oP '(?<=base_commit=).*' | head -1)
+          echo "base=$BASE_COMMIT" >> "$GITHUB_OUTPUT"
+          mkdir -p /tmp/prctx
+          FAILED_FILES="$(mktemp)"
+          for job_id in $(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs?per_page=200" --paginate --jq '.jobs[] | select(.conclusion == "FAILURE" and (.name | startswith("Run upstream CI test suite"))) | .databaseId'); do
+            gh api "repos/$GITHUB_REPOSITORY/actions/jobs/$job_id/logs" 2>/dev/null \
+              | awk 'length($0) < 400' \
+              | grep -oE '× +[a-z-]+ +[^ ]+\.test\.[a-z]+' \
+              | awk '{print $NF}' >> "$FAILED_FILES" || true
+          done
+          sort -u "$FAILED_FILES" > /tmp/prctx/actual-failures.txt || true
+          ACTUAL_COUNT=$(wc -l < /tmp/prctx/actual-failures.txt)
+          echo "actual_count=$ACTUAL_COUNT" >> "$GITHUB_OUTPUT"
+          cat /tmp/prctx/actual-failures.txt
+
+      - name: Diff against ledger
+        id: ledger
+        run: |
+          BASE="${{ steps.failures.outputs.base }}"
+          LEDGER=".github/brightfire-ci/expected-test-failures.json"
+          python3 - "$LEDGER" "$BASE" /tmp/prctx/actual-failures.txt > /tmp/prctx/result.json <<'EOF'
+          import json, sys
+          ledger_path, base, actual_path = sys.argv[1], sys.argv[2], sys.argv[3]
+          ledger = json.load(open(ledger_path))
+          known = set(ledger.get(base, []))
+          try:
+              actual = set(line.strip() for line in open(actual_path) if line.strip())
+          except FileNotFoundError:
+              actual = set()
+          new = sorted(actual - known)
+          stale = sorted(known - actual)
+          json.dump({"new": new, "stale": stale, "known_count": len(known & actual)}, open("/tmp/prctx/result.json", "w"))
+          print(f"new={len(new)}")
+          EOF
+          NEW_COUNT=$(python3 -c "import json; print(len(json.load(open('/tmp/prctx/result.json'))['new']))")
+          echo "new_count=$NEW_COUNT" >> "$GITHUB_OUTPUT"
+          if [ "$NEW_COUNT" -gt 0 ]; then
+            echo "new_failures=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "new_failures=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Comment on PR
+        run: |
+          PR="${{ github.event.pull_request.number }}"
+          NEW_COUNT="${{ steps.ledger.outputs.new_count }}"
+          ACTUAL_COUNT="${{ steps.failures.outputs.actual_count }}"
+          NEW_LIST=$(python3 -c "import json; print('\n'.join('- '+f for f in json.load(open('/tmp/prctx/result.json'))['new']))")
+          STALE_LIST=$(python3 -c "import json; print('\n'.join('- '+f for f in json.load(open('/tmp/prctx/result.json'))['stale'][:10]))")
+          if [ "$NEW_COUNT" -gt 0 ]; then
+            gh pr comment "$PR" --body "$(cat <<EOM
+          **PR Context CI: $NEW_COUNT NEW failing test file(s) — stable will fail if this merges.**
+
+          New failures (introduced by this PR):
+          $NEW_LIST
+
+          Known/ledgered failures: $ACTUAL_COUNT file(s) total (see .github/brightfire-ci/expected-test-failures.json).
+          EOM
+          )"
+            exit 1
+          else
+            gh pr comment "$PR" --body "$(cat <<EOM
+          **PR Context CI: assembled tree green.** All $ACTUAL_COUNT known/ledgered failures resolved or unchanged; no new failures. The next build-stable after merge is expected green for this PR's changes.
+          EOM
+          )"
+          fi
+
+  # ========================================================================
+  # Cleanup: delete the pr-context/<N> ref when the PR closes.
+  # ========================================================================
+  cleanup:
+    name: Delete context ref
+    if: github.event.action == 'closed'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - name: Delete pr-context ref
+        run: |
+          REF="heads/pr-context/${{ github.event.pull_request.number }}"
+          STATUS=$(gh api -o /dev/null -w "%{http_code}" "repos/$GITHUB_REPOSITORY/git/$REF" 2>/dev/null || echo 404)
+          if [ "$STATUS" = "200" ]; then
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/$REF"
+            echo "Deleted $REF"
+          else
+            echo "No context ref to delete"
+          fi
