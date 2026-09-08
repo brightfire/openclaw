@@ -26,14 +26,14 @@ relative to the ledger.
 
 Every red check is one of:
 
-| Class                    | Example                                                                          | Where the fix goes                                                        |
-| ------------------------ | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| PR's own change          | a test your patch actually breaks; a workflow guard your edit violates           | the PR itself                                                             |
-| Patch contract change    | upstream test asserts the old contract your patch deliberately reverses          | the owning patch, per the doctrine below                                  |
-| Pre-existing at base     | fails on the clean upstream tree too                                             | `upstream-test-fixes` (skip, with clean-base evidence)                    |
-| CI-environment-sensitive | passes locally, fails on GH-hosted runners (browser engines, API shapes, timing) | `upstream-test-fixes` (skip, with CI-run evidence)                        |
-| Missing patch context    | fails only on raw-tree PR CI because other patches' skips/fixes aren't applied   | nowhere — this is PR-context CI's job to suppress; do not "fix" it per-PR |
-| Infra flake              | artifact-service 403, runner failures                                            | rerun; do not code around                                                 |
+| Class                    | Example                                                | Where the fix goes                                                     |
+| ------------------------ | ------------------------------------------------------ | ---------------------------------------------------------------------- |
+| PR's own change          | a test your patch actually breaks; a guard it violates | the PR itself                                                          |
+| Patch contract change    | upstream test asserts the old contract the patch flips | the owning patch, per the doctrine below                               |
+| Pre-existing at base     | fails on the clean upstream tree too                   | `upstream-test-fixes` (skip, with clean-base evidence)                 |
+| CI-environment-sensitive | passes locally, fails on GH-hosted runners             | `upstream-test-fixes` (skip, with CI-run evidence)                    |
+| Missing patch context    | fails only on raw-tree PR CI — other patches missing   | nowhere — PR-context CI suppresses it; do not "fix" it per-PR          |
+| Infra flake              | artifact-service 403, runner failures                  | rerun; do not code around                                              |
 
 ## Test-change doctrine (per-assertion)
 
