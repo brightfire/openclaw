@@ -491,6 +491,9 @@ const config = {
         "sharp",
         "sqlite-vec",
         "tree-sitter-bash",
+        // Consumed only by the bundle-all-plugins patch: tsdown.config.ts lists it in
+        // shouldAlwaysBundleDependency(), and knip cannot see that string-based policy.
+        "get-east-asian-width",
         ...rootToolingAndWorkspaceDependencies,
         ...rootBundledPluginRuntimeDependencies,
       ],
