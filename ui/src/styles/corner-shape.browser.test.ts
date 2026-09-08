@@ -323,10 +323,10 @@ afterAll(async () => {
 });
 
 describeCornerShape("Control UI corner curvature", () => {
-    // Skipped: fails on GitHub-hosted CI runners (deep-equal mismatch on
+  // Skipped: fails on GitHub-hosted CI runners (deep-equal mismatch on
   // computed corner styles; bf-build-stable run 34228995641). No
   // Brightfire patch touches ui/ — browser-engine-sensitive upstream.
-it.skip("scales and reshapes the surfaces that carry the app silhouette", async () => {
+  it.skip("scales and reshapes the surfaces that carry the app silhouette", async () => {
     const probe = await probeCorners(browser, superellipticalFixture);
 
     expect(probe).toEqual(
@@ -347,10 +347,10 @@ it.skip("scales and reshapes the surfaces that carry the app silhouette", async 
     );
   });
 
-    // Skipped: fails on GitHub-hosted CI runners (deep-equal mismatch on
+  // Skipped: fails on GitHub-hosted CI runners (deep-equal mismatch on
   // computed corner styles; bf-build-stable run 34228995641). No
   // Brightfire patch touches ui/ — browser-engine-sensitive upstream.
-it.skip("keeps today's corners on engines without corner-shape", async () => {
+  it.skip("keeps today's corners on engines without corner-shape", async () => {
     const probe = await probeCorners(browser, circularFixture);
 
     expect(probe).toEqual(
