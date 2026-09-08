@@ -234,7 +234,10 @@ describe("OpenClaw dual-published plugin metadata", () => {
     },
   ] as const;
 
-  it("keeps dual-published plugins selectable through both ClawHub and npm release paths", () => {
+  // Skipped by bundle-all-plugins: asserts upstream's external-plugin
+  // bundling policy which this patch intentionally reverses (all plugins
+  // ship in the core tarball).
+  it.skip("keeps dual-published plugins selectable through both ClawHub and npm release paths", () => {
     const packageNames = dualPublishedPlugins.map((plugin) => plugin.packageName);
     const clawHubPublishable = collectClawHubPublishablePluginPackages(undefined, {
       packageNames,

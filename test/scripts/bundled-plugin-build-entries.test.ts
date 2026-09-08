@@ -168,7 +168,10 @@ describe("bundled plugin build entries", () => {
     expectNoPrefixMatches(artifacts, "dist/extensions/qa-lab/");
   });
 
-  it("keeps explicitly downloadable plugins out of bundled package artifacts", () => {
+  // Skipped by bundle-all-plugins: asserts upstream's external-plugin
+  // bundling policy which this patch intentionally reverses (all plugins
+  // ship in the core tarball).
+  it.skip("keeps explicitly downloadable plugins out of bundled package artifacts", () => {
     const entries = listBundledPluginBuildEntries();
     const artifacts = listBundledPluginPackArtifacts();
 
@@ -182,7 +185,10 @@ describe("bundled plugin build entries", () => {
     }
   });
 
-  it("includes formerly external providers in bundled build entries but keeps them out of pack artifacts", () => {
+  // Skipped by bundle-all-plugins: asserts upstream's external-plugin
+  // bundling policy which this patch intentionally reverses (all plugins
+  // ship in the core tarball).
+  it.skip("includes formerly external providers in bundled build entries but keeps them out of pack artifacts", () => {
     const entries = listBundledPluginBuildEntries();
     const artifacts = listBundledPluginPackArtifacts();
 
@@ -192,7 +198,10 @@ describe("bundled plugin build entries", () => {
     }
   });
 
-  it("includes formerly externalized runtime-dependency plugins in build entries but keeps them out of pack artifacts", () => {
+  // Skipped by bundle-all-plugins: asserts upstream's external-plugin
+  // bundling policy which this patch intentionally reverses (all plugins
+  // ship in the core tarball).
+  it.skip("includes formerly externalized runtime-dependency plugins in build entries but keeps them out of pack artifacts", () => {
     const entries = listBundledPluginBuildEntries();
     const artifacts = listBundledPluginPackArtifacts();
 
@@ -202,7 +211,10 @@ describe("bundled plugin build entries", () => {
     }
   });
 
-  it("builds explicitly selected external plugins only for Docker", () => {
+  // Skipped by bundle-all-plugins: asserts upstream's external-plugin
+  // bundling policy which this patch intentionally reverses (all plugins
+  // ship in the core tarball).
+  it.skip("builds explicitly selected external plugins only for Docker", () => {
     const baselineEnv = { ...process.env };
     delete baselineEnv[DOCKER_SELECTED_PLUGIN_BUILD_IDS_ENV];
     const dockerEnv = {
@@ -392,7 +404,10 @@ describe("bundled plugin build entries", () => {
     }
   });
 
-  it("includes formerly externalized Synthetic provider in build entries but keeps it out of pack artifacts", () => {
+  // Skipped by bundle-all-plugins: asserts upstream's external-plugin
+  // bundling policy which this patch intentionally reverses (all plugins
+  // ship in the core tarball).
+  it.skip("includes formerly externalized Synthetic provider in build entries but keeps it out of pack artifacts", () => {
     const entries = listBundledPluginBuildEntries();
     const artifacts = listBundledPluginPackArtifacts();
 
@@ -424,7 +439,10 @@ describe("bundled plugin build entries", () => {
     expect(artifacts).not.toContain("dist/extensions/volcengine/package.json");
   });
 
-  it("includes formerly externalized iMessage channel in build entries but keeps it out of pack artifacts", () => {
+  // Skipped by bundle-all-plugins: asserts upstream's external-plugin
+  // bundling policy which this patch intentionally reverses (all plugins
+  // ship in the core tarball).
+  it.skip("includes formerly externalized iMessage channel in build entries but keeps it out of pack artifacts", () => {
     const entries = listBundledPluginBuildEntries();
     const artifacts = listBundledPluginPackArtifacts();
 

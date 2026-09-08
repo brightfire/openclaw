@@ -718,7 +718,7 @@ describe("collectInstalledPackageErrors", () => {
 
       expect(errors).toEqual(
         expect.arrayContaining(
-          ["ollama", "lmstudio"].map(
+          ["ollama", "lmstudio", "acpx"].map(
             (providerId) =>
               `installed bundled extension manifest missing: ${join(
                 packageRoot,
@@ -730,7 +730,7 @@ describe("collectInstalledPackageErrors", () => {
           ),
         ),
       );
-      for (const excludedId of ["acpx", "qa-channel", "qa-lab"]) {
+      for (const excludedId of ["qa-channel", "qa-lab"]) {
         expect(errors.some((error) => error.includes(join("extensions", excludedId)))).toBe(false);
       }
     } finally {
