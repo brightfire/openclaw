@@ -1,359 +1,35 @@
 // Verifies bundled plugin metadata generation and import boundaries.
-import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { toErrorObject as toLintErrorObject } from "@openclaw/normalization-core/error-coercion";
 import { beforeAll, describe, expect, it } from "vitest";
 import { expectNoReaddirSyncDuring } from "../test-utils/fs-scan-assertions.js";
-import { listGitTrackedFiles, toRepoRelativePath } from "../test-utils/repo-files.js";
-import { collectBundledChannelConfigsCore } from "./bundled-channel-config-metadata.js";
 import {
   listBundledPluginMetadata,
   resolveBundledPluginGeneratedPath,
 } from "./bundled-plugin-metadata.js";
-
-type BundledPluginMetadata = ReturnType<typeof listBundledPluginMetadata>[number];
-import { resolveGatewayStartupPluginIdsFromRegistry } from "./gateway-startup-plugin-ids.js";
+import {
+  collectRepoBundledChannelConfigsForTest,
+  collectRootPackageExcludedExtensionDirsForTest,
+  expectArtifactPresence,
+  expectGeneratedPathResolution,
+  expectPluginScopedGeneratedPathResolution,
+  expectTestOnlyArtifactsExcluded,
+  listRepoBundledPluginManifestsUncached,
+  listRepoBundledPluginMetadata,
+} from "./bundled-plugin-metadata.test-support.js";
 import {
   createGeneratedPluginTempRoot,
   installGeneratedPluginTempRootCleanup,
   pluginTestRepoRoot as repoRoot,
   writeJson,
 } from "./generated-plugin-test-helpers.js";
-import type { InstalledPluginIndex, InstalledPluginIndexRecord } from "./installed-plugin-index.js";
-import type { PluginManifestRecord, PluginManifestRegistry } from "./manifest-registry.js";
-import {
-  getPackageManifestMetadata,
-  loadPluginManifest,
-  type PackageManifest,
-} from "./manifest.js";
 import { clearPluginMetadataLifecycleCaches } from "./plugin-metadata-lifecycle.js";
 import { writeBundledRuntimeSidecarPathBaseline } from "./runtime-sidecar-paths-baseline.js";
 import { BUNDLED_RUNTIME_SIDECAR_PATHS } from "./runtime-sidecar-paths.js";
 
 const BUNDLED_PLUGIN_METADATA_TEST_TIMEOUT_MS = 300_000;
-const EXPECTED_BUNDLED_STARTUP_PLUGIN_IDS = [
-  "acpx",
-  "active-memory",
-  "anthropic",
-  "bonjour",
-  "browser",
-  "canvas",
-  "cua-computer",
-  "device-pair",
-  "diagnostics-otel",
-  "diagnostics-prometheus",
-  "diffs",
-  "diffs-language-pack",
-  "file-transfer",
-  "geolocation",
-  "google-meet",
-  "imap",
-  "linux-node",
-  "llm-task",
-  "lobster",
-  "logbook",
-  "memory-wiki",
-  "ollama",
-  "openai",
-  "opencode",
-  "openshell",
-  "policy",
-  "reef",
-  "talk-voice",
-  "teams-meetings",
-  "visitor-access",
-  "voice-call",
-  "webhooks",
-  "workboard",
-  "zoom-meetings",
-] as const;
-const EXPECTED_EMPTY_CONFIG_GATEWAY_STARTUP_PLUGIN_IDS = [
-  "acpx",
-  "anthropic",
-  "browser",
-  "canvas",
-  "cua-computer",
-  "device-pair",
-  "file-transfer",
-  "geolocation",
-  "google-meet",
-  "linux-node",
-  "memory-core",
-  "ollama",
-  "openai",
-  "opencode",
-  "talk-voice",
-  "teams-meetings",
-  "xai",
-  "zoom-meetings",
-] as const;
 
 installGeneratedPluginTempRootCleanup();
-
-function expectTestOnlyArtifactsExcluded(artifacts: readonly string[]) {
-  artifacts.forEach((artifact) => {
-    expect(artifact).not.toMatch(/^test-/);
-    expect(artifact).not.toContain(".test-");
-    expect(artifact).not.toMatch(/\.test\.js$/);
-  });
-}
-
-function expectGeneratedPathResolution(tempRoot: string, expectedRelativePath: string) {
-  expect(
-    resolveBundledPluginGeneratedPath(
-      tempRoot,
-      {
-        source: "./plugin/index.ts",
-        built: "plugin/index.js",
-      },
-      undefined,
-    ),
-  ).toBe(path.join(tempRoot, expectedRelativePath));
-}
-
-function expectPluginScopedGeneratedPathResolution(
-  tempRoot: string,
-  pluginDirName: string,
-  expectedRelativePath: string,
-) {
-  expect(
-    resolveBundledPluginGeneratedPath(
-      tempRoot,
-      {
-        source: "./index.ts",
-        built: "index.js",
-      },
-      pluginDirName,
-    ),
-  ).toBe(path.join(tempRoot, expectedRelativePath));
-}
-
-function expectArtifactPresence(
-  artifacts: readonly string[] | undefined,
-  params: { contains?: readonly string[]; excludes?: readonly string[] },
-) {
-  if (params.contains) {
-    for (const artifact of params.contains) {
-      expect(artifacts).toContain(artifact);
-    }
-  }
-  if (params.excludes) {
-    for (const artifact of params.excludes) {
-      expect(artifacts).not.toContain(artifact);
-    }
-  }
-}
-
-let repoBundledPluginMetadataCache: readonly BundledPluginMetadata[] | undefined;
-let repoBundledPluginManifestsCache:
-  | ReturnType<typeof listRepoBundledPluginManifestsUncached>
-  | undefined;
-const repoBundledChannelConfigsCache = new Map<
-  string,
-  ReturnType<typeof collectBundledChannelConfigsCore>
->();
-
-function listRepoBundledPluginMetadata(): readonly BundledPluginMetadata[] {
-  repoBundledPluginMetadataCache ??= listBundledPluginMetadata({
-    rootDir: repoRoot,
-    includeSyntheticChannelConfigs: false,
-  });
-  return repoBundledPluginMetadataCache;
-}
-
-function listRepoBundledPluginManifestsUncached() {
-  const bundledPluginsDir = path.join(repoRoot, "extensions");
-  return listRepoBundledPluginManifestDirs().flatMap((dirName) => {
-    const result = loadPluginManifest(path.join(bundledPluginsDir, dirName), false);
-    return result.ok ? [{ dirName, manifest: result.manifest }] : [];
-  });
-}
-
-function listRepoBundledPluginManifestDirs(): string[] {
-  const externalDirs = listExternalRepoBundledPluginManifestDirs();
-  if (externalDirs) {
-    return externalDirs;
-  }
-  const bundledPluginsDir = path.join(repoRoot, "extensions");
-  return fs
-    .readdirSync(bundledPluginsDir, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => entry.name)
-    .toSorted();
-}
-
-function listExternalRepoBundledPluginManifestDirs(): string[] | null {
-  const manifestFiles =
-    listGitRepoBundledPluginManifestFiles() ?? listFindRepoBundledPluginManifestFiles();
-  if (!manifestFiles) {
-    return null;
-  }
-  return manifestFiles
-    .flatMap((file) => {
-      const match = /^extensions\/([^/]+)\/openclaw\.plugin\.json$/u.exec(file);
-      return match?.[1] ? [match[1]] : [];
-    })
-    .toSorted();
-}
-
-function listGitRepoBundledPluginManifestFiles(): string[] | null {
-  return listGitTrackedFiles({ repoRoot, pathspecs: "extensions/*/openclaw.plugin.json" });
-}
-
-function listFindRepoBundledPluginManifestFiles(): string[] | null {
-  const result = spawnSync(
-    "find",
-    [
-      path.join(repoRoot, "extensions"),
-      "-maxdepth",
-      "2",
-      "-type",
-      "f",
-      "-name",
-      "openclaw.plugin.json",
-    ],
-    {
-      cwd: repoRoot,
-      encoding: "utf8",
-      maxBuffer: 1024 * 1024,
-      stdio: ["ignore", "pipe", "ignore"],
-    },
-  );
-  if (result.status !== 0) {
-    return null;
-  }
-  return result.stdout
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0)
-    .map((file) => toRepoRelativePath(repoRoot, file))
-    .toSorted();
-}
-
-function listRepoBundledPluginManifests() {
-  repoBundledPluginManifestsCache ??= listRepoBundledPluginManifestsUncached();
-  return repoBundledPluginManifestsCache;
-}
-
-function createRepoBundledManifestRegistry(): PluginManifestRegistry {
-  return {
-    plugins: listRepoBundledPluginManifests().map(({ manifest, dirName }) => ({
-      id: manifest.id,
-      name: manifest.name,
-      description: manifest.description,
-      version: manifest.version,
-      enabledByDefault: manifest.enabledByDefault === true ? true : undefined,
-      enabledByDefaultOnPlatforms: manifest.enabledByDefaultOnPlatforms,
-      kind: manifest.kind,
-      channels: manifest.channels ?? [],
-      providers: manifest.providers ?? [],
-      cliBackends: manifest.cliBackends ?? [],
-      syntheticAuthRefs: manifest.syntheticAuthRefs ?? [],
-      nonSecretAuthMarkers: manifest.nonSecretAuthMarkers ?? [],
-      skills: manifest.skills ?? [],
-      origin: "bundled",
-      rootDir: path.join(repoRoot, "extensions", dirName),
-      source: path.join(repoRoot, "extensions", dirName, "index.ts"),
-      manifestPath: path.join(repoRoot, "extensions", dirName, "openclaw.plugin.json"),
-      activation: manifest.activation,
-      setup: manifest.setup,
-      hooks: [],
-      contracts: manifest.contracts,
-    })),
-    diagnostics: [],
-  };
-}
-
-function readPackageManifest(pluginDir: string): PackageManifest | undefined {
-  const packagePath = path.join(pluginDir, "package.json");
-  return fs.existsSync(packagePath)
-    ? (JSON.parse(fs.readFileSync(packagePath, "utf8")) as PackageManifest)
-    : undefined;
-}
-
-function collectRootPackageExcludedExtensionDirsForTest(): readonly string[] {
-  const packageJson = JSON.parse(fs.readFileSync(path.join(repoRoot, "package.json"), "utf8")) as {
-    files?: unknown;
-  };
-  if (!Array.isArray(packageJson.files)) {
-    return [];
-  }
-  return packageJson.files
-    .flatMap((entry) => {
-      if (typeof entry !== "string") {
-        return [];
-      }
-      const match = /^!dist\/extensions\/([^/]+)\/\*\*$/u.exec(entry);
-      return match?.[1] ? [match[1]] : [];
-    })
-    .toSorted((left, right) => left.localeCompare(right));
-}
-
-function collectRepoBundledChannelConfigsForTest(dirName: string) {
-  const cached = repoBundledChannelConfigsCache.get(dirName);
-  if (cached) {
-    return cached;
-  }
-  const pluginDir = path.join(repoRoot, "extensions", dirName);
-  const manifest = loadPluginManifest(pluginDir, false);
-  if (!manifest.ok) {
-    throw toLintErrorObject(manifest.error, "Non-Error thrown");
-  }
-  const configs = collectBundledChannelConfigsCore({
-    pluginDir,
-    manifest: manifest.manifest,
-    packageManifest: getPackageManifestMetadata(readPackageManifest(pluginDir)),
-  });
-  repoBundledChannelConfigsCache.set(dirName, configs);
-  return configs;
-}
-
-function hasPluginKind(record: PluginManifestRecord, kind: string): boolean {
-  return Array.isArray(record.kind) ? record.kind.includes(kind as never) : record.kind === kind;
-}
-
-function createInstalledPluginRecordForManifest(
-  record: PluginManifestRecord,
-): InstalledPluginIndexRecord {
-  return {
-    pluginId: record.id,
-    manifestPath: record.manifestPath,
-    manifestHash: `test-${record.id}`,
-    source: record.source,
-    rootDir: record.rootDir,
-    origin: record.origin,
-    enabled: record.enabledByDefault === true,
-    ...(record.enabledByDefault === true ? { enabledByDefault: true } : {}),
-    ...(record.enabledByDefaultOnPlatforms?.length
-      ? { enabledByDefaultOnPlatforms: record.enabledByDefaultOnPlatforms }
-      : {}),
-    startup: {
-      sidecar: record.activation?.onStartup === true,
-      memory: hasPluginKind(record, "memory"),
-      agentHarnesses: [
-        ...new Set([...(record.activation?.onAgentHarnesses ?? []), ...record.cliBackends]),
-      ].toSorted((left, right) => left.localeCompare(right)),
-    },
-    compat: [],
-  };
-}
-
-function createInstalledPluginIndexForManifests(
-  manifestRegistry: PluginManifestRegistry,
-): InstalledPluginIndex {
-  return {
-    version: 1,
-    hostContractVersion: "test",
-    compatRegistryVersion: "test",
-    migrationVersion: 1,
-    policyHash: "test",
-    generatedAtMs: 0,
-    installRecords: {},
-    plugins: manifestRegistry.plugins.map(createInstalledPluginRecordForManifest),
-    diagnostics: [],
-  };
-}
 
 describe("bundled plugin metadata", () => {
   beforeAll(() => {
@@ -588,90 +264,6 @@ describe("bundled plugin metadata", () => {
       expect(typeof configSchema).toBe("object");
       expect(Array.isArray(configSchema)).toBe(false);
     }
-  });
-
-  it("declares explicit startup activation on all bundled plugin manifests", () => {
-    const startupPluginIds: string[] = [];
-
-    for (const entry of listRepoBundledPluginManifests()) {
-      expect(typeof entry.manifest.activation?.onStartup).toBe("boolean");
-      if (entry.manifest.activation?.onStartup === true) {
-        startupPluginIds.push(entry.manifest.id);
-      }
-    }
-
-    expect(startupPluginIds.toSorted((left, right) => left.localeCompare(right))).toEqual(
-      EXPECTED_BUNDLED_STARTUP_PLUGIN_IDS,
-    );
-  });
-
-  it("scopes Voice Call CLI activation to the voicecall command", () => {
-    const entry = listRepoBundledPluginManifests().find(
-      ({ manifest }) => manifest.id === "voice-call",
-    );
-
-    expect(entry?.manifest.commandAliases).toStrictEqual([{ name: "voicecall" }]);
-    expect(entry?.manifest.activation?.onCommands).toStrictEqual(["voicecall"]);
-  });
-
-  it("keeps Workboard CLI ownership separate from its slash command", () => {
-    const entry = listRepoBundledPluginManifests().find(
-      ({ manifest }) => manifest.id === "workboard",
-    );
-
-    expect(entry?.manifest.commandAliases).toStrictEqual([{ name: "workboard" }]);
-    expect(entry?.manifest.activation?.onCommands).toStrictEqual(["workboard"]);
-  });
-
-  it("scopes Codex CLI activation to the codex command", () => {
-    const entry = listRepoBundledPluginManifests().find(({ manifest }) => manifest.id === "codex");
-
-    expect(entry?.manifest.activation?.onCommands).toStrictEqual(["codex"]);
-  });
-
-  it("keeps empty-config Gateway startup narrower than declared startup sidecars", () => {
-    const manifestRegistry = createRepoBundledManifestRegistry();
-    const index = createInstalledPluginIndexForManifests(manifestRegistry);
-
-    expect(
-      resolveGatewayStartupPluginIdsFromRegistry({
-        config: {},
-        env: {},
-        index,
-        manifestRegistry,
-        platform: "linux",
-      }),
-    ).toEqual(EXPECTED_EMPTY_CONFIG_GATEWAY_STARTUP_PLUGIN_IDS);
-  });
-
-  it("auto-starts Bonjour for empty-config macOS Gateway startup", () => {
-    const manifestRegistry = createRepoBundledManifestRegistry();
-    const index = createInstalledPluginIndexForManifests(manifestRegistry);
-
-    expect(
-      resolveGatewayStartupPluginIdsFromRegistry({
-        config: {},
-        env: process.env,
-        index,
-        manifestRegistry,
-        platform: "darwin",
-      }),
-    ).toContain("bonjour");
-  });
-
-  it("starts Bonjour when explicitly enabled", () => {
-    const manifestRegistry = createRepoBundledManifestRegistry();
-    const index = createInstalledPluginIndexForManifests(manifestRegistry);
-
-    expect(
-      resolveGatewayStartupPluginIdsFromRegistry({
-        config: { plugins: { entries: { bonjour: { enabled: true } } } },
-        env: process.env,
-        index,
-        manifestRegistry,
-        platform: "linux",
-      }),
-    ).toContain("bonjour");
   });
 
   it("prefers built generated paths when present and falls back to source paths", () => {
@@ -1138,5 +730,3 @@ describe("bundled plugin metadata", () => {
     expect(fs.existsSync(markerPath)).toBe(false);
   });
 });
-
-/* oxlint-disable max-lines -- TODO: split this grandfathered oversized file. */
