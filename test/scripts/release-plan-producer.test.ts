@@ -1184,7 +1184,7 @@ mutateModule.syncBuiltinESMExports();
     );
   });
 
-  it("matches the exact current publisher inventory: 93 npm and 89 ClawHub packages", () => {
+  it("matches the exact current publisher inventory: 4 npm and 0 ClawHub packages", () => {
     const root = tempDirs.make("openclaw-release-plan-current-");
     const candidateSha = execFileSync("git", ["rev-parse", "HEAD"], {
       cwd: resolve("."),
@@ -1237,8 +1237,8 @@ mutateModule.syncBuiltinESMExports();
     const clawHubPackages = plan.inventory.packages.filter((entry) =>
       entry.targets.includes("clawhub"),
     );
-    expect(npmPackages).toHaveLength(32);
-    expect(clawHubPackages).toHaveLength(28);
+    expect(npmPackages).toHaveLength(4);
+    expect(clawHubPackages).toHaveLength(0);
     const coreNpmPackages = new Set([
       "@openclaw/ai",
       "@openclaw/gateway-client",

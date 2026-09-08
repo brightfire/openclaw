@@ -67,7 +67,10 @@ describe("official external provider endpoint catalog mirror", () => {
   const extensionManifests = listExtensionManifests();
   const catalogManifestsByPluginId = listCatalogManifestsByPluginId();
 
-  it("mirrors providerEndpoints for every dist-excluded plugin manifest that declares them", () => {
+  // Skipped by bundle-all-plugins: asserts upstream's external-plugin
+  // bundling policy which this patch intentionally reverses (all plugins
+  // ship in the core tarball).
+  it.skip("mirrors providerEndpoints for every dist-excluded plugin manifest that declares them", () => {
     const checkedPluginIds: string[] = [];
     for (const { dirName, manifest } of extensionManifests) {
       if (!Array.isArray(manifest.providerEndpoints)) {

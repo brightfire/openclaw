@@ -540,7 +540,10 @@ describe("collectForbiddenPackPaths", () => {
     ).toEqual([...LOCAL_BUILD_METADATA_DIST_PATHS]);
   });
 
-  it("blocks Docker-selected external plugin trees from the core npm pack", () => {
+  // Skipped by bundle-all-plugins: asserts upstream's external-plugin
+  // bundling policy which this patch intentionally reverses (all plugins
+  // ship in the core tarball).
+  it.skip("blocks Docker-selected external plugin trees from the core npm pack", () => {
     expect(
       collectForbiddenPackPaths([
         "dist/index.js",
@@ -818,7 +821,7 @@ describe("collectMissingPackPaths", () => {
   });
 
   it("requires bundled plugin runtime sidecars that dynamic plugin boundaries resolve at runtime", () => {
-    expect(requiredBundledPluginPackPaths).not.toContain(
+    expect(requiredBundledPluginPackPaths).toContain(
       bundledDistPluginFile("slack", "runtime-api.js"),
     );
     expect(requiredBundledPluginPackPaths).toContain(
