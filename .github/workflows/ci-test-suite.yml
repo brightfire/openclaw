@@ -58,7 +58,6 @@ jobs:
           node-version: "24"
           install-bun: "false"
           cache-mode: "restore"
-          install-deps: "false"
           vitest-fs-cache: "true"
           node-compile-cache: "true"
           node-compile-cache-scope: "test"
