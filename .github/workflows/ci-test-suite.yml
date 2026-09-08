@@ -97,6 +97,35 @@ jobs:
           VITEST: "1"
         run: pnpm build qaRuntime
 
+      # Dist-requiring shards (e.g. tui-pty, which sets
+      # OPENCLAW_TUI_PTY_USE_BUILT_CLI=1 and needs dist/entry.mjs) need built
+      # output before tests run. Upstream runs these in its build-artifacts
+      # lane after `pnpm build:ci-artifacts`; this extraction builds the same
+      # target in-shard, cached on the checked-out tree SHA so identical-tree
+      # reruns skip the build.
+      - name: Record checked-out tree SHA
+        id: tree
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore dist build cache
+        if: matrix.requires_dist == true
+        id: dist-cache
+        uses: actions/cache@v5
+        with:
+          path: |
+            dist/
+            dist-runtime/
+            packages/*/dist/
+          key: stable-dist-build-v1-${{ steps.tree.outputs.sha }}
+          restore-keys: |
+            stable-dist-build-v1-
+
+      - name: Build dist (dist-requiring shard)
+        if: matrix.requires_dist == true && steps.dist-cache.outputs.cache-hit != 'true'
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
+        run: pnpm build:ci-artifacts
+
       - name: Install ripgrep
         if: matrix.requires_ripgrep == true && runner.os == 'Linux'
         shell: bash

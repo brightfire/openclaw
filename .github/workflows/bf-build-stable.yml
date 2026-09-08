@@ -391,6 +391,7 @@ jobs:
               targets: s.targets ?? [],
               plan_concurrency: s.planConcurrency ?? null,
               pretest_build_mode: s.pretestBuildMode ?? null,
+              requires_dist: s.requiresDist ?? false,
               requires_go: s.requiresGo ?? false,
               requires_ripgrep: s.requiresRipgrep ?? false,
             }));
