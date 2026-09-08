@@ -73,7 +73,9 @@
               "flags": "--use-env",
               "description": "Use ZALO_BOT_TOKEN"
             },
-            "envVars": ["ZALO_BOT_TOKEN"]
+            "envVars": [
+              "ZALO_BOT_TOKEN"
+            ]
           }
         ]
       }
@@ -87,7 +89,8 @@
       "pluginApi": ">=2026.8.1"
     },
     "build": {
-      "openclawVersion": "2026.8.1"
+      "openclawVersion": "2026.8.1",
+      "bundledDist": true
     },
     "release": {
       "publishToClawHub": true,

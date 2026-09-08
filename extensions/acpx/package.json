@@ -56,7 +56,8 @@
           "source": "./src/runtime-internals/mcp-command-line.mjs",
           "output": "mcp-command-line.mjs"
         }
-      ]
+      ],
+      "bundledDist": true
     },
     "release": {
       "publishToClawHub": true,

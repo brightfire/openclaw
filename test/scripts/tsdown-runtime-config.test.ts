@@ -227,7 +227,10 @@ describe("tsdown config", () => {
     expect(entrySources(distGraph)["docker-healthcheck"]).toBe("src/docker-healthcheck.ts");
   });
 
-  it("keeps root-package-excluded external plugins out of the root dist graph", () => {
+  // Skipped by bundle-all-plugins: asserts upstream's external-plugin
+  // bundling policy which this patch intentionally reverses (all plugins
+  // ship in the core tarball).
+  it.skip("keeps root-package-excluded external plugins out of the root dist graph", () => {
     const distGraph = requireUnifiedDistGraph();
     const keys = entryKeys(distGraph);
     const hasPluginEntry = (pluginId: string) =>

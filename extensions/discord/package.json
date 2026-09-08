@@ -74,7 +74,9 @@
               "flags": "--use-env",
               "description": "Use DISCORD_BOT_TOKEN"
             },
-            "envVars": ["DISCORD_BOT_TOKEN"]
+            "envVars": [
+              "DISCORD_BOT_TOKEN"
+            ]
           }
         ]
       },
@@ -105,7 +107,8 @@
           "source": "./assets/embedded-app-sdk.mjs",
           "output": "assets/embedded-app-sdk.mjs"
         }
-      ]
+      ],
+      "bundledDist": true
     },
     "assetScripts": {
       "build": "node --import tsx ../../scripts/build-discord-activity-sdk.mts"

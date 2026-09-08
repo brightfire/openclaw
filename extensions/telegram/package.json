@@ -40,7 +40,7 @@
       "detailLabel": "Telegram Bot",
       "docsPath": "/channels/telegram",
       "docsLabel": "telegram",
-      "blurb": "simplest way to get started — register a bot with @BotFather and get going.",
+      "blurb": "simplest way to get started \u2014 register a bot with @BotFather and get going.",
       "systemImage": "paperplane",
       "selectionDocsPrefix": "",
       "selectionDocsOmitLabel": true,
@@ -75,7 +75,9 @@
               "flags": "--use-env",
               "description": "Use TELEGRAM_BOT_TOKEN"
             },
-            "envVars": ["TELEGRAM_BOT_TOKEN"]
+            "envVars": [
+              "TELEGRAM_BOT_TOKEN"
+            ]
           }
         ]
       },
@@ -83,6 +85,9 @@
         "nativeCommandsAutoEnabled": true,
         "nativeSkillsAutoEnabled": true
       }
+    },
+    "build": {
+      "bundledDist": true
     }
   }
 }

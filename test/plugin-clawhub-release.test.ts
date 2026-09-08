@@ -213,16 +213,6 @@ describe("collectClawHubPublishablePluginPackages", () => {
 describe("OpenClaw dual-published plugin metadata", () => {
   const dualPublishedPlugins = [
     {
-      extensionId: "cohere",
-      packageName: "@openclaw/cohere-provider",
-      install: {
-        clawhubSpec: "clawhub:@openclaw/cohere-provider",
-        defaultChoice: "npm",
-        minHostVersion: ">=2026.6.8",
-        npmSpec: "@openclaw/cohere-provider",
-      },
-    },
-    {
       extensionId: "diagnostics-otel",
       packageName: "@openclaw/diagnostics-otel",
       install: {
@@ -242,29 +232,12 @@ describe("OpenClaw dual-published plugin metadata", () => {
         npmSpec: "@openclaw/diagnostics-prometheus",
       },
     },
-    {
-      extensionId: "gmi",
-      packageName: "@openclaw/gmi-provider",
-      install: {
-        clawhubSpec: "clawhub:@openclaw/gmi-provider",
-        defaultChoice: "npm",
-        minHostVersion: ">=2026.6.8",
-        npmSpec: "@openclaw/gmi-provider",
-      },
-    },
-    {
-      extensionId: "novita",
-      packageName: "@openclaw/novita-provider",
-      install: {
-        clawhubSpec: "clawhub:@openclaw/novita-provider",
-        defaultChoice: "npm",
-        minHostVersion: ">=2026.7.2",
-        npmSpec: "@openclaw/novita-provider",
-      },
-    },
   ] as const;
 
-  it("keeps dual-published plugins selectable through both ClawHub and npm release paths", () => {
+  // Skipped by bundle-all-plugins: asserts upstream's external-plugin
+  // bundling policy which this patch intentionally reverses (all plugins
+  // ship in the core tarball).
+  it.skip("keeps dual-published plugins selectable through both ClawHub and npm release paths", () => {
     const packageNames = dualPublishedPlugins.map((plugin) => plugin.packageName);
     const clawHubPublishable = collectClawHubPublishablePluginPackages(undefined, {
       packageNames,

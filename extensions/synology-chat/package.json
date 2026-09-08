@@ -75,7 +75,9 @@
               "flags": "--use-env",
               "description": "Use Synology Chat environment credentials"
             },
-            "envVars": ["SYNOLOGY_CHAT_TOKEN"]
+            "envVars": [
+              "SYNOLOGY_CHAT_TOKEN"
+            ]
           }
         ]
       }
@@ -89,7 +91,8 @@
       "pluginApi": ">=2026.8.1"
     },
     "build": {
-      "openclawVersion": "2026.8.1"
+      "openclawVersion": "2026.8.1",
+      "bundledDist": true
     },
     "release": {
       "publishToClawHub": true,

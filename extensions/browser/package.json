@@ -22,6 +22,9 @@
     ],
     "assetScripts": {
       "copy": "node scripts/copy-chrome-extension.mjs"
+    },
+    "build": {
+      "bundledDist": true
     }
   }
 }

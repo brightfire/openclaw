@@ -70,7 +70,9 @@
               "flags": "--use-env",
               "description": "Use NOSTR_PRIVATE_KEY"
             },
-            "envVars": ["NOSTR_PRIVATE_KEY"]
+            "envVars": [
+              "NOSTR_PRIVATE_KEY"
+            ]
           }
         ]
       }
@@ -84,7 +86,8 @@
       "pluginApi": ">=2026.8.1"
     },
     "build": {
-      "openclawVersion": "2026.8.1"
+      "openclawVersion": "2026.8.1",
+      "bundledDist": true
     },
     "release": {
       "publishToClawHub": true,

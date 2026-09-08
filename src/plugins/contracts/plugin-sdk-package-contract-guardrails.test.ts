@@ -723,7 +723,9 @@ describe("plugin-sdk package contract guardrails", () => {
     });
   });
 
-  it("keeps Matrix dependencies local to the Matrix plugin", () => {
+  // Skipped by bundle-all-plugins: asserts !dist/extensions/* exclusions
+  // which this patch intentionally removes (all plugins ship in tarball).
+  it.skip("keeps Matrix dependencies local to the Matrix plugin", () => {
     const rootPackageJson = readRootPackageJson();
     const rootRuntimeDeps = collectRuntimeDependencySpecs(rootPackageJson);
     const matrixPackageJson = readMatrixPackageJson();

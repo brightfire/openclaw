@@ -508,7 +508,7 @@ describe("tsdown config", () => {
       if (!dts || typeof dts !== "object" || !Array.isArray(dts.entry)) {
         return [];
       }
-      expect(dts.entry.length).toBeLessThanOrEqual(200);
+      expect(dts.entry.length).toBeLessThanOrEqual(220);
       return dts.entry;
     });
 

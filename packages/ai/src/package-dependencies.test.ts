@@ -44,7 +44,9 @@ async function productionImportsPackage(packageName: string): Promise<boolean> {
 }
 
 describe("@openclaw/ai source dependency contract", () => {
-  it.each(["@openclaw/model-catalog-core", "@openclaw/normalization-core"])(
+  // Skipped: bundle-all-plugins patch moves these from workspace devDependencies
+  // to real dependencies (0.0.0-private) to bundle them into the tarball.
+  it.skip.each(["@openclaw/model-catalog-core", "@openclaw/normalization-core"])(
     "declares bundled %s imports as a workspace dev dependency",
     async (packageName) => {
       const manifest = JSON.parse(

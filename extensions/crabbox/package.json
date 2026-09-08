@@ -17,7 +17,8 @@
           "source": "./assets/openclaw-worker-wallpaper.png",
           "output": "assets/openclaw-worker-wallpaper.png"
         }
-      ]
+      ],
+      "bundledDist": true
     }
   }
 }
