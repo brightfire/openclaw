@@ -16,6 +16,11 @@ set -euo pipefail
 VERSION="${VERSION:?prepare-stable-branch.sh requires VERSION env var}"
 BASE_BRANCH="${BASE_BRANCH:-main}"
 BASE_COMMIT="${BASE_COMMIT:-}"
+# LOCAL_ONLY=1 skips the remote branch deletion below. Used by parallel jobs
+# that replicate this sequence but never push (e.g. the checks job) —
+# deleting the remote stable branch there would race the build job's push
+# that test/publish checkouts depend on.
+LOCAL_ONLY="${LOCAL_ONLY:-}"
 
 STABLE_BRANCH="stable/$VERSION"
 
@@ -44,8 +49,9 @@ git checkout -b "$STABLE_BRANCH" "$BASE_REF" 2>/dev/null || \
   git checkout -b "$STABLE_BRANCH" "refs/remotes/origin/$BASE_BRANCH"
 
 # Drop any stale origin copy of the same branch so the post-build push is
-# always a clean force-push from the freshly-built tree.
-if git ls-remote --exit-code --heads origin "$STABLE_BRANCH" >/dev/null 2>&1; then
+# always a clean force-push from the freshly-built tree. LOCAL_ONLY=1
+# leaves the remote untouched (see env docs above).
+if [ "$LOCAL_ONLY" != "1" ] && git ls-remote --exit-code --heads origin "$STABLE_BRANCH" >/dev/null 2>&1; then
   git push origin --delete "$STABLE_BRANCH" || true
 fi
 

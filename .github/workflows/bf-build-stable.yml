@@ -159,6 +159,9 @@ jobs:
           VERSION: ${{ steps.upstream-version.outputs.version }}
           BASE_BRANCH: ${{ steps.patches.outputs.base_branch }}
           BASE_COMMIT: ${{ steps.patches.outputs.base_commit }}
+          # checks replicates the prep but never pushes: keep it from
+          # deleting the remote stable branch the build job pushes
+          LOCAL_ONLY: ${{ github.job == 'checks' && '1' || '' }}
         run: scripts/bf/build-stable/prepare-stable-branch.sh
 
       - name: Compute version suffix
@@ -469,6 +472,9 @@ jobs:
           VERSION: ${{ steps.upstream-version.outputs.version }}
           BASE_BRANCH: ${{ steps.patches.outputs.base_branch }}
           BASE_COMMIT: ${{ steps.patches.outputs.base_commit }}
+          # checks replicates the prep but never pushes: keep it from
+          # deleting the remote stable branch the build job pushes
+          LOCAL_ONLY: ${{ github.job == 'checks' && '1' || '' }}
         run: scripts/bf/build-stable/prepare-stable-branch.sh
 
       - name: Compute version suffix

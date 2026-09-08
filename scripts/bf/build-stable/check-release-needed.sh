@@ -202,20 +202,40 @@ if [ $DL_RC -ne 0 ]; then
   exit 1
 fi
 
-PRIOR_SHA=$(python3 -c '
+PRIOR_BUILD_INPUT_SHA=$(python3 -c '
 import json, sys
 with open(sys.argv[1]) as f:
     data = json.load(f)
-print(data.get("build_input_sha256", data.get("manifest_sha256", "")))
+print(data.get("build_input_sha256", ""))
 ' "$TMPDIR_FP/$FINGERPRINT_NAME")
 
-if [ -z "$PRIOR_SHA" ]; then
-  emit_release "fingerprint on $LATEST_TAG missing build_input_sha256 field"
-fi
-echo "Prior release build-input sha256: $PRIOR_SHA (tag $LATEST_TAG)"
+PRIOR_MANIFEST_SHA=$(python3 -c '
+import json, sys
+with open(sys.argv[1]) as f:
+    data = json.load(f)
+print(data.get("manifest_sha256", ""))
+' "$TMPDIR_FP/$FINGERPRINT_NAME")
 
-if [ "$PRIOR_SHA" = "$MANIFEST_SHA" ]; then
-  emit_skip "Build inputs unchanged since release $LATEST_TAG; skipping release"
+if [ -z "$PRIOR_BUILD_INPUT_SHA" ] && [ -z "$PRIOR_MANIFEST_SHA" ]; then
+  emit_release "fingerprint on $LATEST_TAG has no usable sha fields"
 fi
 
-emit_release "build inputs changed (was $PRIOR_SHA, now $BUILD_INPUT_SHA; last release $LATEST_TAG)"
+# Compare like-for-like. Current fingerprints carry the composite
+# build_input_sha256 (manifest + workflow + scripts); legacy ones only
+# have manifest_sha256. The previous code loaded the composite prior sha
+# but compared it against the manifest-only current sha — those can never
+# be equal, so every run after the first fingerprint-bearing release
+# published, even with completely unchanged inputs.
+if [ -n "$PRIOR_BUILD_INPUT_SHA" ]; then
+  echo "Prior release build-input sha256: $PRIOR_BUILD_INPUT_SHA (tag $LATEST_TAG)"
+  if [ "$PRIOR_BUILD_INPUT_SHA" = "$BUILD_INPUT_SHA" ]; then
+    emit_skip "Build inputs unchanged since release $LATEST_TAG; skipping release"
+  fi
+else
+  echo "Prior release manifest sha256 (legacy fingerprint): $PRIOR_MANIFEST_SHA (tag $LATEST_TAG)"
+  if [ "$PRIOR_MANIFEST_SHA" = "$MANIFEST_SHA" ]; then
+    emit_skip "Manifest unchanged since release $LATEST_TAG (legacy fingerprint); skipping release"
+  fi
+fi
+
+emit_release "build inputs changed (was ${PRIOR_BUILD_INPUT_SHA:-$PRIOR_MANIFEST_SHA}, now $BUILD_INPUT_SHA; last release $LATEST_TAG)"
