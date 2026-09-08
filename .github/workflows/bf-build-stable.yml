@@ -610,6 +610,7 @@ jobs:
     with:
       test_ref: ${{ needs.build.outputs.stable_branch }}
       test_matrix: ${{ needs.build.outputs.test_shards }}
+      cache-mode: read-write
 
   # ========================================================================
   # Job 4: Publish — waits for build + checks + ALL test jobs, then tags +

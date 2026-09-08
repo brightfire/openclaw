@@ -28,6 +28,11 @@ on:
         description: "JSON array of test shard entries from ci-node-test-plan.mts"
         required: true
         type: string
+      cache-mode:
+        description: "Cache write policy for dist-requiring shards ('read-write' enables saving the dist build cache; 'restore' never writes)"
+        required: false
+        type: string
+        default: "restore"
 
 permissions:
   contents: read
@@ -107,10 +112,13 @@ jobs:
         id: tree
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
+      # Restore-only by design; the save step below is gated on
+      # inputs.cache-mode == 'read-write' per ci-workflow-guards
+      # ("isolates every cache write").
       - name: Restore dist build cache
         if: matrix.requires_dist == true
         id: dist-cache
-        uses: actions/cache@v5
+        uses: actions/cache/restore@v5
         with:
           path: |
             dist/
@@ -119,6 +127,16 @@ jobs:
           key: stable-dist-build-v1-${{ steps.tree.outputs.sha }}
           restore-keys: |
             stable-dist-build-v1-
+
+      - name: Save dist build cache
+        if: matrix.requires_dist == true && steps.dist-cache.outputs.cache-hit != 'true' && inputs.cache-mode == 'read-write'
+        uses: actions/cache/save@v5
+        with:
+          path: |
+            dist/
+            dist-runtime/
+            packages/*/dist/
+          key: stable-dist-build-v1-${{ steps.tree.outputs.sha }}
 
       - name: Build dist (dist-requiring shard)
         if: matrix.requires_dist == true && steps.dist-cache.outputs.cache-hit != 'true'
