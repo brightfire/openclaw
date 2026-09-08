@@ -12,7 +12,8 @@ A patch PR gets two kinds of signal:
    what `bf-build-stable` would build on merge) and runs the upstream test suite against that. A failure here means stable will fail if this merges.
 
 The raw-tree checks will show failures from _missing patch context_ (see taxonomy below) — those are noise on question 1 and are the reason question 2 exists. The PR-context
-summary gates only on **new** failures relative to the ledger.
+summary gates on any failing test: green means green, with no known-failure exemption list. A failure that exists independent of the PR under review gets fixed or
+skipped at the proper layer (see taxonomy), never bookkept.
 
 ## Failure taxonomy
 
@@ -49,14 +50,6 @@ branch, the assembly step is missing (see PR-context CI).
    signal.
 2. For each new failing test, classify it against the taxonomy above. Reproduce on the clean base before calling anything "pre-existing".
 3. Route the fix per the table. Patch PRs should not accumulate skips for classes that PR-context CI already covers.
-
-## The expected-failures ledger
-
-`.github/brightfire-ci/expected-test-failures.json` lists, per pinned base commit, the test files expected to fail on the **assembled** tree. PR-context CI gates only on failing
-files not in the ledger. Rules:
-
-- Add an entry only with evidence that the failure exists on the assembled tree independent of the PR under review.
-- Remove entries as they are fixed — the list must trend to zero. - Entries are file-level for now; case-level granularity can be added when file-level proves too coarse.
 
 ## Merge order and intermediate red builds
 
