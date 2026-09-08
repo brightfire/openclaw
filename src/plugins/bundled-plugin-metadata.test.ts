@@ -383,12 +383,7 @@ describe("bundled plugin metadata", () => {
     },
   );
 
-  // Skipped under bundle-all-plugins: the checked-in baseline regenerates
-  // from src/plugins/runtime-sidecar-paths.ts (product code), which still
-  // lists only the pre-bundling sidecar set. Updating it is a product-code
-  // change that belongs to the bundle-all patch itself, not this test-only
-  // rework branch.
-  it.skip(
+  it(
     "matches the checked-in runtime sidecar path baseline",
     { timeout: BUNDLED_PLUGIN_METADATA_TEST_TIMEOUT_MS },
     async () => {

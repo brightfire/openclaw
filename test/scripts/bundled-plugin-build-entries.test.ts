@@ -168,53 +168,50 @@ describe("bundled plugin build entries", () => {
     expectNoPrefixMatches(artifacts, "dist/extensions/qa-lab/");
   });
 
-  // Skipped by bundle-all-plugins: asserts upstream's external-plugin
-  // bundling policy which this patch intentionally reverses (all plugins
-  // ship in the core tarball).
-  it.skip("keeps explicitly downloadable plugins out of bundled package artifacts", () => {
+  // bundle-all-plugins contract change: all plugins ship in the core tarball.
+  // Per-assertion rework — the build-entry structure assertions below enforce
+  // the new contract; the old pack-artifact exclusion conditions (formerly
+  // external plugins kept out of npm pack) asserted the superseded external
+  // bundling policy and are removed.
+  it("keeps explicitly downloadable plugins in bundled build entries while dependency-only plugins stay out", () => {
     const entries = listBundledPluginBuildEntries();
-    const artifacts = listBundledPluginPackArtifacts();
 
     for (const pluginId of ["acpx", "googlechat", "line"]) {
       expectSomePrefixMatch(Object.keys(entries), `extensions/${pluginId}/`);
-      expectNoPrefixMatches(artifacts, `dist/extensions/${pluginId}/`);
     }
     for (const pluginId of ["whatsapp"]) {
       expectNoPrefixMatches(Object.keys(entries), `extensions/${pluginId}/`);
-      expectNoPrefixMatches(artifacts, `dist/extensions/${pluginId}/`);
     }
   });
 
-  // Skipped by bundle-all-plugins: asserts upstream's external-plugin
-  // bundling policy which this patch intentionally reverses (all plugins
-  // ship in the core tarball).
-  it.skip("includes formerly external providers in bundled build entries but keeps them out of pack artifacts", () => {
+  // bundle-all-plugins contract change — per-assertion rework: the bundled
+  // build-entry presence is enforced; the pack-artifact exclusion asserted the
+  // superseded external-plugin policy and is removed.
+  it("includes formerly external providers in bundled build entries", () => {
     const entries = listBundledPluginBuildEntries();
-    const artifacts = listBundledPluginPackArtifacts();
 
     for (const pluginId of ["amazon-bedrock", "amazon-bedrock-mantle", "anthropic-vertex"]) {
       expectSomePrefixMatch(Object.keys(entries), `extensions/${pluginId}/`);
-      expectNoPrefixMatches(artifacts, `dist/extensions/${pluginId}/`);
     }
   });
 
-  // Skipped by bundle-all-plugins: asserts upstream's external-plugin
-  // bundling policy which this patch intentionally reverses (all plugins
-  // ship in the core tarball).
-  it.skip("includes formerly externalized runtime-dependency plugins in build entries but keeps them out of pack artifacts", () => {
+  // bundle-all-plugins contract change — per-assertion rework: the bundled
+  // build-entry presence is enforced; the pack-artifact exclusion asserted the
+  // superseded external-plugin policy and is removed.
+  it("includes formerly externalized runtime-dependency plugins in bundled build entries", () => {
     const entries = listBundledPluginBuildEntries();
-    const artifacts = listBundledPluginPackArtifacts();
 
     for (const pluginId of ["copilot", "openshell", "slack", "tokenjuice"]) {
       expectSomePrefixMatch(Object.keys(entries), `extensions/${pluginId}/`);
-      expectNoPrefixMatches(artifacts, `dist/extensions/${pluginId}/`);
     }
   });
 
-  // Skipped by bundle-all-plugins: asserts upstream's external-plugin
-  // bundling policy which this patch intentionally reverses (all plugins
-  // ship in the core tarball).
-  it.skip("builds explicitly selected external plugins only for Docker", () => {
+  // bundle-all-plugins contract change — per-assertion rework: the Docker
+  // selection filter behavior (parsing, exact entry mapping, deterministic
+  // ordering, selection-independence of pack artifacts) is enforced; the
+  // external-plugin pack exclusion asserted the superseded policy and is
+  // removed.
+  it("builds explicitly selected plugins for Docker without changing pack artifacts", () => {
     const baselineEnv = { ...process.env };
     delete baselineEnv[DOCKER_SELECTED_PLUGIN_BUILD_IDS_ENV];
     const dockerEnv = {
@@ -242,9 +239,6 @@ describe("bundled plugin build entries", () => {
     );
     expect(Object.keys(reorderedEntries)).toEqual(entryKeys);
     expect(artifacts).toEqual(baselineArtifacts);
-    expectNoPrefixMatches(artifacts, "dist/extensions/clickclack/");
-    expectNoPrefixMatches(artifacts, "dist/extensions/msteams/");
-    expectNoPrefixMatches(artifacts, "dist/extensions/slack/");
   });
 
   it("sorts Docker-selected build entries without git metadata", () => {
@@ -404,15 +398,13 @@ describe("bundled plugin build entries", () => {
     }
   });
 
-  // Skipped by bundle-all-plugins: asserts upstream's external-plugin
-  // bundling policy which this patch intentionally reverses (all plugins
-  // ship in the core tarball).
-  it.skip("includes formerly externalized Synthetic provider in build entries but keeps it out of pack artifacts", () => {
+  // bundle-all-plugins contract change — per-assertion rework: the bundled
+  // build-entry presence is enforced; the pack-artifact exclusion asserted the
+  // superseded external-plugin policy and is removed.
+  it("includes formerly externalized Synthetic provider in bundled build entries", () => {
     const entries = listBundledPluginBuildEntries();
-    const artifacts = listBundledPluginPackArtifacts();
 
     expectSomePrefixMatch(Object.keys(entries), "extensions/synthetic/");
-    expectNoPrefixMatches(artifacts, "dist/extensions/synthetic/");
   });
 
   it.skip("excludes the externalized DuckDuckGo plugin from bundled artifacts", () => {
@@ -439,15 +431,13 @@ describe("bundled plugin build entries", () => {
     expect(artifacts).not.toContain("dist/extensions/volcengine/package.json");
   });
 
-  // Skipped by bundle-all-plugins: asserts upstream's external-plugin
-  // bundling policy which this patch intentionally reverses (all plugins
-  // ship in the core tarball).
-  it.skip("includes formerly externalized iMessage channel in build entries but keeps it out of pack artifacts", () => {
+  // bundle-all-plugins contract change — per-assertion rework: the bundled
+  // build-entry presence is enforced; the pack-artifact exclusion asserted the
+  // superseded external-plugin policy and is removed.
+  it("includes formerly externalized iMessage channel in bundled build entries", () => {
     const entries = listBundledPluginBuildEntries();
-    const artifacts = listBundledPluginPackArtifacts();
 
     expectSomePrefixMatch(Object.keys(entries), "extensions/imessage/");
-    expectNoPrefixMatches(artifacts, "dist/extensions/imessage/");
   });
 
   it("keeps bundled channel secret contracts on packed top-level sidecars", () => {
