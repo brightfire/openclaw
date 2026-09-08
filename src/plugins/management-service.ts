@@ -1659,6 +1659,7 @@ async function installResolvedManagedPluginSource(
           sourcePath: request.path,
           installPath: installPath ?? result.targetDir,
           version: result.version,
+          ...(result.archiveSha256 ? { archiveSha256: result.archiveSha256 } : {}),
         }),
       },
     );
@@ -1707,6 +1708,7 @@ async function installResolvedManagedPluginSource(
             : {}),
           ...(result.npmResolution?.shasum ? { npmShasum: result.npmResolution.shasum } : {}),
           ...(result.npmTarballName ? { npmTarballName: result.npmTarballName } : {}),
+          ...(result.archiveSha256 ? { archiveSha256: result.archiveSha256 } : {}),
         }),
       },
     );

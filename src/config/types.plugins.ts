@@ -85,6 +85,8 @@ export type PluginInstallRecord = Omit<InstallRecordBase, "source"> & {
   acceptedSurfaceAt?: string;
   /** Installed artifact integrity or Git commit the acceptance is anchored to. */
   acceptedSurfaceIntegrity?: string;
+  /** SHA-256 hex digest of the local archive file this install came from. */
+  archiveSha256?: string;
 };
 
 export type PluginsConfig = {
@@ -94,6 +96,12 @@ export type PluginsConfig = {
   allow?: string[];
   /** Optional plugin denylist (plugin ids). */
   deny?: string[];
+  /**
+   * SHA-256 hex digests (optional "sha256:" prefix) of locally-installed
+   * plugin archive files granted trusted-plugin state. Entries match the
+   * sha256sum of the archive tarball at install time.
+   */
+  trustedLocalArchives?: string[];
   load?: PluginsLoadConfig;
   slots?: PluginSlotsConfig;
   entries?: Record<string, PluginEntryConfig>;

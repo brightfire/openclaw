@@ -724,11 +724,58 @@ function npmSpecMatchesPackage(value: string | undefined, packageName: string): 
   return normalized.startsWith(`${packageName}@`);
 }
 
+/** Normalizes a configured local-archive digest, accepting a "sha256:" prefix. */
+function normalizeLocalArchiveDigest(value: string): string | undefined {
+  const digest = value
+    .trim()
+    .toLowerCase()
+    .replace(/^sha256:/, "");
+  return /^[0-9a-f]{64}$/.test(digest) ? digest : undefined;
+}
+
+function buildTrustedLocalArchiveDigestSet(
+  entries: readonly string[] | undefined,
+): ReadonlySet<string> | undefined {
+  if (!Array.isArray(entries) || entries.length === 0) {
+    return undefined;
+  }
+  const digests = new Set<string>();
+  for (const entry of entries) {
+    if (typeof entry !== "string") {
+      continue;
+    }
+    const digest = normalizeLocalArchiveDigest(entry);
+    if (digest) {
+      digests.add(digest);
+    }
+  }
+  return digests.size > 0 ? digests : undefined;
+}
+
+/**
+ * Operator allowlist trust: local archive installs whose recorded archive
+ * sha256 is pinned in plugins.trustedLocalArchives. Registry and ClawHub
+ * provenance rules are unchanged; unlisted local archives stay untrusted.
+ */
+function isAllowlistedLocalArchiveInstall(
+  record: PluginInstallRecord,
+  digests: ReadonlySet<string>,
+): boolean {
+  const isLocalArchiveInstall =
+    record.source === "archive" || (record.source === "npm" && record.artifactKind === "npm-pack");
+  if (!isLocalArchiveInstall || typeof record.archiveSha256 !== "string") {
+    return false;
+  }
+  const digest = normalizeLocalArchiveDigest(record.archiveSha256);
+  return digest !== undefined && digests.has(digest);
+}
+
 function isTrustedOfficialPluginInstall(params: {
   pluginId: string;
   candidate: PluginCandidate;
   env: NodeJS.ProcessEnv;
   installRecords: Record<string, PluginInstallRecord>;
+  trustedLocalArchives?: ReadonlySet<string>;
 }): boolean {
   const installOwner = resolveCandidateInstallOwner(params);
   if (
@@ -743,6 +790,16 @@ function isTrustedOfficialPluginInstall(params: {
     })
   ) {
     return false;
+  }
+  const trustedLocalArchiveRecord = params.trustedLocalArchives
+    ? params.installRecords[installOwner]
+    : undefined;
+  if (
+    trustedLocalArchiveRecord &&
+    params.trustedLocalArchives &&
+    isAllowlistedLocalArchiveInstall(trustedLocalArchiveRecord, params.trustedLocalArchives)
+  ) {
+    return true;
   }
   const packageName = params.candidate.packageName?.trim();
   if (!packageName) {
@@ -897,6 +954,9 @@ export function loadPluginManifestRegistryCore(
   }
   const config = params.config ?? {};
   const normalized = normalizePluginsConfigWithResolver(config.plugins);
+  const trustedLocalArchiveDigests = buildTrustedLocalArchiveDigestSet(
+    config.plugins?.trustedLocalArchives,
+  );
   const env = params.env ?? process.env;
   let installRecords = params.installRecords;
   let installRecordsLoaded = Boolean(params.installRecords);
@@ -1083,6 +1143,7 @@ export function loadPluginManifestRegistryCore(
             candidate,
             env,
             installRecords: getInstallRecords(),
+            trustedLocalArchives: trustedLocalArchiveDigests,
           }),
           ...(params.bundledChannelConfigCollector
             ? { bundledChannelConfigCollector: params.bundledChannelConfigCollector }

@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { sha256HexPrefixCore } from "../infra/crypto-digest.js";
+import { sha256File, sha256HexPrefixCore } from "../infra/crypto-digest.js";
 import {
   resolveNpmPackArchiveMetadata,
   type NpmSpecResolution,
@@ -290,8 +290,14 @@ export async function installPluginFromNpmPackArchive(
     sourceFamily: "archive",
     trustedSourceLinkedOfficialInstall: params.trustedSourceLinkedOfficialInstall,
   });
+  const archiveSha256 = await sha256File(metadataResult.archivePath).catch(() => undefined);
   return {
     ...result,
-    ...(result.ok ? { npmTarballName: metadataResult.tarballName } : {}),
+    ...(result.ok
+      ? {
+          npmTarballName: metadataResult.tarballName,
+          ...(archiveSha256 ? { archiveSha256 } : {}),
+        }
+      : {}),
   };
 }

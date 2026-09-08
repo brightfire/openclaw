@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { sha256File } from "../infra/crypto-digest.js";
 import { resolveUserPath } from "../utils.js";
 import {
   inspectBundlePluginArtifact,
@@ -418,6 +419,12 @@ export async function installPluginFromArchive(
     sourceFamily: "archive",
     trustedSourceLinkedOfficialInstall: params.trustedSourceLinkedOfficialInstall,
   });
+  if (result.ok) {
+    const archiveSha256 = await sha256File(archivePath).catch(() => undefined);
+    if (archiveSha256) {
+      return { ...result, archiveSha256 };
+    }
+  }
   return result;
 }
 

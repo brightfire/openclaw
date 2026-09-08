@@ -487,6 +487,7 @@ export const OpenClawSchemaShape = {
       enabled: z.boolean().optional(),
       allow: z.array(z.string()).optional(),
       deny: z.array(z.string()).optional(),
+      trustedLocalArchives: z.array(z.string()).optional(),
       load: z
         .strictObject({
           paths: z.array(z.string()).optional(),

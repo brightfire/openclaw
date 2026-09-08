@@ -80,6 +80,7 @@ export type InstalledPluginInstallRecordInfo = Pick<
   | "npmIntegrity"
   | "npmShasum"
   | "npmTarballName"
+  | "archiveSha256"
   | "clawpackSha256"
   | "clawpackSpecVersion"
   | "clawpackManifestSha256"

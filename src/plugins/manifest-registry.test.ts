@@ -165,6 +165,38 @@ function resolveDiffsNpmTrust(overrides: Partial<PluginInstallRecord> = {}) {
   return registry.plugins[0]?.trustedOfficialInstall;
 }
 
+const SLACK_ARCHIVE_SHA256 = "a".repeat(64);
+
+function resolveSlackArchiveTrust(
+  recordOverrides: Partial<PluginInstallRecord> = {},
+  trustedLocalArchives?: string[],
+) {
+  const dir = makeTempDir();
+  writeManifest(dir, { id: "slack", configSchema: { type: "object" } });
+  const registry = loadPluginManifestRegistryCore({
+    ...(trustedLocalArchives ? { config: { plugins: { trustedLocalArchives } } as const } : {}),
+    installRecords: {
+      slack: {
+        source: "archive",
+        sourcePath: "/tmp/openclaw-slack-2026.8.2-51.tgz",
+        installPath: dir,
+        version: "2026.8.2-51",
+        ...recordOverrides,
+      },
+    },
+    candidates: [
+      createPluginCandidate({
+        idHint: "slack",
+        rootDir: dir,
+        packageName: "@openclaw/slack",
+        origin: "global",
+        installOwner: "slack",
+      }),
+    ],
+  });
+  return registry.plugins[0]?.trustedOfficialInstall;
+}
+
 function loadRegistry(candidates: PluginCandidate[]) {
   return loadPluginManifestRegistryCore({
     candidates,
@@ -998,6 +1030,74 @@ describe("loadPluginManifestRegistry", () => {
       expect(resolveDiffsNpmTrust(overrides)).toBeUndefined();
     },
   );
+
+  it.each([
+    {
+      name: "exact archive digest",
+      trustedLocalArchives: [SLACK_ARCHIVE_SHA256],
+      overrides: { archiveSha256: SLACK_ARCHIVE_SHA256 } as Partial<PluginInstallRecord>,
+    },
+    {
+      name: "sha256-prefixed and upper-case allowlist entries",
+      trustedLocalArchives: [`sha256:${SLACK_ARCHIVE_SHA256.toUpperCase()}`],
+      overrides: { archiveSha256: SLACK_ARCHIVE_SHA256 } as Partial<PluginInstallRecord>,
+    },
+    {
+      name: "npm-pack artifact record",
+      trustedLocalArchives: [SLACK_ARCHIVE_SHA256],
+      overrides: {
+        source: "npm",
+        artifactKind: "npm-pack",
+        archiveSha256: SLACK_ARCHIVE_SHA256,
+      } as Partial<PluginInstallRecord>,
+    },
+  ] satisfies Array<{
+    name: string;
+    trustedLocalArchives: string[];
+    overrides: Partial<PluginInstallRecord>;
+  }>)(
+    "trusts allowlisted local archive installs ($name)",
+    ({ overrides, trustedLocalArchives }) => {
+      expect(resolveSlackArchiveTrust(overrides, trustedLocalArchives)).toBe(true);
+    },
+  );
+
+  it.each([
+    {
+      name: "record carries no archive digest",
+      overrides: {} as Partial<PluginInstallRecord>,
+      trustedLocalArchives: [SLACK_ARCHIVE_SHA256],
+    },
+    {
+      name: "archive digest is not allowlisted",
+      overrides: { archiveSha256: "b" * 64 } as Partial<PluginInstallRecord>,
+      trustedLocalArchives: [SLACK_ARCHIVE_SHA256],
+    },
+    {
+      name: "allowlist holds no valid digests",
+      overrides: { archiveSha256: SLACK_ARCHIVE_SHA256 } as Partial<PluginInstallRecord>,
+      trustedLocalArchives: ["not-a-digest"],
+    },
+    {
+      name: "no allowlist is configured",
+      overrides: { archiveSha256: SLACK_ARCHIVE_SHA256 } as Partial<PluginInstallRecord>,
+      trustedLocalArchives: undefined,
+    },
+    {
+      name: "registry-style npm record cannot pose as a local archive",
+      overrides: {
+        source: "npm",
+        archiveSha256: SLACK_ARCHIVE_SHA256,
+      } as Partial<PluginInstallRecord>,
+      trustedLocalArchives: [SLACK_ARCHIVE_SHA256],
+    },
+  ] satisfies Array<{
+    name: string;
+    overrides: Partial<PluginInstallRecord>;
+    trustedLocalArchives: string[] | undefined;
+  }>)("does not trust local archive installs when $name", ({ overrides, trustedLocalArchives }) => {
+    expect(resolveSlackArchiveTrust(overrides, trustedLocalArchives)).toBeUndefined();
+  });
 
   it.each([
     { name: "complete records", overrides: {} },

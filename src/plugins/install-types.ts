@@ -51,6 +51,8 @@ export type InstallPluginResult =
       artifactInspection?: PluginInstallArtifactInspection;
       npmResolution?: NpmSpecResolution;
       integrityDrift?: NpmIntegrityDrift;
+      /** SHA-256 hex digest of the source archive, when installed from one. */
+      archiveSha256?: string;
     }
   | {
       ok: false;
