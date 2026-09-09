@@ -19,7 +19,6 @@ Manifest maintenance is owned by the `openclaw-dev` skill
 | CLI HTTP Health Fallback       | `brightfire/999239d745d/cli-http-fallback`             | `2966a901be` | https://github.com/brightfire/openclaw/pull/183 | 2026-09-08   |
 | Webhook Session Target Support | `brightfire/999239d745d/webhook-sessiontarget-support` | `9fc472984f` | https://github.com/brightfire/openclaw/pull/106 | 2026-09-03   |
 | OTEL Improvements              | `brightfire/999239d745d/otel-improvements`             | `903008301d` | https://github.com/brightfire/openclaw/pull/178 | 2026-09-04   |
-| Bundle All Plugins             | `brightfire/999239d745d/bundle-all-plugins`            | `51e69dc968` | https://github.com/brightfire/openclaw/pull/182 | 2026-09-08   |
 
 ## Upstream Test Fixes
 
@@ -141,35 +140,3 @@ skill usage metadata are properly propagated through spans.
 **Conflicts:** May conflict if upstream changes OTEL span attributes or agent
 identity propagation. Check `extensions/diagnostics-otel/` for upstream changes.
 
-## Bundle All Plugins
-
-(canonical: `brightfire/0a6c013be5f/bundle-all-plugins`)
-
-### Rationale
-
-By default, OpenClaw's `package.json` `files` array excludes all extension
-subdirectories under `dist/extensions/` from the published tarball, meaning
-plugins must be installed separately via the plugin registry. This patch
-removes those exclusions so all bundled extensions ship in the core tarball,
-enabling airgapped and offline deployments where plugin installation from
-the registry is not available.
-
-Also inlines the `get-east-asian-width` transitive dependency (used by the
-Slack plugin's CJK width formatting via `string-width`) into the bundle by
-adding it to `shouldAlwaysBundleDependency()` in `tsdown.config.ts`, ensuring
-the CLI bootstrap import guard doesn't flag it as an external import.
-
-### Files touched
-
-- `package.json` (removes `!dist/extensions/*` exclusions from `files` array; adds `get-east-asian-width` dependency)
-- `tsdown.config.ts` (adds `get-east-asian-width` to `shouldAlwaysBundleDependency()`)
-- `extensions/*/openclaw.plugin.json` (bundled flag updates for brave, diagnostics-otel, slack)
-
-### Upgrade guidance
-
-**Conflicts:** `package.json` — the `files` array changes are in a region that
-upstream frequently modifies (adding/removing extension exclusions). Take
-upstream's version of the `files` array and re-apply the removal of extension
-exclusions. The `get-east-asian-width` dependency should be preserved in
-`dependencies`. `tsdown.config.ts` — check `shouldAlwaysBundleDependency()`
-for upstream changes to the function signature or existing entries.
