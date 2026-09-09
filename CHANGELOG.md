@@ -3,6 +3,19 @@
 Docs: https://docs.openclaw.ai
 2026.8.1 release notes: https://docs.openclaw.ai/releases/2026.8.1
 
+## 2026.8.2-52
+
+Brightfire build on upstream 2026.8.2.
+
+### Patches
+
+- **Upstream Test Fixes** — [`c6a6308662`](https://github.com/brightfire/openclaw/commit/c6a6308662)
+- **Slack Markdown** — [`e73b9e422c`](https://github.com/brightfire/openclaw/commit/e73b9e422c)
+- **CLI HTTP Health Fallback** — [`53ecc3215e`](https://github.com/brightfire/openclaw/commit/53ecc3215e)
+- **Webhook Session Target Support** — [`28fbc79da5`](https://github.com/brightfire/openclaw/commit/28fbc79da5)
+- **OTEL Improvements** — [`2255a6341a`](https://github.com/brightfire/openclaw/commit/2255a6341a)
+
+
 ## Unreleased
 
 ### Changes
