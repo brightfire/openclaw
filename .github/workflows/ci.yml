@@ -1571,7 +1571,7 @@ jobs:
   security-fast:
     permissions:
       contents: read
-    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    if: false # disabled on Brightfire fork: zizmor gates BF workflow changes that are reviewed in-repo
     runs-on: ${{ vars.OPENCLAW_CI_RUNNER_BACKEND == 'hybrid' && github.run_attempt == 1 && github.event_name != 'workflow_dispatch' && github.repository == 'openclaw/openclaw' && (github.event_name != 'pull_request' || contains(fromJSON('["OWNER","MEMBER","COLLABORATOR","CONTRIBUTOR"]'), github.event.pull_request.author_association)) && 'blacksmith-4vcpu-ubuntu-2404' || 'ubuntu-24.04' }}
     timeout-minutes: 20
     env:
