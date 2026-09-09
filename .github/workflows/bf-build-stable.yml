@@ -286,9 +286,9 @@ jobs:
               // newer runner images no longer preinstall rg.
               requires_ripgrep:
                 s.requiresRipgrep ||
-                (s.shardName === "agentic-agents-support" && !s.includePatterns) ||
-                (s.targets ?? []).includes("src/agents/sessions/tools/index.test.ts") ||
-                (s.includePatterns ?? []).includes("src/agents/sessions/tools/index.test.ts"),
+                (s.shardName === 'agentic-agents-support' && !s.includePatterns) ||
+                (s.targets ?? []).includes('src/agents/sessions/tools/index.test.ts') ||
+                (s.includePatterns ?? []).includes('src/agents/sessions/tools/index.test.ts'),
             }));
             console.log(JSON.stringify(matrix));
           " > /tmp/test-matrix.json
