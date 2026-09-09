@@ -51,13 +51,12 @@ export function createSlackPluginBase(params: {
     doctor: slackDoctor,
     agentPrompt: {
       inboundFormattingHints: () => ({
-        text_markup: "slack_mrkdwn",
+        text_markup: "markdown",
         rules: [
-          "Use Slack mrkdwn, not standard Markdown.",
-          "Bold uses *single asterisks*.",
-          "Links use <url|label>.",
-          "Code blocks use triple backticks without a language identifier.",
-          "Do not use markdown headings or pipe tables.",
+          "Use standard Markdown.",
+          "Bold uses **double asterisks**.",
+          "Links use [label](url).",
+          "Code blocks use triple backticks with a language identifier.",
         ],
       }),
       messageToolHints: () => [
