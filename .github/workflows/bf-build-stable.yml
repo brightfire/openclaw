@@ -280,7 +280,15 @@ jobs:
               pretest_build_mode: s.pretestBuildMode ?? null,
               requires_dist: s.requiresDist ?? false,
               requires_go: s.requiresGo ?? false,
-              requires_ripgrep: s.requiresRipgrep ?? false,
+              // Upstream's ci.yml computes requires_ripgrep AFTER the shard
+              // planner (the planner never sets it). Replicate that rule here
+              // so the ci-test-suite "Install ripgrep" step actually fires;
+              // newer runner images no longer preinstall rg.
+              requires_ripgrep:
+                s.requiresRipgrep ||
+                (s.shardName === 'agentic-agents-support' && !s.includePatterns) ||
+                (s.targets ?? []).includes('src/agents/sessions/tools/index.test.ts') ||
+                (s.includePatterns ?? []).includes('src/agents/sessions/tools/index.test.ts'),
             }));
             console.log(JSON.stringify(matrix));
           " > /tmp/test-matrix.json
