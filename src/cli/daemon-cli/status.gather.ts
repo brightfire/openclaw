@@ -336,6 +336,7 @@ export type DaemonStatus = {
     };
     url?: string;
     authWarning?: string;
+    httpFallback?: boolean;
   };
   health?: {
     healthy: boolean;
