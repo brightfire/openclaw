@@ -282,7 +282,7 @@ jobs:
               requires_go: s.requiresGo ?? false,
               // Upstream's ci.yml computes requires_ripgrep AFTER the shard
               // planner (the planner never sets it). Replicate that rule here
-              // so the ci-test-suite "Install ripgrep" step actually fires;
+              // so the ci-test-suite Install-ripgrep step actually fires;
               // newer runner images no longer preinstall rg.
               requires_ripgrep:
                 s.requiresRipgrep ||
