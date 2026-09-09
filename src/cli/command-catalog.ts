@@ -43,6 +43,7 @@ type CliRoutedCommandId =
 
 export type CliCommandPathPolicy = {
   configGuard: CliConfigGuardPolicy;
+  stateStoreGuard: "run" | "skip";
   loadPlugins: CliCommandPluginLoadPolicy;
   pluginRegistry: CliPluginRegistryPolicy;
   ownsProtocolStdout: boolean;
@@ -186,7 +187,10 @@ export const cliCommandCatalog: readonly CliCommandCatalogEntry[] = [
     exact: true,
     policy: { loadPlugins: "never" },
   },
-  { commandPath: ["configure"], policy: { configGuard: "skip", loadPlugins: "never" } },
+  {
+    commandPath: ["configure"],
+    policy: { configGuard: "skip", stateStoreGuard: "run", loadPlugins: "never" },
+  },
   {
     commandPath: ["config"],
     exact: true,
@@ -338,13 +342,14 @@ export const cliCommandCatalog: readonly CliCommandCatalogEntry[] = [
   {
     commandPath: ["models"],
     exact: true,
-    policy: {
-      configGuard: "skip",
-      ensureCliPath: false,
-      loadPlugins: "never",
-      networkProxy: "bypass",
-    },
+    policy: { ...PASSIVE_STARTUP_POLICY },
     route: { id: "models-status" },
+  },
+  { commandPath: ["models", "auth"], policy: { stateStoreGuard: "run" } },
+  {
+    commandPath: ["models", "accounts"],
+    // Personal credentials belong to the selected Gateway, not local model state.
+    policy: { ...PASSIVE_STARTUP_POLICY },
   },
   {
     commandPath: ["models", "list"],
@@ -498,6 +503,8 @@ export const cliCommandCatalog: readonly CliCommandCatalogEntry[] = [
     commandPath: ["node"],
     policy: { networkProxy: "bypass" },
   },
+  // Remote pairing verification owns a read-only identity lookup, including before its action.
+  { commandPath: ["node", "identity"], exact: true, policy: PASSIVE_STARTUP_POLICY },
   {
     commandPath: ["node", "worker"],
     exact: true,
@@ -643,8 +650,9 @@ export const cliCommandCatalog: readonly CliCommandCatalogEntry[] = [
   {
     commandPath: ["channels", "add"],
     exact: true,
-    policy: { loadPlugins: "never", networkProxy: "bypass" },
+    policy: { stateStoreGuard: "run", loadPlugins: "never", networkProxy: "bypass" },
   },
+  { commandPath: ["channels", "login"], exact: true, policy: { stateStoreGuard: "run" } },
   {
     commandPath: ["channels", "logs"],
     exact: true,

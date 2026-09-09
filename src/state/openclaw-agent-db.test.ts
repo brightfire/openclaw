@@ -54,6 +54,7 @@ import {
   readOpenClawAgentDatabaseRegistryToken,
   resolveOpenClawAgentSqlitePath,
   runOpenClawAgentWriteTransaction,
+  settleOpenClawAgentDatabaseWorkerClose,
   withAgentDatabaseMaintenanceLease,
 } from "./openclaw-agent-db.js";
 import { OPENCLAW_AGENT_SCHEMA_SQL } from "./openclaw-agent-schema.js";
@@ -3051,6 +3052,22 @@ describe("openclaw agent database", () => {
     expect(() => assertNoOpenClawAgentDatabaseLeases("worker-1", { env })).not.toThrow();
   });
 
+  it("settles a Worker lease after a recoverable handle-close failure", () => {
+    const stateDir = createTempStateDir();
+    const env = { OPENCLAW_STATE_DIR: stateDir };
+    const database = openOpenClawAgentDatabase({ agentId: "worker-1", env });
+    vi.spyOn(database.walMaintenance, "close").mockImplementationOnce(() => {
+      throw new Error("wal close failed");
+    });
+
+    const settled = settleOpenClawAgentDatabaseWorkerClose(database.path);
+
+    expect(settled).toMatchObject({ settled: true });
+    expect(settled.errors.map((error) => error.message)).toEqual(["wal close failed"]);
+    expect(database.db.isOpen).toBe(false);
+    expect(() => assertNoOpenClawAgentDatabaseLeases("worker-1", { env })).not.toThrow();
+  });
+
   it("disposes only its exact cached owner and unregisters that registry row", () => {
     const stateDir = createTempStateDir();
     const env = { OPENCLAW_STATE_DIR: stateDir };
@@ -4193,6 +4210,50 @@ describe("openclaw agent database", () => {
       agent_id: "worker-1",
       app_version: VERSION,
     });
+  });
+
+  it("repairs null schema metadata on the current-schema path without rewriting it again", () => {
+    const stateDir = createTempStateDir();
+    const options = {
+      agentId: "worker-1",
+      env: { OPENCLAW_STATE_DIR: stateDir },
+    } as const;
+    const databasePath = openOpenClawAgentDatabase(options).path;
+    closeOpenClawAgentDatabasesForTest();
+
+    const { DatabaseSync } = requireNodeSqlite();
+    const corrupt = new DatabaseSync(databasePath);
+    corrupt
+      .prepare(
+        "UPDATE schema_meta SET app_version = NULL, updated_at = 1 WHERE meta_key = 'primary'",
+      )
+      .run();
+    corrupt.close();
+
+    openOpenClawAgentDatabase(options);
+    closeOpenClawAgentDatabasesForTest();
+
+    const afterRepair = new DatabaseSync(databasePath, { readOnly: true });
+    const repaired = afterRepair
+      .prepare("SELECT app_version, updated_at FROM schema_meta WHERE meta_key = 'primary'")
+      .get() as { app_version: string; updated_at: number };
+    afterRepair.close();
+    expect(repaired.app_version).toBe(VERSION);
+    expect(repaired.updated_at).toBeGreaterThan(1);
+
+    openOpenClawAgentDatabase(options);
+    closeOpenClawAgentDatabasesForTest();
+
+    const afterReopen = new DatabaseSync(databasePath, { readOnly: true });
+    try {
+      expect(
+        afterReopen
+          .prepare("SELECT app_version, updated_at FROM schema_meta WHERE meta_key = 'primary'")
+          .get(),
+      ).toEqual(repaired);
+    } finally {
+      afterReopen.close();
+    }
   });
 
   it("adds transcript watermarks and session provenance to v4 session tables", async () => {
