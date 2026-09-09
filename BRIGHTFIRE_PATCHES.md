@@ -14,11 +14,11 @@ Manifest maintenance is owned by the `openclaw-dev` skill
 
 | Name                           | Canonical branch                                       | Branch HEAD  | Source PR                                       | Last updated |
 | ------------------------------ | ------------------------------------------------------ | ------------ | ----------------------------------------------- | ------------ |
-| Upstream Test Fixes | `brightfire/999239d745d/upstream-test-fixes` | `09643445e5` | https://github.com/brightfire/openclaw/pull/190 | 2026-09-09 |
-| Slack Markdown                 | `brightfire/999239d745d/slack-mrkdwn`                  | `fecacdbea7` | —                                               | 2026-09-03   |
-| CLI HTTP Health Fallback       | `brightfire/999239d745d/cli-http-fallback`             | `2966a901be` | https://github.com/brightfire/openclaw/pull/183 | 2026-09-08   |
-| Webhook Session Target Support | `brightfire/999239d745d/webhook-sessiontarget-support` | `9fc472984f` | https://github.com/brightfire/openclaw/pull/106 | 2026-09-03   |
-| OTEL Improvements | `brightfire/999239d745d/otel-improvements` | `01f21ae426` | https://github.com/brightfire/openclaw/pull/191 | 2026-09-09 |
+| Upstream Test Fixes | `brightfire/999239d745d/upstream-test-fixes` | `c6a6308662` | https://github.com/brightfire/openclaw/pull/190 | 2026-09-09 |
+| Slack Markdown                 | `brightfire/999239d745d/slack-mrkdwn`                  | `e73b9e422c` | —                                               | 2026-09-03   |
+| CLI HTTP Health Fallback       | `brightfire/999239d745d/cli-http-fallback`             | `53ecc3215e` | https://github.com/brightfire/openclaw/pull/183 | 2026-09-08   |
+| Webhook Session Target Support | `brightfire/999239d745d/webhook-sessiontarget-support` | `28fbc79da5` | https://github.com/brightfire/openclaw/pull/106 | 2026-09-03   |
+| OTEL Improvements | `brightfire/999239d745d/otel-improvements` | `2255a6341a` | https://github.com/brightfire/openclaw/pull/191 | 2026-09-09 |
 
 ## Upstream Test Fixes
 
