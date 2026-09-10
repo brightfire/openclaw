@@ -35,7 +35,7 @@ while IFS='|' read -r _ NAME BRANCH SHA _; do
   if [ -n "$NAME" ] && [ -n "$BRANCH" ] && [[ "$SHA" =~ ^[a-f0-9]{6,40}$ ]]; then
     RECORDED_SHA["$BRANCH"]="$SHA"
   fi
-done < <(grep '^|' "$PATCHES_FILE" | grep -v '^| Name' | grep -v '^|[-| ]')
+done < <(grep '^|' "$PATCHES_FILE" | grep -v '^| Name' | grep -vE '^\| *-')
 
 for PATCH in "${PATCH_LIST[@]}"; do
   PATCH=$(echo "$PATCH" | xargs)
