@@ -14,7 +14,7 @@ Manifest maintenance is owned by the `openclaw-dev` skill
 
 | Name                           | Canonical branch                                        | Branch HEAD   | Source PR                                       | Last updated |
 | ------------------------------ | ------------------------------------------------------- | ------------- | ----------------------------------------------- | ------------ |
-| Upstream Test Fixes            | `brightfire/41344e0b7dbd/upstream-test-fixes`           | `5e598e2f8f1` | https://github.com/brightfire/openclaw/pull/190 | 2026-09-09   |
+| Upstream Test Fixes            | `brightfire/41344e0b7dbd/upstream-test-fixes`           | `859bf7fc200` | https://github.com/brightfire/openclaw/pull/190 | 2026-09-09   |
 | Slack Markdown                 | `brightfire/41344e0b7dbd/slack-mrkdwn`                  | `cad2f53a617` | —                                               | 2026-09-09   |
 | CLI HTTP Health Fallback       | `brightfire/41344e0b7dbd/cli-http-fallback`             | `fbae11610a5` | https://github.com/brightfire/openclaw/pull/183 | 2026-09-09   |
 | Webhook Session Target Support | `brightfire/41344e0b7dbd/webhook-sessiontarget-support` | `c4d1521f060` | https://github.com/brightfire/openclaw/pull/106 | 2026-09-09   |
