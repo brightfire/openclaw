@@ -14,11 +14,11 @@ Manifest maintenance is owned by the `openclaw-dev` skill
 
 | Name                           | Canonical branch                                        | Branch HEAD   | Source PR                                       | Last updated |
 | ------------------------------ | ------------------------------------------------------- | ------------- | ----------------------------------------------- | ------------ |
-| Upstream Test Fixes            | `brightfire/41344e0b7dbd/upstream-test-fixes`           | `bf8ab1a3a54` | https://github.com/brightfire/openclaw/pull/190 | 2026-09-09   |
-| Slack Markdown                 | `brightfire/41344e0b7dbd/slack-mrkdwn`                  | `3ba5b928372` | —                                               | 2026-09-09   |
-| CLI HTTP Health Fallback       | `brightfire/41344e0b7dbd/cli-http-fallback`             | `4077b077a1c` | https://github.com/brightfire/openclaw/pull/183 | 2026-09-09   |
-| Webhook Session Target Support | `brightfire/41344e0b7dbd/webhook-sessiontarget-support` | `8b746b4ddd1` | https://github.com/brightfire/openclaw/pull/106 | 2026-09-09   |
-| OTEL Improvements              | `brightfire/41344e0b7dbd/otel-improvements`             | `1681885a02d` | https://github.com/brightfire/openclaw/pull/191 | 2026-09-09   |
+| Upstream Test Fixes            | `brightfire/41344e0b7dbd/upstream-test-fixes`           | `5e598e2f8f1` | https://github.com/brightfire/openclaw/pull/190 | 2026-09-09   |
+| Slack Markdown                 | `brightfire/41344e0b7dbd/slack-mrkdwn`                  | `cad2f53a617` | —                                               | 2026-09-09   |
+| CLI HTTP Health Fallback       | `brightfire/41344e0b7dbd/cli-http-fallback`             | `fbae11610a5` | https://github.com/brightfire/openclaw/pull/183 | 2026-09-09   |
+| Webhook Session Target Support | `brightfire/41344e0b7dbd/webhook-sessiontarget-support` | `c4d1521f060` | https://github.com/brightfire/openclaw/pull/106 | 2026-09-09   |
+| OTEL Improvements              | `brightfire/41344e0b7dbd/otel-improvements`             | `8dd16dfb1f0` | https://github.com/brightfire/openclaw/pull/191 | 2026-09-09   |
 
 ## Upstream Test Fixes
 
