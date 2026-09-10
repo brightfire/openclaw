@@ -331,6 +331,7 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +2: strict session-agent resolution aliases preserve shipped Plugin SDK behavior.
       // +1: manifest-owned plugin capability secret availability guard.
       // +1: canonical diagnostic flag checker through its focused subpath.
+      // +1: message lifecycle I/O diagnostic projection (otel-improvements).
       // +3: typed system-agent approval request, payload, and resolution contracts for channel plugins.
       // +2: focused provider-auth routes for shipped auth ordering and provider-map lookup.
       // +2: bounded display-only error diagnostic attachment and rendering.
@@ -340,7 +341,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +1: Gateway caller ownership for standalone browser routing.
       // +1: canonical temporal context renderer for plugin-owned agent harnesses.
       // +1: canonical user-turn operational metadata restoration for native harnesses.
-      4371,
+      // +1: message lifecycle I/O diagnostic projection (otel-improvements).
+      4372,
       env,
     ),
     publicFunctionExports: readPluginSdkSurfaceBudgetEnv(
@@ -446,6 +448,7 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +2: strict session-agent resolution aliases preserve shipped Plugin SDK behavior.
       // +1: manifest-owned plugin capability secret availability guard.
       // +1: canonical diagnostic flag checker through its focused subpath.
+      // +1: message lifecycle I/O diagnostic projection (otel-improvements).
       // +1: shared approval expiry formatter for native channel prompts.
       // +2: focused provider-auth routes for shipped auth ordering and provider-map lookup.
       // +2: bounded display-only error diagnostic attachment and rendering.
@@ -455,7 +458,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       // +1: Gateway caller ownership for standalone browser routing.
       // +1: canonical temporal context renderer for plugin-owned agent harnesses.
       // +1: canonical user-turn operational metadata restoration for native harnesses.
-      2605,
+      // +1: message lifecycle I/O diagnostic projection (otel-improvements).
+      2606,
       env,
     ),
     publicDeprecatedExports: readPluginSdkSurfaceBudgetEnv(
@@ -474,7 +478,8 @@ export function readPluginSdkSurfaceBudgets(env: NodeJS.ProcessEnv = process.env
       //     (voice-call/matrix runtime-doctor repair names, WhatsApp ack policy,
       //     Slack progress-draft render) so installed plugins survive upgrade (#124041 class).
       // -18: retire the expired August compatibility exports and messaging-targets subpath.
-      1134,
+      // +1: message lifecycle I/O diagnostic projection through a deprecated compatibility barrel (otel-improvements).
+      1135,
       env,
     ),
     publicWildcardReexports: readPluginSdkSurfaceBudgetEnv(
