@@ -7,22 +7,22 @@ Manifest maintenance is owned by the `openclaw-dev` skill
 ## _meta
 
 - **Base branch:** `main`
-- **Base commit:** `999239d745d`
-- **Upstream version:** `v2026.8.2`
+- **Base commit:** `41344e0b7dbd`
+- **Upstream version:** `v2026.9.3`
 
 ## Patches
 
-| Name                           | Canonical branch                                       | Branch HEAD  | Source PR                                       | Last updated |
-| ------------------------------ | ------------------------------------------------------ | ------------ | ----------------------------------------------- | ------------ |
-| Upstream Test Fixes | `brightfire/999239d745d/upstream-test-fixes` | `c6a6308662` | https://github.com/brightfire/openclaw/pull/190 | 2026-09-09 |
-| Slack Markdown                 | `brightfire/999239d745d/slack-mrkdwn`                  | `e73b9e422c` | —                                               | 2026-09-03   |
-| CLI HTTP Health Fallback       | `brightfire/999239d745d/cli-http-fallback`             | `53ecc3215e` | https://github.com/brightfire/openclaw/pull/183 | 2026-09-08   |
-| Webhook Session Target Support | `brightfire/999239d745d/webhook-sessiontarget-support` | `28fbc79da5` | https://github.com/brightfire/openclaw/pull/106 | 2026-09-03   |
-| OTEL Improvements | `brightfire/999239d745d/otel-improvements` | `2255a6341a` | https://github.com/brightfire/openclaw/pull/191 | 2026-09-09 |
+| Name                           | Canonical branch                                        | Branch HEAD   | Source PR                                       | Last updated |
+| ------------------------------ | ------------------------------------------------------- | ------------- | ----------------------------------------------- | ------------ |
+| Upstream Test Fixes            | `brightfire/41344e0b7dbd/upstream-test-fixes`           | `bf8ab1a3a54` | https://github.com/brightfire/openclaw/pull/190 | 2026-09-09   |
+| Slack Markdown                 | `brightfire/41344e0b7dbd/slack-mrkdwn`                  | `7d32cb33d29` | —                                               | 2026-09-09   |
+| CLI HTTP Health Fallback       | `brightfire/41344e0b7dbd/cli-http-fallback`             | `7b1c0f5157d` | https://github.com/brightfire/openclaw/pull/183 | 2026-09-09   |
+| Webhook Session Target Support | `brightfire/41344e0b7dbd/webhook-sessiontarget-support` | `d1eabea8a45` | https://github.com/brightfire/openclaw/pull/106 | 2026-09-09   |
+| OTEL Improvements              | `brightfire/41344e0b7dbd/otel-improvements`             | `17f57b3c6eb` | https://github.com/brightfire/openclaw/pull/191 | 2026-09-09   |
 
 ## Upstream Test Fixes
 
-(canonical: `brightfire/0a6c013be5f/upstream-test-fixes`)
+(canonical: `brightfire/41344e0b7dbd/upstream-test-fixes`)
 
 ### Rationale
 
@@ -32,10 +32,17 @@ patch so subsequent patches inherit a green baseline.
 
 ### Files touched
 
-- `src/gateway/server-startup-web-fetch-bind.test.ts` (migrate to `startGatewayServerWithRetries` to dodge EADDRINUSE under PARALLEL≥5)
-- `src/gateway/server.minimal-channel-pin.test.ts` (same migration, same race exposure)
-- `src/config/doc-baseline.integration.test.ts` (testTimeout 240_000 → 360_000 for CPU-bound double-render)
-- `test/scripts/prompt-snapshots.test.ts` (`it.skip` the committed-Codex-prompt-snapshot case — known upstream snapshot drift)
+Surface as of the v2026.9.3 upgrade (41344e0b7dbd) — the previous list was stale:
+
+- `src/tui/tui-pty-harness.e2e.test.ts` (line-neutral PTY skip form — also carries the oxlint max-lines fix applied first on stable)
+- `src/tui/tui-pty-local.e2e.test.ts`
+- `src/plugins/.../missing-configured-plugin-install.test.ts` (gateway doctor shared test)
+
+Historical context: `src/gateway/server-startup-web-fetch-bind.test.ts` and
+`src/config/doc-baseline.integration.test.ts` fixes are carried in
+`brightfire/ci` history (merged forward by the ci update), not on this patch
+branch; `server.minimal-channel-pin.test.ts` and `prompt-snapshots.test.ts`
+entries were absorbed by upstream and dropped.
 
 ### Upgrade guidance
 
@@ -48,7 +55,7 @@ upstream fixed the underlying issue).
 
 ## Slack Markdown
 
-(canonical: `brightfire/0a6c013be5f/slack-mrkdwn`)
+(canonical: `brightfire/41344e0b7dbd/slack-mrkdwn`)
 
 ### Rationale
 
@@ -64,7 +71,7 @@ The Slack extension was using `text_markup: 'mrkdwn'` (Slack's proprietary diale
 
 ## CLI HTTP Health Fallback
 
-(canonical: `brightfire/0a6c013be5f/cli-http-fallback`)
+(canonical: `brightfire/41344e0b7dbd/cli-http-fallback`)
 
 ### Rationale
 
@@ -104,7 +111,7 @@ stops rejecting loopback connections in `trusted-proxy` mode entirely.
 
 ## Webhook Session Target Support
 
-(canonical: `brightfire/0a6c013be5f/webhook-sessiontarget-support`)
+(canonical: `brightfire/41344e0b7dbd/webhook-sessiontarget-support`)
 
 ### Rationale
 
@@ -114,7 +121,16 @@ always using the default.
 
 ### Files touched
 
-- `extensions/webhooks/src/` (hook mapping sessionTarget configuration)
+Surface as of the v2026.9.3 upgrade (41344e0b7dbd):
+
+- `src/config/zod-schema.hooks.session-mode.test.ts` (schema conformance test for HookMappingSchema sessionMode + sessionKey pairing)
+
+The original `extensions/webhooks/src/` hook-mapping sessionTarget source
+changes were absorbed by upstream before the previous base; upstream's
+HookMappingSchema already supports sessionMode/sessionKey and the schema
+test passes against it. The webhook `sessionTarget` field itself does not
+exist upstream. Retirement candidate — keep only for the pinned schema
+test; retirement is the operator's call.
 
 ### Upgrade guidance
 
@@ -122,7 +138,7 @@ always using the default.
 
 ## OTEL Improvements
 
-(canonical: `brightfire/0a6c013be5f/otel-improvements`)
+(canonical: `brightfire/41344e0b7dbd/otel-improvements`)
 
 ### Rationale
 
@@ -139,4 +155,3 @@ skill usage metadata are properly propagated through spans.
 
 **Conflicts:** May conflict if upstream changes OTEL span attributes or agent
 identity propagation. Check `extensions/diagnostics-otel/` for upstream changes.
-
