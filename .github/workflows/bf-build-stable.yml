@@ -233,7 +233,6 @@ jobs:
           NODE_OPTIONS: --max-old-space-size=12000
         run: pnpm build
 
-
       # Push the stable branch unconditionally — test jobs check it out from
       # here. The branch is force-pushed on every rebuild (deterministic from
       # the manifest). Tag/release only happen in the publish job after all
@@ -296,7 +295,6 @@ jobs:
           echo "shards=$SHARDS" >> "$GITHUB_OUTPUT"
           SHARD_COUNT=$(echo "$SHARDS" | python3 -c "import json,sys; print(len(json.load(sys.stdin)))")
           echo "Test shards ($SHARD_COUNT)"
-
 
   # ========================================================================
   # Job 2: Checks — lint/typecheck/format release gates on a dedicated
@@ -539,7 +537,6 @@ jobs:
           git archive "${{ github.sha }}" scripts/bf | tar -x -C "$INPUTS"
           echo "BF_CI_INPUTS_DIR=$INPUTS" >> "$GITHUB_ENV"
           echo "PATCHES_FILE=$INPUTS/BRIGHTFIRE_PATCHES.md" >> "$GITHUB_ENV"
-
 
       - name: Tag stable build
         env:
