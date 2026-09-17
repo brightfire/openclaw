@@ -14,6 +14,7 @@ import {
 import { createLazyRuntimeModule } from "../shared/lazy-runtime.js";
 import { reconcileDiagnosticGcObserver, stopDiagnosticGcObserver } from "./diagnostic-gc.js";
 import { emitDiagnosticMemorySample, resetDiagnosticMemoryForTest } from "./diagnostic-memory.js";
+import { emitMessageProcessedDiagnosticEvent } from "./diagnostic-message-content.js";
 import {
   getCurrentDiagnosticPhase,
   getRecentDiagnosticPhases,
@@ -754,6 +755,8 @@ export function logMessageProcessed(params: {
   outcome: "completed" | "skipped" | "error";
   reason?: string;
   error?: string;
+  userPrompt?: string;
+  finalResponse?: string;
 }) {
   if (!areDiagnosticsEnabledForProcess()) {
     return;
@@ -775,18 +778,7 @@ export function logMessageProcessed(params: {
       diag.debug(payload);
     }
   }
-  emitDiagnosticEvent({
-    type: "message.processed",
-    channel: params.channel,
-    chatId: params.chatId,
-    messageId: params.messageId,
-    sessionId: params.sessionId,
-    sessionKey: params.sessionKey,
-    durationMs: params.durationMs,
-    outcome: params.outcome,
-    reason: params.reason,
-    error: params.error,
-  });
+  emitMessageProcessedDiagnosticEvent(params);
   markActivity();
 }
 
