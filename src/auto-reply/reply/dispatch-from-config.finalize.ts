@@ -42,6 +42,7 @@ export async function finalizeDispatchAndAudit(state: ExecuteDispatchReadyState)
     ctx,
     deferFinalTtsText,
     deliveryChannel,
+    diagnosticResponse,
     dispatcher,
     getDispatchAbortSignal,
     getObservedReplyDelivery,
@@ -90,6 +91,7 @@ export async function finalizeDispatchAndAudit(state: ExecuteDispatchReadyState)
   const finalDeliveries: Array<Awaited<ReturnType<typeof state.sendFinalPayload>>> = [];
   const sentFinalPayloadDedupeKeys = new Set<string>();
   let deferredTtsTextPending = state.progressState.accumulatedBlockTtsText;
+  const replyTextParts: string[] = [];
   let continuationSettlementAttempted = false;
   let continuationSettlementRegistered = false;
   const settleContinuation = async (statusDelivered: boolean) => {
@@ -159,6 +161,9 @@ export async function finalizeDispatchAndAudit(state: ExecuteDispatchReadyState)
         continue;
       }
       sentFinalPayloadDedupeKeys.add(finalPayloadDedupeKey);
+      if (typeof reply.text === "string" && reply.text.trim()) {
+        replyTextParts.push(reply.text);
+      }
       const shouldAttachDeferredText = deferFinalTtsText && isReplyPayloadTerminalContent(reply);
       const finalReply = await state.sendFinalPayload(reply, {
         deliveryId: String(replyIndex),
@@ -530,7 +535,14 @@ export async function finalizeDispatchAndAudit(state: ExecuteDispatchReadyState)
     dispatchOutcome,
     dispatchReason ? { reason: dispatchReason } : undefined,
   );
-  state.recordProcessed(dispatchOutcome, dispatchReason ? { reason: dispatchReason } : undefined);
+  state.recordProcessed(dispatchOutcome, {
+    reason: dispatchReason,
+    ...(diagnosticResponse !== undefined
+      ? { finalResponse: diagnosticResponse }
+      : replyTextParts.length > 0
+        ? { finalResponse: replyTextParts.join("\n") }
+        : {}),
+  });
   state.markIdle(
     dispatchOutcome === "error"
       ? "message_error"

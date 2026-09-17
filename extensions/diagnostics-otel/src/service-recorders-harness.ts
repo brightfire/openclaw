@@ -9,7 +9,11 @@ import type {
   DiagnosticEventPrivateData,
 } from "../api.js";
 import { redactOtelAttributes } from "./service-attributes.js";
-import { normalizeOtelErrorMessage } from "./service-content-normalization.js";
+import {
+  MAX_OTEL_CONTENT_ATTRIBUTE_CHARS,
+  normalizeOtelErrorMessage,
+  normalizeOtelLogString,
+} from "./service-content-normalization.js";
 import { assignOtelModelContentAttributes } from "./service-genai-content.js";
 import type { DiagnosticsRecorderRuntime } from "./service-recorder-runtime.js";
 import type { HarnessRunDiagnosticEvent, ModelFailoverDiagnosticEvent } from "./service-types.js";
@@ -26,6 +30,7 @@ export function createHarnessRecorders(runtime: DiagnosticsRecorderRuntime) {
     setSpanAttrs,
     completeTrackedLifecycleSpan,
     addRunAttrs,
+    contentCapturePolicy,
     tracesEnabled,
     getTrackedInternalOrTrustedSpan,
     contentCapturePolicy,
@@ -71,6 +76,7 @@ export function createHarnessRecorders(runtime: DiagnosticsRecorderRuntime) {
   const recordHarnessRunStarted = (
     evt: Extract<DiagnosticEventPayload, { type: "harness.run.started" }>,
     metadata: DiagnosticEventMetadata,
+    privateData: DiagnosticEventPrivateData,
   ) => {
     if (!tracesEnabled || !metadata.trusted) {
       return;
@@ -79,6 +85,12 @@ export function createHarnessRecorders(runtime: DiagnosticsRecorderRuntime) {
       ...harnessRunMetricAttrs(evt),
     };
     addRunAttrs(spanAttrs, evt);
+    if (contentCapturePolicy.inputMessages && privateData.harnessContent?.userPrompt) {
+      spanAttrs["input.value"] = normalizeOtelLogString(
+        privateData.harnessContent.userPrompt,
+        MAX_OTEL_CONTENT_ATTRIBUTE_CHARS,
+      );
+    }
     trackTrustedSpan(
       evt,
       metadata,
@@ -119,6 +131,12 @@ export function createHarnessRecorders(runtime: DiagnosticsRecorderRuntime) {
     const redactedError = normalizeOtelErrorMessage(privateData.errorMessage);
     if (redactedError) {
       spanAttrs["openclaw.error"] = redactedError;
+    }
+    if (contentCapturePolicy.outputMessages && privateData.harnessContent?.finalResponse) {
+      spanAttrs["output.value"] = normalizeOtelLogString(
+        privateData.harnessContent.finalResponse,
+        MAX_OTEL_CONTENT_ATTRIBUTE_CHARS,
+      );
     }
     const trustedTrace = trustedTraceContext(evt, metadata);
     const trackedSpan = trustedTrace?.spanId
