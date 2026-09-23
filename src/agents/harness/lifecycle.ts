@@ -35,6 +35,7 @@ import {
   normalizeAgentRunAttemptTerminal,
   projectAgentRunAttemptTerminal,
 } from "../agent-run-terminal-outcome.js";
+import { resolveFinalAssistantVisibleText } from "../embedded-agent-runner/run/helpers.js";
 import type { EmbeddedRunAttemptResult } from "../embedded-agent-runner/run/types.js";
 import { copyCoreTtsAttemptResultProvenance } from "../tools/tts-tool-result-provenance.js";
 import { subscribeAgentCommentaryDiagnostics } from "./commentary-diagnostics.js";
@@ -267,9 +268,12 @@ function emitAgentHarnessRunCompleted(params: {
   const errorMessage =
     outcome === "error" ? diagnosticErrorMessage(terminal.promptError) : undefined;
   const contentPolicy = resolveDiagnosticModelContentCapturePolicy(getRuntimeConfig());
+  const finalAssistantText = resolveFinalAssistantVisibleText(
+    result.currentAttemptCompletedAssistant ?? result.currentAttemptAssistant,
+  );
   const finalResponse =
-    contentPolicy.outputMessages && result.assistantTexts.length > 0
-      ? joinDiagnosticContent(result.assistantTexts)
+    contentPolicy.outputMessages && finalAssistantText
+      ? joinDiagnosticContent([finalAssistantText])
       : undefined;
   const harnessContent: { userPrompt?: string; finalResponse?: string } | undefined = finalResponse
     ? { finalResponse }

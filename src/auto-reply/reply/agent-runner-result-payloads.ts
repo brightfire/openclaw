@@ -451,9 +451,11 @@ export async function prepareReplyAgentPayloads(state: {
       (payload.isReasoning !== true || opts?.reasoningPayloadsEnabled === true) &&
       (payload.isCommentary !== true || opts?.commentaryPayloadsEnabled === true),
   );
-  const diagnosticResponse = captureDiagnosticResponse(payloadCandidates);
-  if (diagnosticResponse !== undefined) {
-    opts?.onDiagnosticResponse?.(diagnosticResponse);
+  if (opts?.onDiagnosticResponse) {
+    const diagnosticResponse = captureDiagnosticResponse(payloadCandidates);
+    if (diagnosticResponse !== undefined) {
+      opts.onDiagnosticResponse(diagnosticResponse);
+    }
   }
   const payloadResult = await buildFinalPayloads(payloadCandidates);
   if (sourceReplyDelivery !== "delivered" && completion.outcome === "delivered") {

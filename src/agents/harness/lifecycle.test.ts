@@ -617,6 +617,63 @@ describe("AgentHarness lifecycle runner", () => {
     expect(typeof completedEvent?.durationMs).toBe("number");
   });
 
+  it("captures only the canonical final answer, not pre-tool commentary", async () => {
+    setRuntimeConfigSnapshot({ diagnostics: { otel: { enabled: true, captureContent: true } } });
+    const finalAssistant = {
+      ...createFinalAssistant(),
+      content: [{ type: "text", text: "final answer" }],
+    };
+    const result = {
+      ...createAttemptResult(),
+      assistantTexts: ["I will use a tool first.", "final answer"],
+      currentAttemptAssistant: finalAssistant,
+      currentAttemptCompletedAssistant: finalAssistant,
+    };
+    const harness: AgentHarness = {
+      id: "codex",
+      label: "Codex",
+      supports: () => ({ supported: true }),
+      runAttempt: async () => result,
+    };
+    const diagnostics = captureDiagnosticEvents();
+    try {
+      await runAgentHarnessLifecycleAttempt(harness, createAttemptParams());
+      await flushDiagnosticEvents();
+    } finally {
+      diagnostics.unsubscribe();
+      clearRuntimeConfigSnapshot();
+    }
+
+    expect(diagnostics.events[1]?.privateData.harnessContent).toEqual({
+      finalResponse: "final answer",
+    });
+  });
+
+  it("does not capture pre-tool commentary as a final answer", async () => {
+    setRuntimeConfigSnapshot({ diagnostics: { otel: { enabled: true, captureContent: true } } });
+    const result = {
+      ...createAttemptResult(),
+      assistantTexts: ["I will use a tool first."],
+      currentAttemptAssistant: undefined,
+    };
+    const harness: AgentHarness = {
+      id: "codex",
+      label: "Codex",
+      supports: () => ({ supported: true }),
+      runAttempt: async () => result,
+    };
+    const diagnostics = captureDiagnosticEvents();
+    try {
+      await runAgentHarnessLifecycleAttempt(harness, createAttemptParams());
+      await flushDiagnosticEvents();
+    } finally {
+      diagnostics.unsubscribe();
+      clearRuntimeConfigSnapshot();
+    }
+
+    expect(diagnostics.events[1]?.privateData.harnessContent).toBeUndefined();
+  });
+
   it("bounds captured harness prompts and responses before diagnostic dispatch", async () => {
     setRuntimeConfigSnapshot({ diagnostics: { otel: { enabled: true, captureContent: true } } });
     // Mirrors the private per-field budget in src/infra/diagnostic-content.ts; the
@@ -624,7 +681,14 @@ describe("AgentHarness lifecycle runner", () => {
     const MAX_DIAGNOSTIC_CONTENT_CHARS = 128 * 1024;
     const oversizedContent = `${"x".repeat(MAX_DIAGNOSTIC_CONTENT_CHARS - 1)}🚀tail`;
     const params = { ...createAttemptParams(), prompt: oversizedContent };
-    const result = { ...createAttemptResult(), assistantTexts: [oversizedContent] };
+    const result = {
+      ...createAttemptResult(),
+      assistantTexts: [oversizedContent],
+      currentAttemptAssistant: {
+        ...createFinalAssistant(),
+        content: [{ type: "text", text: oversizedContent }],
+      },
+    };
     const harness: AgentHarness = {
       id: "codex",
       label: "Codex",
