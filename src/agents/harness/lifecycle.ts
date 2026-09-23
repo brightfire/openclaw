@@ -471,17 +471,43 @@ export async function runAgentHarnessLifecycleFinalization(
         outcome: "completed",
       });
     }
-    emitTrustedDiagnosticEvent({
-      type: "harness.run.completed",
-      ...agentHarnessDiagnosticBase(
-        harness,
-        params,
-        result.result.diagnosticTrace ?? activeHarnessTrace,
-      ),
-      durationMs: Date.now() - startedAt,
-      outcome: "completed",
-      itemLifecycle: { startedCount: 0, completedCount: 0, activeCount: 0 },
-    });
+    // The finalization operation produces the turn's final assistant answer;
+    // capture it like the ordinary completion path does, from visible text
+    // blocks only (thinking and tool calls are not the answer).
+    const finalizationContentPolicy =
+      resolveDiagnosticModelContentCapturePolicy(getRuntimeConfig());
+    const finalizationResponseText =
+      finalizationContentPolicy.outputMessages &&
+      typeof result.result.assistant?.content === "object"
+        ? joinDiagnosticContent(
+            result.result.assistant.content
+              .filter(
+                (block): block is { type: "text"; text: string } =>
+                  typeof block === "object" &&
+                  block !== null &&
+                  (block as { type?: unknown }).type === "text" &&
+                  typeof (block as { text?: unknown }).text === "string",
+              )
+              .map((block) => block.text),
+          )
+        : undefined;
+    const finalizationHarnessContent = finalizationResponseText
+      ? { finalResponse: finalizationResponseText }
+      : undefined;
+    emitTrustedDiagnosticEventWithPrivateData(
+      {
+        type: "harness.run.completed",
+        ...agentHarnessDiagnosticBase(
+          harness,
+          params,
+          result.result.diagnosticTrace ?? activeHarnessTrace,
+        ),
+        durationMs: Date.now() - startedAt,
+        outcome: "completed",
+        itemLifecycle: { startedCount: 0, completedCount: 0, activeCount: 0 },
+      },
+      finalizationHarnessContent ? { harnessContent: finalizationHarnessContent } : undefined,
+    );
     return result;
   } catch (error) {
     emitAgentHarnessRunError({

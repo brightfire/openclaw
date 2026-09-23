@@ -152,16 +152,13 @@ export async function runClaudeCliAgentTurnWithDiagnostics(
   const runBase = diagnosticBase(params, runTrace);
   const startedAt = Date.now();
   let phase: ClaudeCliRunPhase = "prepare";
-<<<<<<< HEAD
   let unsubscribeCommentary: (() => void) | undefined;
-=======
   const contentCapturePolicy = resolveDiagnosticModelContentCapturePolicy(getRuntimeConfig());
   let capturedContent: { userPrompt?: string; finalResponse?: string } | undefined;
   // True when publication produced at least one gated, non-empty field; an empty
   // publication (policy off, or all fields filtered) attaches no private data.
   const hasCapturedContent = () =>
     capturedContent !== undefined && Object.keys(capturedContent).length > 0;
->>>>>>> 6808cb12203 (feat(diagnostics): capture claude-cli turn IO on run and harness spans)
   const lifecycle: ClaudeCliRunDiagnosticLifecycle = {
     setPhase: (nextPhase) => {
       phase = nextPhase;
@@ -261,6 +258,9 @@ export async function runClaudeCliAgentTurnWithDiagnostics(
   } catch (error) {
     const errorMessage = diagnosticErrorMessage(error);
     const harnessOutcome = errorHarnessOutcome(error, params.abortSignal);
+    // Failed, timed-out, and aborted turns keep their already-captured prompt:
+    // it is precisely what operators need for diagnosis, and startup events
+    // cannot carry it because CLI prompt publication happens after preparation.
     emitTrustedDiagnosticEventWithPrivateData(
       {
         type: "run.completed",
@@ -269,7 +269,10 @@ export async function runClaudeCliAgentTurnWithDiagnostics(
         outcome: harnessOutcome === "error" ? "error" : "aborted",
         ...(harnessOutcome === "error" ? { errorCategory: diagnosticErrorCategory(error) } : {}),
       },
-      errorMessage ? { errorMessage } : undefined,
+      {
+        ...(errorMessage ? { errorMessage } : {}),
+        ...(hasCapturedContent() ? { messageContent: capturedContent } : {}),
+      },
     );
     if (harnessOutcome === "error") {
       emitTrustedDiagnosticEventWithPrivateData(
@@ -280,15 +283,21 @@ export async function runClaudeCliAgentTurnWithDiagnostics(
           phase,
           errorCategory: diagnosticErrorCategory(error),
         },
-        errorMessage ? { errorMessage } : undefined,
+        {
+          ...(errorMessage ? { errorMessage } : {}),
+          ...(hasCapturedContent() ? { harnessContent: capturedContent } : {}),
+        },
       );
     } else {
-      emitTrustedDiagnosticEvent({
-        type: "harness.run.completed",
-        ...harnessBase,
-        durationMs: Date.now() - startedAt,
-        outcome: harnessOutcome,
-      });
+      emitTrustedDiagnosticEventWithPrivateData(
+        {
+          type: "harness.run.completed",
+          ...harnessBase,
+          durationMs: Date.now() - startedAt,
+          outcome: harnessOutcome,
+        },
+        hasCapturedContent() ? { harnessContent: capturedContent } : undefined,
+      );
     }
     throw error;
   } finally {

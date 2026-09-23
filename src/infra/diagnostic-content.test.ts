@@ -47,3 +47,28 @@ it("redacts each joined part before bounding", () => {
   const joined = joinDiagnosticContent([pem]);
   expect(joined?.includes("MIIEowIBAAKCAQEAwibble")).toBe(false);
 });
+
+it("redacts secrets spanning multiple streamed parts", () => {
+  // Streamed chunks can split a secret block across parts; the join must
+  // redact against the complete logical content, not per-part.
+  const joined = joinDiagnosticContent([
+    "-----BEGIN RSA PRIVATE KEY-----",
+    "MIIEowIBAAKCAQEAwibble",
+    "-----END RSA PRIVATE KEY-----",
+  ]);
+  expect(joined?.includes("MIIEowIBAAKCAQEAwibble")).toBe(false);
+  // The host redactor replaces the PEM body with an ellipsis marker; the
+  // BEGIN/END marker lines remain (they contain no secret material).
+  expect(joined?.includes("…redacted…")).toBe(true);
+});
+
+it("keeps later answer parts when an earlier part shrinks under redaction", () => {
+  // Redaction shortening an earlier part is not truncation; the remaining
+  // parts must still be captured.
+  const joined = joinDiagnosticContent([
+    "password=example-secret-value",
+    "The task completed successfully",
+  ]);
+  expect(joined?.includes("example-secret-value")).toBe(false);
+  expect(joined?.includes("The task completed successfully")).toBe(true);
+});

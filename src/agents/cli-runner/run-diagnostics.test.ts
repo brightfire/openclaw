@@ -1,7 +1,7 @@
 // Verifies Claude CLI synthetic harness/run hierarchy and terminal events.
 import { afterEach, describe, expect, it } from "vitest";
-import { emitAgentEvent, resetAgentEventsForTest } from "../../infra/agent-events.js";
 import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../../config/config.js";
+import { emitAgentEvent, resetAgentEventsForTest } from "../../infra/agent-events.js";
 import {
   emitTrustedDiagnosticEventWithPrivateData,
   onTrustedInternalDiagnosticEvent,
@@ -395,6 +395,42 @@ describe("Claude CLI run diagnostics", () => {
       outcome: harnessOutcome,
     });
     expect(diagnostics.events.some(({ event }) => event.type === "harness.run.error")).toBe(false);
+  });
+
+  it("keeps the captured prompt on terminal events when the turn fails", async () => {
+    setRuntimeConfigSnapshot({ diagnostics: { otel: { enabled: true, captureContent: true } } });
+    const runId = "run-claude-failure-content";
+    const diagnostics = captureLifecycle(runId);
+    try {
+      await expect(
+        runClaudeCliAgentTurnWithDiagnostics(
+          {
+            runId,
+            sessionId: "session-failure-content",
+            modelProvider: "anthropic",
+            model: "claude-opus-4-7",
+          },
+          async (lifecycle) => {
+            lifecycle.publishCapturedContent({ userPrompt: "prepare the release" });
+            lifecycle.setPhase("send");
+            throw new Error("CLI crashed mid-turn");
+          },
+        ),
+      ).rejects.toThrow("CLI crashed mid-turn");
+      await flushDiagnosticEvents();
+    } finally {
+      clearRuntimeConfigSnapshot();
+    }
+
+    const runCompleted = diagnostics.events.find(({ event }) => event.type === "run.completed");
+    expect(runCompleted?.privateData.messageContent).toMatchObject({
+      userPrompt: "prepare the release",
+    });
+
+    const harnessError = diagnostics.events.find(({ event }) => event.type === "harness.run.error");
+    expect(harnessError?.privateData.harnessContent).toMatchObject({
+      userPrompt: "prepare the release",
+    });
   });
 
   it("attaches published turn content to run and harness completed events", async () => {

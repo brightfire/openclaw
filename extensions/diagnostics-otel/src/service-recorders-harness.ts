@@ -33,7 +33,6 @@ export function createHarnessRecorders(runtime: DiagnosticsRecorderRuntime) {
     contentCapturePolicy,
     tracesEnabled,
     getTrackedInternalOrTrustedSpan,
-    contentCapturePolicy,
   } = runtime;
 
   const recordAgentCommentary = (
@@ -195,6 +194,14 @@ export function createHarnessRecorders(runtime: DiagnosticsRecorderRuntime) {
       ...(evt.cleanupFailed ? { "openclaw.harness.cleanup_failed": true } : {}),
     };
     addRunAttrs(spanAttrs, evt);
+    // CLI harnesses attach their prompt only on the terminal event, so the
+    // error path must consume it here too or failed turns lose their input.
+    if (contentCapturePolicy.inputMessages && privateData.harnessContent?.userPrompt) {
+      spanAttrs["input.value"] = normalizeOtelLogString(
+        privateData.harnessContent.userPrompt,
+        MAX_OTEL_CONTENT_ATTRIBUTE_CHARS,
+      );
+    }
     const trustedTrace = trustedTraceContext(evt, metadata);
     const trackedSpan = trustedTrace?.spanId
       ? activeTrustedSpans.get(trustedTrace.spanId)

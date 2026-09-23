@@ -16,28 +16,16 @@ export function joinDiagnosticContent(
   truncationSuffix = "",
 ): string | undefined {
   const contentBudget = MAX_DIAGNOSTIC_CONTENT_CHARS - truncationSuffix.length;
-  let content = "";
-  let truncated = false;
-  for (const part of parts) {
-    if (!part) {
-      continue;
-    }
-    const separator = content ? "\n" : "";
-    const remaining = contentBudget - content.length - separator.length;
-    if (remaining <= 0) {
-      truncated = true;
-      break;
-    }
-    const capturedPart = truncateUtf16Safe(redactSensitiveText(part), remaining);
-    if (!capturedPart) {
-      truncated = true;
-      break;
-    }
-    content += separator + capturedPart;
-    if (capturedPart.length < part.length) {
-      truncated = true;
-      break;
-    }
+  // Redaction must see the complete logical content: streamed parts can split
+  // a secret block (e.g. a PEM key) so per-part redaction would miss it, and
+  // per-part length accounting would misread redaction shortening as
+  // truncation and drop later answer parts.
+  const redacted = redactSensitiveText(parts.filter((part) => part).join("\n"));
+  if (!redacted) {
+    return undefined;
   }
-  return content ? `${content}${truncated ? truncationSuffix : ""}` : undefined;
+  if (redacted.length <= contentBudget) {
+    return redacted;
+  }
+  return `${truncateUtf16Safe(redacted, contentBudget)}${truncationSuffix}`;
 }
