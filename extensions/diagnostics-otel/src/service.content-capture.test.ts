@@ -183,3 +183,109 @@ test("keeps captured harness run content off spans without captureContent", asyn
   expect(Object.hasOwn(harnessAttributes, "input.value")).toBe(false);
   expect(Object.hasOwn(harnessAttributes, "output.value")).toBe(false);
 });
+
+test("exports captured run content on run spans under captureContent", async () => {
+  const { service, ctx } = await startOtelService({ traces: true, captureContent: true });
+
+  const traceContext = createTestTrace(CHILD_SPAN_ID);
+  emitTrustedDiagnosticEventWithPrivateData(
+    {
+      type: "run.started",
+      runId: "run-capture",
+      provider: "anthropic",
+      model: "claude-opus-4-6",
+      trace: traceContext,
+    },
+    undefined,
+  );
+  emitTrustedDiagnosticEventWithPrivateData(
+    {
+      type: "run.completed",
+      runId: "run-capture",
+      provider: "anthropic",
+      model: "claude-opus-4-6",
+      durationMs: 60,
+      outcome: "completed",
+      trace: traceContext,
+    },
+    { messageContent: { userPrompt: "run the task", finalResponse: "task complete" } },
+  );
+  await waitForDiagnosticEventsDrained();
+  await service.stop?.(ctx);
+
+  const runAttributes = finishedSpanAttributes("openclaw.run");
+  expect(runAttributes?.["input.value"]).toBe("run the task");
+  expect(runAttributes?.["output.value"]).toBe("task complete");
+});
+
+test("keeps captured run content off spans without captureContent", async () => {
+  const { service, ctx } = await startOtelService({ traces: true });
+
+  const traceContext = createTestTrace(CHILD_SPAN_ID);
+  emitTrustedDiagnosticEventWithPrivateData(
+    {
+      type: "run.started",
+      runId: "run-capture",
+      provider: "anthropic",
+      model: "claude-opus-4-6",
+      trace: traceContext,
+    },
+    undefined,
+  );
+  emitTrustedDiagnosticEventWithPrivateData(
+    {
+      type: "run.completed",
+      runId: "run-capture",
+      provider: "anthropic",
+      model: "claude-opus-4-6",
+      durationMs: 60,
+      outcome: "completed",
+      trace: traceContext,
+    },
+    { messageContent: { userPrompt: "run the task", finalResponse: "task complete" } },
+  );
+  await waitForDiagnosticEventsDrained();
+  await service.stop?.(ctx);
+
+  const runAttributes = finishedSpanAttributes("openclaw.run") ?? {};
+  expect(Object.hasOwn(runAttributes, "input.value")).toBe(false);
+  expect(Object.hasOwn(runAttributes, "output.value")).toBe(false);
+});
+
+test("consumes the completion-time prompt on harness spans when startup carried none", async () => {
+  // CLI harnesses attach content at completion rather than startup; the
+  // completed recorder must still map a completion-time prompt to input.value.
+  const { service, ctx } = await startOtelService({ traces: true, captureContent: true });
+
+  const traceContext = createTestTrace(CHILD_SPAN_ID);
+  emitTrustedDiagnosticEventWithPrivateData(
+    {
+      type: "harness.run.started",
+      runId: "run-capture",
+      harnessId: "claude-cli",
+      provider: "anthropic",
+      model: "claude-opus-4-6",
+      trace: traceContext,
+    },
+    undefined,
+  );
+  emitTrustedDiagnosticEventWithPrivateData(
+    {
+      type: "harness.run.completed",
+      runId: "run-capture",
+      harnessId: "claude-cli",
+      provider: "anthropic",
+      model: "claude-opus-4-6",
+      durationMs: 100,
+      outcome: "completed",
+      trace: traceContext,
+    },
+    { harnessContent: { userPrompt: "run the task", finalResponse: "task complete" } },
+  );
+  await waitForDiagnosticEventsDrained();
+  await service.stop?.(ctx);
+
+  const harnessAttributes = finishedSpanAttributes("openclaw.harness.run");
+  expect(harnessAttributes?.["input.value"]).toBe("run the task");
+  expect(harnessAttributes?.["output.value"]).toBe("task complete");
+});

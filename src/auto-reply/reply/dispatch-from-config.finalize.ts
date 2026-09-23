@@ -161,7 +161,15 @@ export async function finalizeDispatchAndAudit(state: ExecuteDispatchReadyState)
         continue;
       }
       sentFinalPayloadDedupeKeys.add(finalPayloadDedupeKey);
-      if (typeof reply.text === "string" && reply.text.trim()) {
+      // The capture fallback must mirror the reply-layer capture filter: reasoning
+      // and commentary lanes are not the final answer, so they must never leak
+      // into message.processed output.value via this path.
+      if (
+        typeof reply.text === "string" &&
+        reply.text.trim() &&
+        reply.isReasoning !== true &&
+        reply.isCommentary !== true
+      ) {
         replyTextParts.push(reply.text);
       }
       const shouldAttachDeferredText = deferFinalTtsText && isReplyPayloadTerminalContent(reply);

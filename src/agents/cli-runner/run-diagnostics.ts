@@ -181,8 +181,11 @@ export async function runClaudeCliAgentTurnWithDiagnostics(
     publishCapturedContent: (content) => {
       // Content is stored, gated, and bounded once at publication; completed
       // events attach it as private data and the exporter re-checks the policy
-      // before placing anything on a span.
+      // before placing anything on a span. Publications merge rather than
+      // replace: the prompt arrives after preparation and the response after
+      // settlement, so both must survive to the completion events.
       capturedContent = {
+        ...capturedContent,
         ...(content.userPrompt !== undefined && contentCapturePolicy.inputMessages
           ? { userPrompt: truncateDiagnosticContent(content.userPrompt) }
           : {}),

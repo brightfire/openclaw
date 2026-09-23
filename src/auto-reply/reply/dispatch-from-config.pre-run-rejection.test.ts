@@ -212,6 +212,27 @@ describe("dispatchReplyFromConfig pre-run directive rejection", () => {
     );
   });
 
+  it("excludes reasoning and commentary lanes from the fallback captured response", async () => {
+    // When no producer-captured diagnostic response exists, the fallback joins
+    // delivered reply texts; reasoning/commentary lanes are not the final answer
+    // and must never reach message.processed output.value via this path.
+    await dispatchReplyFromConfig({
+      ctx: buildTestCtx({ Body: "hello", SessionKey: SESSION_KEY }),
+      cfg,
+      dispatcher: createDispatcher(),
+      replyResolver: async () =>
+        [
+          { text: "internal reasoning trace", isReasoning: true },
+          { text: "Agent reply." },
+          { text: "status notice", isCommentary: true },
+        ] satisfies ReplyPayload[],
+    });
+
+    expect(diagnosticMocks.logMessageProcessed).toHaveBeenCalledWith(
+      expect.objectContaining({ finalResponse: "Agent reply." }),
+    );
+  });
+
   it.each<{
     label: string;
     state: ReplyOperationRunState;

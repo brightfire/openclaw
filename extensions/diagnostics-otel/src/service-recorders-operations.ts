@@ -58,6 +58,7 @@ export function createOperationsRecorders(runtime: DiagnosticsRecorderRuntime) {
     setSpanAttrs,
     completeTrackedLifecycleSpan,
     addRunAttrs,
+    contentCapturePolicy,
     tracesEnabled,
   } = runtime;
 

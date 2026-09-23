@@ -31,3 +31,19 @@ it("never splits a surrogate pair when truncating a single field", () => {
   // A trailing high surrogate would mean the emoji was cut in half.
   expect(truncated.charCodeAt(truncated.length - 1)).not.toBe(0xd83d);
 });
+
+it("redacts secret material before bounding so truncation cannot split it", () => {
+  // Redaction must see the complete block: truncating first could split a
+  // PEM-style key so the redactor no longer recognizes it.
+  const pem =
+    "-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEAwibble\n-----END RSA PRIVATE KEY-----";
+  const truncated = truncateDiagnosticContent(`${"x".repeat(100)}${pem}${"y".repeat(200)}`);
+  expect(truncated.includes("MIIEowIBAAKCAQEAwibble")).toBe(false);
+});
+
+it("redacts each joined part before bounding", () => {
+  const pem =
+    "-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEAwibble\n-----END RSA PRIVATE KEY-----";
+  const joined = joinDiagnosticContent([pem]);
+  expect(joined?.includes("MIIEowIBAAKCAQEAwibble")).toBe(false);
+});

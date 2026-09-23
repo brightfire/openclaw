@@ -132,6 +132,15 @@ export function createHarnessRecorders(runtime: DiagnosticsRecorderRuntime) {
     if (redactedError) {
       spanAttrs["openclaw.error"] = redactedError;
     }
+    // CLI harnesses attach content at completion rather than startup, so the
+    // prompt must be consumable here as well; setSpanAttrs below preserves any
+    // input.value already recorded on the tracked span at startup.
+    if (contentCapturePolicy.inputMessages && privateData.harnessContent?.userPrompt) {
+      spanAttrs["input.value"] = normalizeOtelLogString(
+        privateData.harnessContent.userPrompt,
+        MAX_OTEL_CONTENT_ATTRIBUTE_CHARS,
+      );
+    }
     if (contentCapturePolicy.outputMessages && privateData.harnessContent?.finalResponse) {
       spanAttrs["output.value"] = normalizeOtelLogString(
         privateData.harnessContent.finalResponse,
