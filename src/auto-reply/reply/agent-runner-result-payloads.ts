@@ -17,7 +17,6 @@ import {
 import { normalizeChatType } from "../../channels/chat-type.js";
 import type { ProgressContinuationState } from "../../channels/progress-continuation.js";
 import { emitAgentEvent } from "../../infra/agent-events.js";
-import { joinDiagnosticContent } from "../../infra/diagnostic-content.js";
 import { emitTrustedDiagnosticEvent, isDiagnosticsEnabled } from "../../infra/diagnostic-events.js";
 import {
   createChildDiagnosticTraceContext,
@@ -55,6 +54,7 @@ import {
 import type { accountAgentTurn } from "./agent-runner-result-accounting.js";
 import type { FinalizeReplyAgentRunInput } from "./agent-runner-result.types.js";
 import { resolveResponseUsageLine } from "./agent-runner-usage-line.js";
+import { captureDiagnosticResponse } from "./diagnostic-response-capture.js";
 import type { PendingContinuationSettlement } from "./get-reply.types.js";
 import { attachMcpAppChannelAction, attachMcpConnectChannelAction } from "./mcp-channel-actions.js";
 import { normalizeReplyPayload } from "./normalize-reply.js";
@@ -64,15 +64,6 @@ import { resolveSourceReplyExpectation } from "./source-reply-delivery-mode.js";
 import { resolveStrandedReplyRecovery } from "./stranded-reply-recovery.js";
 import { buildWaitingStatusPayload } from "./waiting-status.js";
 type ReplyAgentAccounting = Awaited<ReturnType<typeof accountAgentTurn>>;
-
-function captureDiagnosticResponse(payloads: readonly ReplyPayload[]): string | undefined {
-  const responseParts = payloads
-    .filter((payload) => payload.isReasoning !== true && payload.isCommentary !== true)
-    .flatMap((payload) =>
-      typeof payload.text === "string" && payload.text.trim() ? [payload.text] : [],
-    );
-  return joinDiagnosticContent(responseParts, "…[truncated]");
-}
 
 export async function prepareReplyAgentPayloads(state: {
   context: FinalizeReplyAgentRunInput;

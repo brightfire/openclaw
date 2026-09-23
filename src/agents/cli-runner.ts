@@ -67,6 +67,7 @@ import {
 import { createCliFailoverError } from "./cli-runner/exit-error.js";
 import { cliBackendLog, formatCliBackendOutputDigest } from "./cli-runner/log.js";
 import {
+  cliFinalResponseText,
   runClaudeCliAgentTurnWithDiagnostics,
   type ClaudeCliRunDiagnosticLifecycle,
 } from "./cli-runner/run-diagnostics.js";
@@ -259,12 +260,22 @@ async function runCliAgentInternal(
       throw error;
     }
     // Preparation resolves the execution owner and effective capture config;
-    // publish both before commentary can arrive from the prepared run.
+    // publish both before commentary can arrive from the prepared run, and
+    // publish the prepared turn prompt for captureContent-gated span content.
+    // The exact final prompt is preparation's product; the admission-time params
+    // may not include merged inline images or finalized tool guidance.
     diagnosticLifecycle?.setExecutionContext(context.params);
+    diagnosticLifecycle?.publishCapturedContent({
+      userPrompt: context.params.prompt,
+    });
     const result = await settlePreparedCliRun({
       context,
       diagnosticLifecycle,
       run: async () => await runPreparedCliAgent(context, diagnosticLifecycle),
+    });
+    // Publish the run's visible assistant text for captureContent-gated span content.
+    diagnosticLifecycle?.publishCapturedContent({
+      finalResponse: cliFinalResponseText(result.payloads),
     });
     modelExecution?.assertCurrent();
     return result;

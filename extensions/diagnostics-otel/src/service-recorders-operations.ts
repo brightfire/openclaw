@@ -9,7 +9,11 @@ import type {
   DiagnosticEventPayload,
   DiagnosticEventPrivateData,
 } from "../api.js";
-import { normalizeOtelErrorMessage } from "./service-content-normalization.js";
+import {
+  MAX_OTEL_CONTENT_ATTRIBUTE_CHARS,
+  normalizeOtelErrorMessage,
+  normalizeOtelLogString,
+} from "./service-content-normalization.js";
 import type { DiagnosticsRecorderRuntime } from "./service-recorder-runtime.js";
 import type { SessionRecoveryDiagnosticEvent, TalkDiagnosticEvent } from "./service-types.js";
 
@@ -377,6 +381,18 @@ export function createOperationsRecorders(runtime: DiagnosticsRecorderRuntime) {
     const redactedError = normalizeOtelErrorMessage(privateData.errorMessage);
     if (redactedError) {
       spanAttrs["openclaw.error"] = redactedError;
+    }
+    if (contentCapturePolicy.inputMessages && privateData.messageContent?.userPrompt) {
+      spanAttrs["input.value"] = normalizeOtelLogString(
+        privateData.messageContent.userPrompt,
+        MAX_OTEL_CONTENT_ATTRIBUTE_CHARS,
+      );
+    }
+    if (contentCapturePolicy.outputMessages && privateData.messageContent?.finalResponse) {
+      spanAttrs["output.value"] = normalizeOtelLogString(
+        privateData.messageContent.finalResponse,
+        MAX_OTEL_CONTENT_ATTRIBUTE_CHARS,
+      );
     }
     const trustedTrace = trustedTraceContext(evt, metadata);
     const trackedSpan = trustedTrace?.spanId

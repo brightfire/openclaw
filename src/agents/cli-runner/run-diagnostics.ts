@@ -1,3 +1,8 @@
+import { getRuntimeConfig } from "../../config/config.js";
+import {
+  joinDiagnosticContent,
+  truncateDiagnosticContent,
+} from "../../infra/diagnostic-content.js";
 /** Trusted run hierarchy for Claude Code CLI-backed agent turns. */
 import {
   diagnosticErrorCategory,
@@ -9,6 +14,7 @@ import {
   emitTrustedDiagnosticEventWithPrivateData,
   type DiagnosticHarnessRunErrorEvent,
 } from "../../infra/diagnostic-events.js";
+import { resolveDiagnosticModelContentCapturePolicy } from "../../infra/diagnostic-llm-content.js";
 import {
   createChildDiagnosticTraceContext,
   createDiagnosticTraceContextFromActiveScope,
@@ -34,6 +40,12 @@ export type ClaudeCliRunDiagnosticLifecycle = {
    * prepared config rather than a potentially absent admission-time config.
    */
   setExecutionContext: (context: Pick<RunCliAgentParams, "agentId" | "config">) => void;
+  /**
+   * Publishes the prepared turn prompt and final response text for
+   * captureContent-gated span attributes. Called after preparation resolves
+   * the exact prompt and after the run produces its visible reply payloads.
+   */
+  publishCapturedContent: (content: { userPrompt?: string; finalResponse?: string }) => void;
 };
 
 type ClaudeCliRunDiagnosticParams = Pick<
@@ -106,6 +118,27 @@ function errorHarnessOutcome(
  * Wraps one OpenClaw Claude CLI turn in synthetic harness/run boundaries.
  * The child run scope makes every real Claude CLI model call nest beneath it.
  */
+/**
+ * Visible final-answer text for captureContent-gated span content. Mirrors
+ * the reply-layer capture: reasoning and commentary lanes are excluded, and
+ * messaging-tool sends are not part of the final answer.
+ */
+export function cliFinalResponseText(
+  payloads: EmbeddedAgentRunResult["payloads"],
+): string | undefined {
+  return joinDiagnosticContent(
+    (payloads ?? [])
+      .filter(
+        (payload) =>
+          payload.isReasoning !== true &&
+          payload.isCommentary !== true &&
+          typeof payload.text === "string" &&
+          payload.text.trim() !== "",
+      )
+      .map((payload) => (typeof payload.text === "string" ? payload.text : "")),
+  );
+}
+
 export async function runClaudeCliAgentTurnWithDiagnostics(
   params: ClaudeCliRunDiagnosticParams,
   run: (lifecycle: ClaudeCliRunDiagnosticLifecycle) => Promise<EmbeddedAgentRunResult>,
@@ -119,7 +152,16 @@ export async function runClaudeCliAgentTurnWithDiagnostics(
   const runBase = diagnosticBase(params, runTrace);
   const startedAt = Date.now();
   let phase: ClaudeCliRunPhase = "prepare";
+<<<<<<< HEAD
   let unsubscribeCommentary: (() => void) | undefined;
+=======
+  const contentCapturePolicy = resolveDiagnosticModelContentCapturePolicy(getRuntimeConfig());
+  let capturedContent: { userPrompt?: string; finalResponse?: string } | undefined;
+  // True when publication produced at least one gated, non-empty field; an empty
+  // publication (policy off, or all fields filtered) attaches no private data.
+  const hasCapturedContent = () =>
+    capturedContent !== undefined && Object.keys(capturedContent).length > 0;
+>>>>>>> 6808cb12203 (feat(diagnostics): capture claude-cli turn IO on run and harness spans)
   const lifecycle: ClaudeCliRunDiagnosticLifecycle = {
     setPhase: (nextPhase) => {
       phase = nextPhase;
@@ -135,6 +177,19 @@ export async function runClaudeCliAgentTurnWithDiagnostics(
       }
       unsubscribeCommentary?.();
       unsubscribeCommentary = subscribeAgentCommentaryDiagnostics(config, harnessBase);
+    },
+    publishCapturedContent: (content) => {
+      // Content is stored, gated, and bounded once at publication; completed
+      // events attach it as private data and the exporter re-checks the policy
+      // before placing anything on a span.
+      capturedContent = {
+        ...(content.userPrompt !== undefined && contentCapturePolicy.inputMessages
+          ? { userPrompt: truncateDiagnosticContent(content.userPrompt) }
+          : {}),
+        ...(content.finalResponse !== undefined && contentCapturePolicy.outputMessages
+          ? { finalResponse: truncateDiagnosticContent(content.finalResponse) }
+          : {}),
+      };
     },
   };
 
@@ -152,6 +207,13 @@ export async function runClaudeCliAgentTurnWithDiagnostics(
     const runOutcome = resultRunOutcome(result);
     const resultErrorMessage = result.meta.error?.message;
     const runErrorMessage = runOutcome === "error" ? resultErrorMessage : undefined;
+    const runCompletedPrivateData =
+      runErrorMessage || hasCapturedContent()
+        ? {
+            ...(runErrorMessage ? { errorMessage: runErrorMessage } : {}),
+            ...(hasCapturedContent() ? { messageContent: capturedContent } : {}),
+          }
+        : undefined;
     emitTrustedDiagnosticEventWithPrivateData(
       {
         type: "run.completed",
@@ -163,7 +225,7 @@ export async function runClaudeCliAgentTurnWithDiagnostics(
           ? { errorCategory: result.meta.error.kind }
           : {}),
       },
-      runErrorMessage ? { errorMessage: runErrorMessage } : undefined,
+      runCompletedPrivateData,
     );
     emitTrustedDiagnosticEventWithPrivateData(
       {
@@ -180,8 +242,16 @@ export async function runClaudeCliAgentTurnWithDiagnostics(
                 : "error",
         ...(typeof result.meta.yielded === "boolean" ? { yieldDetected: result.meta.yielded } : {}),
       },
-      resultErrorMessage && (runOutcome === "error" || runOutcome === "blocked")
-        ? { errorMessage: resultErrorMessage }
+      // The harness span is the turn's root; it carries the same gated content
+      // the run span gets, keyed as harnessContent for the harness recorder.
+      (resultErrorMessage && (runOutcome === "error" || runOutcome === "blocked")) ||
+        hasCapturedContent()
+        ? {
+            ...(resultErrorMessage && (runOutcome === "error" || runOutcome === "blocked")
+              ? { errorMessage: resultErrorMessage }
+              : {}),
+            ...(hasCapturedContent() ? { harnessContent: capturedContent } : {}),
+          }
         : undefined,
     );
     return result.diagnosticTrace ? result : { ...result, diagnosticTrace: harnessTrace };
