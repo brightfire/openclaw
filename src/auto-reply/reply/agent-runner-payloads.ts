@@ -169,6 +169,7 @@ export async function buildReplyPayloads(params: {
   applyReplyToMode?: (payload: ReplyPayload) => ReplyPayload;
   messageProvider?: string;
   messagingToolSentTexts?: string[];
+  messagingToolSourceReplyTexts?: string[];
   messagingToolSentMediaUrls?: string[];
   messagingToolSentTargets?: MessagingToolSend[];
   onDeliveredTerminalDuplicate?: () => void;
@@ -322,7 +323,6 @@ export async function buildReplyPayloads(params: {
           sentTexts: messagingToolSentTexts,
           onDeliveredTerminalDuplicate: () => {
             params.onDeliveredTerminalDuplicate?.();
-            collectDeliveredTerminalText(payload);
           },
           normalizeSentMediaUrls: (sentMediaUrls) =>
             normalizeSentMediaUrlsForDedupe({
@@ -340,6 +340,15 @@ export async function buildReplyPayloads(params: {
   const deliveredDirectPayloads = directBlockDeliveries
     .filter((delivery) => delivery.outcome === "delivered" && !delivery.pending)
     .map((delivery) => delivery.payload);
+  // Confirmed source-route message-tool receipts are delivery evidence in their
+  // own right: capture them independently of duplicate-candidate matching, so
+  // substring dedupe cannot over-report unsent candidate text and NO_REPLY
+  // turns cannot under-report delivered replies.
+  for (const receiptText of params.messagingToolSourceReplyTexts ?? []) {
+    if (receiptText.trim()) {
+      deliveredTexts.push(receiptText);
+    }
+  }
   for (const payload of dedupedPayloads) {
     const assistantMessageIndex = getReplyPayloadMetadata(payload)?.assistantMessageIndex;
     const direct = (params.directBlockDeliveries ?? []).filter(

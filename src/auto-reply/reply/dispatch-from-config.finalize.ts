@@ -409,8 +409,6 @@ export async function finalizeDispatchAndAudit(state: ExecuteDispatchReadyState)
     !channelTransformSuppressed &&
     !replyAcceptedByActiveRun;
   let queuedSettleResult: Awaited<ReturnType<typeof turnLedger.settleQueued>> = "settled";
-  let deliverySettleState: "not-run" | Awaited<ReturnType<typeof turnLedger.settleQueued>> =
-    "not-run";
   if (noVisibleReplyFallbackAllowed()) {
     // Only a turn that still looks empty pays for settlement: pending admissions
     // must resolve (beforeDeliver cancellation, pre-transport failure) before the
@@ -418,7 +416,6 @@ export async function finalizeDispatchAndAudit(state: ExecuteDispatchReadyState)
     // fallback skip the wait, so deliveries that legitimately outlive the turn
     // (queued same-session mirroring) cannot deadlock the gate on themselves.
     queuedSettleResult = await turnLedger.settleQueued(getDispatchAbortSignal());
-    deliverySettleState = queuedSettleResult;
   }
   if (queuedSettleResult === "settled") {
     // Adapter-owned presentation may capture a final after sending hooks. Keep that
@@ -482,7 +479,6 @@ export async function finalizeDispatchAndAudit(state: ExecuteDispatchReadyState)
           // finalization; on abort/timeout (and for untracked dispatchers)
           // admission stays the strongest fact so channels cannot double-send.
           const fallbackSettle = await turnLedger.settleQueued(getDispatchAbortSignal());
-          deliverySettleState = fallbackSettle;
           throwIfDispatchOperationAborted();
           if (fallbackSettle !== "settled" || turnLedger.mayHaveDelivered()) {
             queuedFinal = true;
@@ -502,16 +498,14 @@ export async function finalizeDispatchAndAudit(state: ExecuteDispatchReadyState)
       );
     }
   }
-  // Response capture consumes only delivery facts the turn ledger has confirmed.
-  // The bounded settle is opt-in (content capture enabled) and reuses the
-  // fallback gate's abort-aware wait; diagnostics-off turns never wait here.
+  // Response capture consumes only delivery facts the turn ledger has already
+  // confirmed: the fallback gate's bounded, abort-aware settle for empty turns,
+  // routed settlement at call sites, and queued deliveries that settled during
+  // finalization. Completion ordering is never delayed for capture, so
+  // deliveries that legitimately outlive the turn (queued same-session
+  // mirroring) are omitted rather than stalling the reply operation.
   if (resolveDiagnosticModelContentCapturePolicy(cfg).outputMessages) {
-    if (deliverySettleState === "not-run") {
-      deliverySettleState = await turnLedger.settleQueued(getDispatchAbortSignal());
-    }
-    if (deliverySettleState === "settled") {
-      replyTextParts.push(...collectLedgerDeliveredResponseTexts(turnLedger));
-    }
+    replyTextParts.push(...collectLedgerDeliveredResponseTexts(turnLedger));
   }
   counts.final += routedFinalCount;
   const agentRunTerminalOutcome = state.getAgentRunTerminalOutcome();

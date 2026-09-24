@@ -149,6 +149,12 @@ export async function prepareReplyAgentPayloads(state: {
   const committedMessagingToolSourceReplyDelivery =
     hasCommittedSourceReplyDeliveryEvidence(runResult);
   const completedSourceReplyDelivery = hasCompletedSourceReplyDeliveryEvidence(runResult);
+  const messagingToolSourceReplyTexts = (runResult.messagingToolSourceReplyPayloads ?? []).flatMap(
+    (receipt) =>
+      receipt.sourceReplyFinal !== false && typeof receipt.text === "string" && receipt.text.trim()
+        ? [receipt.text]
+        : [],
+  );
   const hasLegacyMessagingToolEvidence =
     runResult.sourceReplyDeliveryState === undefined &&
     resolveExplicitFinalSourceReplyDeliveryEvidence(runResult) === undefined;
@@ -292,6 +298,7 @@ export async function prepareReplyAgentPayloads(state: {
       messagingToolSentTexts: runResult.messagingToolSentTexts,
       messagingToolSentMediaUrls: runResult.messagingToolSentMediaUrls,
       messagingToolSentTargets: runResult.messagingToolSentTargets,
+      messagingToolSourceReplyTexts,
       onDeliveredTerminalDuplicate,
       originatingChannel: sessionCtx.OriginatingChannel,
       originatingChatType: sessionCtx.ChatType,
