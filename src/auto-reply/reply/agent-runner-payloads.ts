@@ -478,15 +478,29 @@ export async function buildReplyPayloads(params: {
       return false;
     }
     const assistantMessageIndex = getReplyPayloadMetadata(payload)?.assistantMessageIndex;
-    const fragments = deliveredDirectPayloads
-      .filter(
+    const receipts = deliveredDirectPayloads.filter(
+      (delivery) =>
+        isReplyPayloadTerminalContent(delivery) &&
+        (assistantMessageIndex === undefined ||
+          getReplyPayloadMetadata(delivery)?.assistantMessageIndex === assistantMessageIndex),
+    );
+    // Exact single-receipt match first: aggregate concatenation cannot recover
+    // individually delivered answers sharing one assistant message index.
+    if (
+      receipts.some(
         (delivery) =>
-          isReplyPayloadTerminalContent(delivery) &&
-          (assistantMessageIndex === undefined ||
-            getReplyPayloadMetadata(delivery)?.assistantMessageIndex === assistantMessageIndex),
+          (delivery.text ?? resolveSendableOutboundReplyParts(delivery).trimmedText).trim() ===
+          text.trim(),
       )
-      .map((delivery) => delivery.text ?? resolveSendableOutboundReplyParts(delivery).trimmedText);
-    return fragments.join("").trim() === text.trim();
+    ) {
+      return true;
+    }
+    return (
+      receipts
+        .map((delivery) => delivery.text ?? resolveSendableOutboundReplyParts(delivery).trimmedText)
+        .join("")
+        .trim() === text.trim()
+    );
   };
   const collectStreamDeliveredText = (payload: ReplyPayload): void => {
     if (!isPipelineDeliveredText(payload) && !hasDeliveredDirectText(payload)) {

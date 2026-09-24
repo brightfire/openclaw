@@ -4,6 +4,7 @@ import {
   resolveSendableOutboundReplyParts,
 } from "openclaw/plugin-sdk/reply-payload";
 import { logVerbose } from "../../globals.js";
+import { resolveDiagnosticModelContentCapturePolicy } from "../../infra/diagnostic-llm-content.js";
 import { formatErrorMessage } from "../../infra/errors.js";
 import { withClaimingHookAdmission } from "../../plugins/hook-claim-admission.js";
 import { createPluginSubagentRequesterContext } from "../../plugins/runtime/subagent-requester-context.js";
@@ -48,6 +49,7 @@ import {
   mirrorTranscriptAfterDispatcherSettled,
   transcriptMirrorForDeliveredPayload,
 } from "./dispatch-from-config.transcript.js";
+import { collectLedgerDeliveredResponseTexts } from "./dispatch-from-config.turn-ledger.js";
 import type { NormalizeReplySkipReason } from "./normalize-reply.js";
 import {
   resolveRoutedReplyDeliveryOutcome,
@@ -55,7 +57,6 @@ import {
 } from "./reply-dispatch-outcome.js";
 import {
   attachReplyDispatchUndeliveredFallback,
-  captureReplyDispatchDeliveryOutcome,
   prepareReplyPayloadForDispatcher,
   type ReplyDispatchDeliveryOutcome,
 } from "./reply-dispatcher.js";
@@ -279,7 +280,6 @@ export async function chooseDispatchRoute(state: PrepareDispatchOperationReadySt
     suppressionReason?: NormalizeReplySkipReason;
     sessionWriterDeliveryRevoked?: true;
     dispatcherOutcome?: Promise<ReplyDispatchDeliveryOutcome>;
-    getDeliveredPayload?: () => ReplyPayload | undefined;
     routedOutcome?: ReplyDispatchDeliveryOutcome;
   }> => {
     const abortSignal =
@@ -538,7 +538,6 @@ export async function chooseDispatchRoute(state: PrepareDispatchOperationReadySt
         buildCaptionedFinalTextFallback(normalizedPayload),
       );
     }
-    const deliveryCapture = captureReplyDispatchDeliveryOutcome(normalizedPayload);
     const { queued: queuedFinal, outcome: dispatcherOutcome } = turnLedger.sendQueued(
       "final",
       normalizedPayload,
@@ -560,9 +559,7 @@ export async function chooseDispatchRoute(state: PrepareDispatchOperationReadySt
       pendingBlock,
       queuedFinal,
       routedFinalCount: 0,
-      ...(queuedFinal && dispatcherOutcome
-        ? { dispatcherOutcome, getDeliveredPayload: deliveryCapture.getDeliveredPayload }
-        : {}),
+      ...(queuedFinal && dispatcherOutcome ? { dispatcherOutcome } : {}),
     };
   };
 
@@ -644,7 +641,20 @@ export async function chooseDispatchRoute(state: PrepareDispatchOperationReadySt
       }
       const counts = dispatcher.getQueuedCounts();
       counts.final += routedFinalCount;
-      recordProcessed("completed", { reason: "before_dispatch_handled" });
+      let handledResponseText: string | undefined;
+      if (text && resolveDiagnosticModelContentCapturePolicy(cfg).outputMessages) {
+        // Settled-facts-only capture: the same bounded, abort-aware settle the
+        // fallback gate uses; diagnostics-off turns never wait here.
+        const settle = await turnLedger.settleQueued(getPreDispatchAbortSignal());
+        if (settle === "settled") {
+          const parts = collectLedgerDeliveredResponseTexts(turnLedger);
+          handledResponseText = parts.length > 0 ? parts.join("\n") : undefined;
+        }
+      }
+      recordProcessed("completed", {
+        reason: "before_dispatch_handled",
+        ...(handledResponseText !== undefined ? { finalResponse: handledResponseText } : {}),
+      });
       markIdle("message_completed");
       commitInboundDedupeIfClaimed();
       completeDispatchReplyOperation();

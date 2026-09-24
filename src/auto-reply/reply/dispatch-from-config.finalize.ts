@@ -2,6 +2,7 @@ import { hasOutboundReplyContent } from "openclaw/plugin-sdk/reply-payload";
 import { resolveReplyCompletion } from "../../agents/reply-completion.js";
 import { recordAgentRunTerminalOutcome } from "../../channels/turn/agent-run-terminal-outcome.js";
 import { logVerbose } from "../../globals.js";
+import { resolveDiagnosticModelContentCapturePolicy } from "../../infra/diagnostic-llm-content.js";
 import { formatErrorMessage } from "../../infra/errors.js";
 import { settlePendingFinalDelivery } from "../../infra/outbound/delivery-completion.js";
 import { cleanDeferredFinalText } from "../../tts/captioned-final.js";
@@ -26,6 +27,7 @@ import {
   clearPendingFinalDeliveryAfterSuccess,
   suppressPendingFinalDelivery,
 } from "./dispatch-from-config.pending-final.js";
+import { collectLedgerDeliveredResponseTexts } from "./dispatch-from-config.turn-ledger.js";
 
 type ExecuteDispatchReadyState = Extract<
   Awaited<ReturnType<typeof executeDispatch>>,
@@ -92,16 +94,6 @@ export async function finalizeDispatchAndAudit(state: ExecuteDispatchReadyState)
   const sentFinalPayloadDedupeKeys = new Set<string>();
   let deferredTtsTextPending = state.progressState.accumulatedBlockTtsText;
   const replyTextParts: string[] = [];
-  const collectDeliveredFinalText = (payload: ReplyPayload | undefined) => {
-    if (
-      payload?.isReasoning !== true &&
-      payload?.isCommentary !== true &&
-      typeof payload?.text === "string" &&
-      payload.text.trim()
-    ) {
-      replyTextParts.push(payload.text);
-    }
-  };
   let continuationSettlementAttempted = false;
   let continuationSettlementRegistered = false;
   const settleContinuation = async (statusDelivered: boolean) => {
@@ -417,6 +409,8 @@ export async function finalizeDispatchAndAudit(state: ExecuteDispatchReadyState)
     !channelTransformSuppressed &&
     !replyAcceptedByActiveRun;
   let queuedSettleResult: Awaited<ReturnType<typeof turnLedger.settleQueued>> = "settled";
+  let deliverySettleState: "not-run" | Awaited<ReturnType<typeof turnLedger.settleQueued>> =
+    "not-run";
   if (noVisibleReplyFallbackAllowed()) {
     // Only a turn that still looks empty pays for settlement: pending admissions
     // must resolve (beforeDeliver cancellation, pre-transport failure) before the
@@ -424,6 +418,7 @@ export async function finalizeDispatchAndAudit(state: ExecuteDispatchReadyState)
     // fallback skip the wait, so deliveries that legitimately outlive the turn
     // (queued same-session mirroring) cannot deadlock the gate on themselves.
     queuedSettleResult = await turnLedger.settleQueued(getDispatchAbortSignal());
+    deliverySettleState = queuedSettleResult;
   }
   if (queuedSettleResult === "settled") {
     // Adapter-owned presentation may capture a final after sending hooks. Keep that
@@ -487,6 +482,7 @@ export async function finalizeDispatchAndAudit(state: ExecuteDispatchReadyState)
           // finalization; on abort/timeout (and for untracked dispatchers)
           // admission stays the strongest fact so channels cannot double-send.
           const fallbackSettle = await turnLedger.settleQueued(getDispatchAbortSignal());
+          deliverySettleState = fallbackSettle;
           throwIfDispatchOperationAborted();
           if (fallbackSettle !== "settled" || turnLedger.mayHaveDelivered()) {
             queuedFinal = true;
@@ -506,23 +502,15 @@ export async function finalizeDispatchAndAudit(state: ExecuteDispatchReadyState)
       );
     }
   }
-  if (
-    noVisibleReplyFallbackDelivered &&
-    replyTextParts.length === 0 &&
-    diagnosticResponse === undefined
-  ) {
-    collectDeliveredFinalText({
-      text: queueCapRejected
-        ? QUEUE_CAP_REJECTION_TEXT
-        : buildNoVisibleReplyFallbackText(state.getAgentRunId()),
-    });
-  }
-  for (const delivery of finalDeliveries) {
-    const { dispatcherOutcome, getDeliveredPayload } = delivery;
-    if (dispatcherOutcome && getDeliveredPayload) {
-      if ((await dispatcherOutcome) === "delivered") {
-        collectDeliveredFinalText(getDeliveredPayload());
-      }
+  // Response capture consumes only delivery facts the turn ledger has confirmed.
+  // The bounded settle is opt-in (content capture enabled) and reuses the
+  // fallback gate's abort-aware wait; diagnostics-off turns never wait here.
+  if (resolveDiagnosticModelContentCapturePolicy(cfg).outputMessages) {
+    if (deliverySettleState === "not-run") {
+      deliverySettleState = await turnLedger.settleQueued(getDispatchAbortSignal());
+    }
+    if (deliverySettleState === "settled") {
+      replyTextParts.push(...collectLedgerDeliveredResponseTexts(turnLedger));
     }
   }
   counts.final += routedFinalCount;

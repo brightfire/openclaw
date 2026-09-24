@@ -213,7 +213,30 @@ describe("dispatchReplyFromConfig pre-run directive rejection", () => {
     });
 
     expect(diagnosticMocks.logMessageProcessed).toHaveBeenCalledWith(
-      expect.objectContaining({ finalResponse: "diagnostic response" }),
+      expect.objectContaining({
+        finalResponse:
+          reply === undefined
+            ? // The empty-turn simulation also delivers the no-visible-reply
+              // fallback, which settled-facts capture now records; the
+              // producer-captured content still leads the joined response.
+              expect.stringContaining("diagnostic response")
+            : "diagnostic response",
+      }),
+    );
+  });
+
+  it("records the delivered fallback notice as the response for an empty turn", async () => {
+    await dispatchReplyFromConfig({
+      ctx: buildTestCtx({ Body: "hello", SessionKey: SESSION_KEY }),
+      cfg,
+      dispatcher: createDispatcher(),
+      replyResolver: async () => undefined,
+    });
+
+    expect(diagnosticMocks.logMessageProcessed).toHaveBeenCalledWith(
+      expect.objectContaining({
+        finalResponse: expect.stringContaining("couldn't produce or deliver a reply"),
+      }),
     );
   });
 
