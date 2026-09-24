@@ -476,24 +476,14 @@ export async function runAgentHarnessLifecycleFinalization(
       });
     }
     // The finalization operation produces the turn's final assistant answer;
-    // capture it like the ordinary completion path does, from visible text
-    // blocks only (thinking and tool calls are not the answer).
+    // capture it like the ordinary completion path does, from the canonical
+    // visible-answer projection so commentary-phase text is excluded.
     const finalizationContentPolicy =
       resolveDiagnosticModelContentCapturePolicy(getRuntimeConfig());
+    const finalizationVisibleText = resolveFinalAssistantVisibleText(result.result.assistant);
     const finalizationResponseText =
-      finalizationContentPolicy.outputMessages &&
-      typeof result.result.assistant?.content === "object"
-        ? joinDiagnosticContent(
-            result.result.assistant.content
-              .filter(
-                (block): block is { type: "text"; text: string } =>
-                  typeof block === "object" &&
-                  block !== null &&
-                  (block as { type?: unknown }).type === "text" &&
-                  typeof (block as { text?: unknown }).text === "string",
-              )
-              .map((block) => block.text),
-          )
+      finalizationContentPolicy.outputMessages && finalizationVisibleText
+        ? joinDiagnosticContent([finalizationVisibleText])
         : undefined;
     const finalizationHarnessContent = finalizationResponseText
       ? { finalResponse: finalizationResponseText }

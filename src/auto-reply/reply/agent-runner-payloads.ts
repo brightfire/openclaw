@@ -179,7 +179,12 @@ export async function buildReplyPayloads(params: {
   accountId?: string;
   extractMarkdownImages?: boolean;
   normalizeMediaPaths?: (payload: ReplyPayload) => Promise<ReplyPayload>;
-}): Promise<{ replyPayloads: ReplyPayload[]; didLogHeartbeatStrip: boolean }> {
+}): Promise<{
+  replyPayloads: ReplyPayload[];
+  didLogHeartbeatStrip: boolean;
+  /** Normalized, nonsilent answer texts before delivery deduplication. */
+  normalizedVisibleTexts: string[];
+}> {
   let didLogHeartbeatStrip = params.didLogHeartbeatStrip;
   const sanitizedPayloads: ReplyPayload[] = [];
   if (params.isHeartbeat) {
@@ -468,5 +473,17 @@ export async function buildReplyPayloads(params: {
   return {
     replyPayloads: filteredPayloads.filter(isRenderablePayload),
     didLogHeartbeatStrip,
+    // Normalized, nonsilent answer texts before delivery deduplication drops
+    // payloads that streaming or side-effect delivery already sent; diagnostic
+    // capture needs them even when every final payload was delivered that way.
+    normalizedVisibleTexts: threadedPayloads
+      .filter(
+        (payload) =>
+          payload.isReasoning !== true &&
+          payload.isCommentary !== true &&
+          typeof payload.text === "string" &&
+          payload.text.trim() !== "",
+      )
+      .map((payload) => payload.text as string),
   };
 }

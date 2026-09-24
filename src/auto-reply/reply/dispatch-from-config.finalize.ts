@@ -161,17 +161,6 @@ export async function finalizeDispatchAndAudit(state: ExecuteDispatchReadyState)
         continue;
       }
       sentFinalPayloadDedupeKeys.add(finalPayloadDedupeKey);
-      // The capture fallback must mirror the reply-layer capture filter: reasoning
-      // and commentary lanes are not the final answer, so they must never leak
-      // into message.processed output.value via this path.
-      if (
-        typeof reply.text === "string" &&
-        reply.text.trim() &&
-        reply.isReasoning !== true &&
-        reply.isCommentary !== true
-      ) {
-        replyTextParts.push(reply.text);
-      }
       const shouldAttachDeferredText = deferFinalTtsText && isReplyPayloadTerminalContent(reply);
       const finalReply = await state.sendFinalPayload(reply, {
         deliveryId: String(replyIndex),
@@ -203,6 +192,19 @@ export async function finalizeDispatchAndAudit(state: ExecuteDispatchReadyState)
       }
       finalDeliveries.push(finalReply);
       acceptedFinal = true;
+      // The capture fallback mirrors the reply-layer capture filter and runs only
+      // after delivery checks: reasoning/commentary lanes are not the final answer,
+      // and a payload suppressed by a channel transform or a revoked session
+      // writer never reached the user, so its text must not become output.value.
+      // A suppressed send that still delivered via block streaming is captured.
+      if (
+        typeof reply.text === "string" &&
+        reply.text.trim() &&
+        reply.isReasoning !== true &&
+        reply.isCommentary !== true
+      ) {
+        replyTextParts.push(reply.text);
+      }
       if (shouldAttachDeferredText) {
         deferredTtsTextPending = "";
       }

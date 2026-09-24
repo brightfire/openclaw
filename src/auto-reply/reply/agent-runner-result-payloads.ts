@@ -54,7 +54,10 @@ import {
 import type { accountAgentTurn } from "./agent-runner-result-accounting.js";
 import type { FinalizeReplyAgentRunInput } from "./agent-runner-result.types.js";
 import { resolveResponseUsageLine } from "./agent-runner-usage-line.js";
-import { captureDiagnosticResponse } from "./diagnostic-response-capture.js";
+import {
+  captureDiagnosticResponse,
+  captureDiagnosticResponseTexts,
+} from "./diagnostic-response-capture.js";
 import type { PendingContinuationSettlement } from "./get-reply.types.js";
 import { attachMcpAppChannelAction, attachMcpConnectChannelAction } from "./mcp-channel-actions.js";
 import { normalizeReplyPayload } from "./normalize-reply.js";
@@ -529,6 +532,15 @@ export async function prepareReplyAgentPayloads(state: {
   const hasDeliveredBlockStream = Boolean(blockReplyPipeline?.didStream());
   const canDeliverStandaloneFallbackNotice =
     hasDeliveredBlockStream || successfulSideEffectDelivery;
+  const allFinalsDelivered = replyPayloads.length === 0 && canDeliverStandaloneFallbackNotice;
+  if (opts?.onDiagnosticResponse && allFinalsDelivered) {
+    // Streaming or side-effect delivery can consume every final payload; the
+    // normalized answer still reached the user, so capture it before returning.
+    const streamedResponse = captureDiagnosticResponseTexts(payloadResult.normalizedVisibleTexts);
+    if (streamedResponse !== undefined) {
+      opts.onDiagnosticResponse(streamedResponse);
+    }
+  }
   if (
     replyPayloads.length === 0 ||
     (!hasVisibleReplyPayload && !canDeliverStandaloneFallbackNotice)

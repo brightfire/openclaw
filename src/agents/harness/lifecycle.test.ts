@@ -434,6 +434,49 @@ describe("AgentHarness lifecycle runner", () => {
     expect(completed?.privateData.harnessContent).toMatchObject({ finalResponse: "done" });
   });
 
+  it("excludes commentary-phase text from the captured finalization answer", async () => {
+    setRuntimeConfigSnapshot({ diagnostics: { otel: { enabled: true, captureContent: true } } });
+    const params = createFinalizationParams();
+    const harness: AgentHarness = {
+      id: "codex",
+      label: "Codex",
+      pluginId: "codex-plugin",
+      supports: () => ({ supported: true }),
+      runAttempt: async () => createAttemptResult(),
+    };
+    const diagnostics = captureDiagnosticEvents();
+    try {
+      await runAgentHarnessLifecycleFinalization(harness, params, async () => ({
+        assistant: {
+          ...createFinalAssistant(),
+          content: [
+            {
+              type: "text",
+              text: "Checking intermediate details.",
+              textSignature: JSON.stringify({ v: 1, phase: "commentary" }),
+            },
+            {
+              type: "text",
+              text: "Task complete.",
+              textSignature: JSON.stringify({ v: 1, phase: "final_answer" }),
+            },
+          ],
+        },
+      }));
+      await flushDiagnosticEvents();
+    } finally {
+      diagnostics.unsubscribe();
+      clearRuntimeConfigSnapshot();
+    }
+
+    const completed = diagnostics.events.find(
+      ({ event }) => event.type === "harness.run.completed",
+    );
+    expect(completed?.privateData.harnessContent).toMatchObject({
+      finalResponse: "Task complete.",
+    });
+  });
+
   it("records a normally completed empty finalization without emitting an error", async () => {
     const params = createFinalizationParams();
     const harness: AgentHarness = {
