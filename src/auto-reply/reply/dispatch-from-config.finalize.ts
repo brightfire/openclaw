@@ -92,6 +92,16 @@ export async function finalizeDispatchAndAudit(state: ExecuteDispatchReadyState)
   const sentFinalPayloadDedupeKeys = new Set<string>();
   let deferredTtsTextPending = state.progressState.accumulatedBlockTtsText;
   const replyTextParts: string[] = [];
+  const collectDeliveredFinalText = (payload: ReplyPayload | undefined) => {
+    if (
+      payload?.isReasoning !== true &&
+      payload?.isCommentary !== true &&
+      typeof payload?.text === "string" &&
+      payload.text.trim()
+    ) {
+      replyTextParts.push(payload.text);
+    }
+  };
   let continuationSettlementAttempted = false;
   let continuationSettlementRegistered = false;
   const settleContinuation = async (statusDelivered: boolean) => {
@@ -192,27 +202,6 @@ export async function finalizeDispatchAndAudit(state: ExecuteDispatchReadyState)
       }
       finalDeliveries.push(finalReply);
       acceptedFinal = true;
-      // The capture fallback mirrors the reply-layer capture filter and runs only
-      // after delivery checks: reasoning/commentary lanes are not the final answer,
-      // and a payload suppressed by a channel transform or a revoked session
-      // writer never reached the user, so its text must not become output.value.
-      // Explicit failed delivery outcomes are excluded too; a suppressed send
-      // that still delivered via block streaming is captured.
-      const finalDeliveryFailed =
-        (finalReply.blockDeliveryOutcome !== undefined &&
-          finalReply.blockDeliveryOutcome !== "delivered") ||
-        (finalReply.routedOutcome !== undefined &&
-          finalReply.routedOutcome !== "delivered" &&
-          finalReply.routedOutcome !== "delivered-not-visible");
-      if (
-        !finalDeliveryFailed &&
-        typeof reply.text === "string" &&
-        reply.text.trim() &&
-        reply.isReasoning !== true &&
-        reply.isCommentary !== true
-      ) {
-        replyTextParts.push(reply.text);
-      }
       if (shouldAttachDeferredText) {
         deferredTtsTextPending = "";
       }
@@ -515,6 +504,25 @@ export async function finalizeDispatchAndAudit(state: ExecuteDispatchReadyState)
       logVerbose(
         `dispatch-from-config: no-visible-reply fallback failed: ${formatErrorMessage(err)}`,
       );
+    }
+  }
+  if (
+    noVisibleReplyFallbackDelivered &&
+    replyTextParts.length === 0 &&
+    diagnosticResponse === undefined
+  ) {
+    collectDeliveredFinalText({
+      text: queueCapRejected
+        ? QUEUE_CAP_REJECTION_TEXT
+        : buildNoVisibleReplyFallbackText(state.getAgentRunId()),
+    });
+  }
+  for (const delivery of finalDeliveries) {
+    const { dispatcherOutcome, getDeliveredPayload } = delivery;
+    if (dispatcherOutcome && getDeliveredPayload) {
+      if ((await dispatcherOutcome) === "delivered") {
+        collectDeliveredFinalText(getDeliveredPayload());
+      }
     }
   }
   counts.final += routedFinalCount;

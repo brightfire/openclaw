@@ -55,6 +55,7 @@ import {
 } from "./reply-dispatch-outcome.js";
 import {
   attachReplyDispatchUndeliveredFallback,
+  captureReplyDispatchDeliveryOutcome,
   prepareReplyPayloadForDispatcher,
   type ReplyDispatchDeliveryOutcome,
 } from "./reply-dispatcher.js";
@@ -278,6 +279,7 @@ export async function chooseDispatchRoute(state: PrepareDispatchOperationReadySt
     suppressionReason?: NormalizeReplySkipReason;
     sessionWriterDeliveryRevoked?: true;
     dispatcherOutcome?: Promise<ReplyDispatchDeliveryOutcome>;
+    getDeliveredPayload?: () => ReplyPayload | undefined;
     routedOutcome?: ReplyDispatchDeliveryOutcome;
   }> => {
     const abortSignal =
@@ -536,6 +538,7 @@ export async function chooseDispatchRoute(state: PrepareDispatchOperationReadySt
         buildCaptionedFinalTextFallback(normalizedPayload),
       );
     }
+    const deliveryCapture = captureReplyDispatchDeliveryOutcome(normalizedPayload);
     const { queued: queuedFinal, outcome: dispatcherOutcome } = turnLedger.sendQueued(
       "final",
       normalizedPayload,
@@ -557,7 +560,9 @@ export async function chooseDispatchRoute(state: PrepareDispatchOperationReadySt
       pendingBlock,
       queuedFinal,
       routedFinalCount: 0,
-      ...(queuedFinal && dispatcherOutcome ? { dispatcherOutcome } : {}),
+      ...(queuedFinal && dispatcherOutcome
+        ? { dispatcherOutcome, getDeliveredPayload: deliveryCapture.getDeliveredPayload }
+        : {}),
     };
   };
 

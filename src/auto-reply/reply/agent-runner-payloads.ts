@@ -333,8 +333,12 @@ export async function buildReplyPayloads(params: {
       );
     }
   }
-  const retryBlockedDirectPayloads = (params.directBlockDeliveries ?? [])
+  const directBlockDeliveries = params.directBlockDeliveries ?? [];
+  const retryBlockedDirectPayloads = directBlockDeliveries
     .filter((delivery) => delivery.pending || !shouldRetryReplyDispatch(delivery.outcome))
+    .map((delivery) => delivery.payload);
+  const deliveredDirectPayloads = directBlockDeliveries
+    .filter((delivery) => delivery.outcome === "delivered" && !delivery.pending)
     .map((delivery) => delivery.payload);
   for (const payload of dedupedPayloads) {
     const assistantMessageIndex = getReplyPayloadMetadata(payload)?.assistantMessageIndex;
@@ -424,6 +428,7 @@ export async function buildReplyPayloads(params: {
         ? params.blockReplyPipeline?.hasSentExactPayload?.(payload)
         : params.blockReplyPipeline?.hasSentPayload(payload) || isDirectTextRetryBlocked(payload);
       if (wasSent) {
+        collectStreamDeliveredText(payload);
         return null;
       }
       return payload;
@@ -447,32 +452,53 @@ export async function buildReplyPayloads(params: {
     if (!textShouldBeOmitted) {
       return payload;
     }
+    collectStreamDeliveredText(textOnlyPayload);
     return copyReplyPayloadMetadata(payload, {
       ...payload,
       text: undefined,
       audioAsVoice: payload.audioAsVoice || undefined,
     });
   };
-  const collectStreamDeliveredText = (payload: ReplyPayload): void => {
+  const isPipelineDeliveredText = (payload: ReplyPayload): boolean => {
     const pipeline = params.blockReplyPipeline;
     const textOnlyPayload = copyReplyPayloadMetadata(payload, {
       ...payload,
       mediaUrl: undefined,
       mediaUrls: undefined,
     });
-    if (
-      !pipeline?.hasSentPayload(payload) &&
-      !pipeline?.hasSentExactPayload?.(payload) &&
-      !pipeline?.hasSentPayload(textOnlyPayload) &&
-      !isDirectTextRetryBlocked(payload)
-    ) {
+    return Boolean(
+      pipeline?.hasSentPayload(payload) ||
+      pipeline?.hasSentExactPayload?.(payload) ||
+      pipeline?.hasSentPayload(textOnlyPayload),
+    );
+  };
+  const hasDeliveredDirectText = (payload: ReplyPayload): boolean => {
+    const text = resolveSendableOutboundReplyParts(payload).trimmedText;
+    if (!text) {
+      return false;
+    }
+    const assistantMessageIndex = getReplyPayloadMetadata(payload)?.assistantMessageIndex;
+    const fragments = deliveredDirectPayloads
+      .filter(
+        (delivery) =>
+          isReplyPayloadTerminalContent(delivery) &&
+          (assistantMessageIndex === undefined ||
+            getReplyPayloadMetadata(delivery)?.assistantMessageIndex === assistantMessageIndex),
+      )
+      .map((delivery) => delivery.text ?? resolveSendableOutboundReplyParts(delivery).trimmedText);
+    return fragments.join("").trim() === text.trim();
+  };
+  const collectStreamDeliveredText = (payload: ReplyPayload): void => {
+    if (!isPipelineDeliveredText(payload) && !hasDeliveredDirectText(payload)) {
       return;
     }
     collectDeliveredTerminalText(payload);
   };
   const contentSuppressedPayloads = shouldDropFinalPayloads
     ? dedupedPayloads.flatMap((payload) => {
-        collectStreamDeliveredText(payload);
+        if (!isPipelineDeliveredText(payload)) {
+          collectStreamDeliveredText(payload);
+        }
         return preserveUnsentMediaAfterBlockSend(payload) ?? [];
       })
     : params.blockStreamingEnabled
