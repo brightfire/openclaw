@@ -196,8 +196,16 @@ export async function finalizeDispatchAndAudit(state: ExecuteDispatchReadyState)
       // after delivery checks: reasoning/commentary lanes are not the final answer,
       // and a payload suppressed by a channel transform or a revoked session
       // writer never reached the user, so its text must not become output.value.
-      // A suppressed send that still delivered via block streaming is captured.
+      // Explicit failed delivery outcomes are excluded too; a suppressed send
+      // that still delivered via block streaming is captured.
+      const finalDeliveryFailed =
+        (finalReply.blockDeliveryOutcome !== undefined &&
+          finalReply.blockDeliveryOutcome !== "delivered") ||
+        (finalReply.routedOutcome !== undefined &&
+          finalReply.routedOutcome !== "delivered" &&
+          finalReply.routedOutcome !== "delivered-not-visible");
       if (
+        !finalDeliveryFailed &&
         typeof reply.text === "string" &&
         reply.text.trim() &&
         reply.isReasoning !== true &&
@@ -547,11 +555,13 @@ export async function finalizeDispatchAndAudit(state: ExecuteDispatchReadyState)
   );
   state.recordProcessed(dispatchOutcome, {
     reason: dispatchReason,
-    ...(diagnosticResponse !== undefined
-      ? { finalResponse: diagnosticResponse }
-      : replyTextParts.length > 0
-        ? { finalResponse: replyTextParts.join("\n") }
-        : {}),
+    ...(diagnosticResponse !== undefined && replyTextParts.length > 0
+      ? { finalResponse: [diagnosticResponse, replyTextParts.join("\n")].join("\n") }
+      : diagnosticResponse !== undefined
+        ? { finalResponse: diagnosticResponse }
+        : replyTextParts.length > 0
+          ? { finalResponse: replyTextParts.join("\n") }
+          : {}),
   });
   state.markIdle(
     dispatchOutcome === "error"

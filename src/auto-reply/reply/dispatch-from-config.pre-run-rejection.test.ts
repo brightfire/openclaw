@@ -200,15 +200,36 @@ describe("dispatchReplyFromConfig pre-run directive rejection", () => {
       cfg,
       dispatcher: createDispatcher(),
       replyResolver: async (_ctx, opts) => {
-        (opts as InternalGetReplyOptions | undefined)?.onDiagnosticResponse?.(
-          "diagnostic response",
-        );
+        // Under the capture contract, the producer publishes only
+        // delivery-confirmed (streamed) content; a non-streamed final is
+        // captured by finalization after its delivery is confirmed.
+        if (reply === undefined) {
+          (opts as InternalGetReplyOptions | undefined)?.onDiagnosticResponse?.(
+            "diagnostic response",
+          );
+        }
         return reply;
       },
     });
 
     expect(diagnosticMocks.logMessageProcessed).toHaveBeenCalledWith(
       expect.objectContaining({ finalResponse: "diagnostic response" }),
+    );
+  });
+
+  it("joins producer-captured streamed content with a delivered final reply", async () => {
+    await dispatchReplyFromConfig({
+      ctx: buildTestCtx({ Body: "hello", SessionKey: SESSION_KEY }),
+      cfg,
+      dispatcher: createDispatcher(),
+      replyResolver: async (_ctx, opts) => {
+        (opts as InternalGetReplyOptions | undefined)?.onDiagnosticResponse?.("streamed part");
+        return { text: "final part" };
+      },
+    });
+
+    expect(diagnosticMocks.logMessageProcessed).toHaveBeenCalledWith(
+      expect.objectContaining({ finalResponse: "streamed part\nfinal part" }),
     );
   });
 
