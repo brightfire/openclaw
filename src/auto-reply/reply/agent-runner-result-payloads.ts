@@ -451,12 +451,6 @@ export async function prepareReplyAgentPayloads(state: {
       (payload.isReasoning !== true || opts?.reasoningPayloadsEnabled === true) &&
       (payload.isCommentary !== true || opts?.commentaryPayloadsEnabled === true),
   );
-  if (opts?.onDiagnosticResponse) {
-    const diagnosticResponse = captureDiagnosticResponse(payloadCandidates);
-    if (diagnosticResponse !== undefined) {
-      opts.onDiagnosticResponse(diagnosticResponse);
-    }
-  }
   const payloadResult = await buildFinalPayloads(payloadCandidates);
   if (sourceReplyDelivery !== "delivered" && completion.outcome === "delivered") {
     await opts?.onObservedReplyDelivery?.();
@@ -642,6 +636,13 @@ export async function prepareReplyAgentPayloads(state: {
     }
   }
   await signalTypingIfNeeded(guardedReplyPayloads, typingSignals);
+
+  if (opts?.onDiagnosticResponse) {
+    const diagnosticResponse = captureDiagnosticResponse(guardedReplyPayloads);
+    if (diagnosticResponse !== undefined) {
+      opts.onDiagnosticResponse(diagnosticResponse);
+    }
+  }
 
   const diagnosticUsage = runResult.meta?.agentMeta?.diagnosticUsage ?? usage;
   if (isDiagnosticsEnabled(cfg) && hasBillableUsage(diagnosticUsage)) {

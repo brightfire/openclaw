@@ -46,6 +46,7 @@ export type ClaudeCliRunDiagnosticLifecycle = {
    * the exact prompt and after the run produces its visible reply payloads.
    */
   publishCapturedContent: (content: { userPrompt?: string; finalResponse?: string }) => void;
+  publishResultContent: (result: EmbeddedAgentRunResult) => void;
 };
 
 type ClaudeCliRunDiagnosticParams = Pick<
@@ -174,6 +175,12 @@ export async function runClaudeCliAgentTurnWithDiagnostics(
       }
       unsubscribeCommentary?.();
       unsubscribeCommentary = subscribeAgentCommentaryDiagnostics(config, harnessBase);
+    },
+    publishResultContent: (result) => {
+      if (!contentCapturePolicy.outputMessages) {
+        return;
+      }
+      lifecycle.publishCapturedContent({ finalResponse: cliFinalResponseText(result.payloads) });
     },
     publishCapturedContent: (content) => {
       // Content is stored, gated, and bounded once at publication; completed

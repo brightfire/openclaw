@@ -4,6 +4,7 @@ import type * as SubagentRegistry from "../../agents/subagents/registry/subagent
 import type { ProgressContinuationReceipt } from "../../channels/progress-continuation.js";
 import type * as ProgressRequester from "../../tasks/task-progress-requester.js";
 import { getReplyPayloadMetadata } from "../reply-payload.js";
+import { SILENT_REPLY_TOKEN } from "../tokens.js";
 import type { ReplyPayload } from "../types.js";
 import { markAgentRunFailureReplyPayload } from "./agent-runner-failure-reply.js";
 import { accountAgentTurn } from "./agent-runner-result-accounting.js";
@@ -154,6 +155,19 @@ beforeEach(() => {
       },
     };
   });
+});
+
+it("does not capture a suppressed final reply", async () => {
+  const context = createContext();
+  const onDiagnosticResponse = vi.fn();
+  context.opts = { onDiagnosticResponse };
+  context.followupRun.run.terminalReplyExpectation = "optional";
+  context.execution.result.acceptedSessionSpawns = undefined;
+  context.execution.result.meta = { durationMs: 0 };
+  context.execution.result.payloads = [{ text: SILENT_REPLY_TOKEN }];
+
+  expect(await prepare("ordinary", context)).toEqual([]);
+  expect(onDiagnosticResponse).not.toHaveBeenCalled();
 });
 
 describe.each(["ordinary", "queued"] as const)("%s waiting status delivery", (lane) => {

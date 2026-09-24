@@ -67,7 +67,6 @@ import {
 import { createCliFailoverError } from "./cli-runner/exit-error.js";
 import { cliBackendLog, formatCliBackendOutputDigest } from "./cli-runner/log.js";
 import {
-  cliFinalResponseText,
   runClaudeCliAgentTurnWithDiagnostics,
   type ClaudeCliRunDiagnosticLifecycle,
 } from "./cli-runner/run-diagnostics.js";
@@ -273,10 +272,7 @@ async function runCliAgentInternal(
       diagnosticLifecycle,
       run: async () => await runPreparedCliAgent(context, diagnosticLifecycle),
     });
-    // Publish the run's visible assistant text for captureContent-gated span content.
-    diagnosticLifecycle?.publishCapturedContent({
-      finalResponse: cliFinalResponseText(result.payloads),
-    });
+    diagnosticLifecycle?.publishResultContent(result);
     modelExecution?.assertCurrent();
     return result;
   } finally {
