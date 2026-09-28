@@ -581,7 +581,7 @@ export async function runPreparedEmbeddedLoop(
         reportedModelRef,
         finalAssistantVisibleText,
         finalAssistantRawText,
-        finalAssistantRawTextIsFallback,
+        finalAssistantMessageRawText,
         payloadsWithToolMedia,
         replyDeliveryState,
         recoveredFinalAssistantPayloadsAfterPromptTimeout,
@@ -661,9 +661,9 @@ export async function runPreparedEmbeddedLoop(
       // resolution builds the rest of the completed result.
       const { result } = terminalResolution;
       return providerReview.finish(
-        finalAssistantRawTextIsFallback
-          ? { ...result, meta: { ...result.meta, finalAssistantRawTextIsFallback: true } }
-          : result,
+        finalAssistantMessageRawText === undefined
+          ? result
+          : { ...result, meta: { ...result.meta, finalAssistantMessageRawText } },
       );
     }
   } finally {
