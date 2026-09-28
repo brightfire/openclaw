@@ -197,8 +197,14 @@ async function runCliAgentInternal(
       throw error;
     }
     // Preparation resolves the execution owner and effective capture config;
-    // publish both before commentary can arrive from the prepared run.
+    // publish both before commentary can arrive from the prepared run, and
+    // publish the prepared turn prompt for captureContent-gated span content.
+    // The exact final prompt is preparation's product; the admission-time params
+    // may not include merged inline images or finalized tool guidance.
     diagnosticLifecycle?.setExecutionContext(context.params);
+    diagnosticLifecycle?.publishCapturedContent({
+      userPrompt: context.params.prompt,
+    });
     const result = await settlePreparedCliRun({
       context,
       diagnosticLifecycle,
@@ -635,6 +641,8 @@ async function runPreparedCliAgentOwned(
   let runFailed = false;
   try {
     runResult = await executeRun();
+    // Publish the generated response before backend and session cleanup can throw.
+    diagnosticLifecycle?.publishResultContent(runResult);
   } catch (error) {
     runFailed = true;
     runError = error;
