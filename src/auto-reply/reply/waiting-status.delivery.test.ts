@@ -183,7 +183,7 @@ it("captures a message-tool sentinel before the empty-payload return", async () 
   expect(onRawLlmResponse).toHaveBeenCalledWith("NO_REPLY");
 });
 
-it("captures a confirmed external message-tool reply for a tool-only turn", async () => {
+it("never captures message-tool text when the model wrote no final message", async () => {
   const context = createContext();
   const onRawLlmResponse = vi.fn();
   context.opts = { onRawLlmResponse };
@@ -196,7 +196,7 @@ it("captures a confirmed external message-tool reply for a tool-only turn", asyn
   ];
 
   await prepare("ordinary", context);
-  expect(onRawLlmResponse).toHaveBeenCalledWith("sent to slack");
+  expect(onRawLlmResponse).not.toHaveBeenCalled();
 });
 
 it("does not capture hook-block rejection text as a model response", async () => {
