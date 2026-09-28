@@ -260,6 +260,7 @@ describe("createCliJsonlStreamingParser", () => {
         result("DONE"),
       ],
       expectedText: "Before.\n\nDONE",
+      expectedRawFinalText: "DONE",
     },
     {
       name: "toolless closer after tool-using message",
@@ -274,6 +275,7 @@ describe("createCliJsonlStreamingParser", () => {
         result("DONE"),
       ],
       expectedText: "Before.\n\nAfter.\n\nDONE",
+      expectedRawFinalText: "DONE",
     },
     {
       name: "existing newlines at message boundaries",
@@ -286,6 +288,7 @@ describe("createCliJsonlStreamingParser", () => {
         result("DONE"),
       ],
       expectedText: "Before.\n\nDONE",
+      expectedRawFinalText: "DONE",
     },
     {
       name: "tool split after an ordinary boundary",
@@ -300,6 +303,7 @@ describe("createCliJsonlStreamingParser", () => {
         result("DONE"),
       ],
       expectedText: "Before.\n\nDONE",
+      expectedRawFinalText: "DONE",
     },
     {
       name: "fresh message starting with a tool call",
@@ -340,25 +344,45 @@ describe("createCliJsonlStreamingParser", () => {
       frames: [claudeTextDelta("draft wording"), result("authoritative result")],
       expectedText: "authoritative result",
     },
-  ])("resolves streamed/result precedence for $name", ({ frames, expectedText, checkDelta }) => {
-    const deltas: Parameters<ParserOptions["onAssistantDelta"]>[0][] = [];
-    const sessionIds: string[] = [];
-    const parser = createParser({
-      onAssistantDelta: (delta) => deltas.push(delta),
-      onSessionId: (id) => sessionIds.push(id),
-    });
-    finishFrames(parser, init("session-stream"), ...frames);
-    expect(parser.getOutput()).toEqual({
-      text: expectedText,
-      sessionId: "session-stream",
-      usage: undefined,
-    });
-    if (checkDelta) {
-      expect(deltas).toEqual([
-        { text: "hello", delta: "hello", sessionId: "session-stream", usage: undefined },
-      ]);
-      expect(sessionIds).toEqual(["session-stream"]);
-    }
+  ])(
+    "resolves streamed/result precedence for $name",
+    ({ frames, expectedText, expectedRawFinalText, checkDelta }) => {
+      const deltas: Parameters<ParserOptions["onAssistantDelta"]>[0][] = [];
+      const sessionIds: string[] = [];
+      const parser = createParser({
+        onAssistantDelta: (delta) => deltas.push(delta),
+        onSessionId: (id) => sessionIds.push(id),
+      });
+      finishFrames(parser, init("session-stream"), ...frames);
+      expect(parser.getOutput()).toEqual({
+        text: expectedText,
+        ...(expectedRawFinalText === undefined ? {} : { rawFinalText: expectedRawFinalText }),
+        sessionId: "session-stream",
+        usage: undefined,
+      });
+      if (checkDelta) {
+        expect(deltas).toEqual([
+          { text: "hello", delta: "hello", sessionId: "session-stream", usage: undefined },
+        ]);
+        expect(sessionIds).toEqual(["session-stream"]);
+      }
+    },
+  );
+
+  it("records an empty final message after pre-tool narration", () => {
+    const parser = createParser();
+    finishFrames(
+      parser,
+      init("session-empty-final"),
+      messageStart,
+      claudeTextDelta("Checking now."),
+      toolStart(),
+      messageStop,
+      messageStart,
+      messageStop,
+      result(""),
+    );
+    expect(parser.getOutput()?.rawFinalText).toBe("");
   });
 
   it("keeps pre-tool text and reconstructible deltas without a commentary consumer", () => {
@@ -377,6 +401,7 @@ describe("createCliJsonlStreamingParser", () => {
     );
     expect(parser.getOutput()).toEqual({
       text: "Before.\n\nDONE",
+      rawFinalText: "DONE",
       sessionId: "session-tool-split",
       usage: undefined,
     });
