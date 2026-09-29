@@ -66,6 +66,9 @@ export function createCliJsonlStreamingParser(params: CliJsonlStreamingParserOpt
   // Streamed text from this offset on is still a candidate to outrank the
   // result envelope; every non-tool boundary or interim result restarts it.
   let preserveFrom = 0;
+  // Commentary-buffered text skips emitClaudeVisibleText's boundary handling;
+  // this diagnostics-only offset marks where its current message starts.
+  let flushedMessageStart = 0;
   let sawToolUseSinceText = false;
   let currentMessageHadToolUse = false;
   let previousMessageHadToolUse = false;
@@ -107,6 +110,11 @@ export function createCliJsonlStreamingParser(params: CliJsonlStreamingParserOpt
     }
     const delta = pendingClaudeText;
     pendingClaudeText = "";
+    if (pendingMessageSeparator || sawToolUseSinceText) {
+      flushedMessageStart = assistantText.length;
+    }
+    pendingMessageSeparator = false;
+    sawToolUseSinceText = false;
     appendAssistantText(delta);
   };
 
@@ -190,7 +198,7 @@ export function createCliJsonlStreamingParser(params: CliJsonlStreamingParserOpt
     finalItemText?.trim() ??
     (pendingMessageSeparator || sawToolUseSinceText
       ? ""
-      : assistantText.slice(currentMessageStart).trim());
+      : assistantText.slice(Math.max(currentMessageStart, flushedMessageStart)).trim());
 
   const handleCustomJsonlEvent = (event: CliBackendParsedJsonlEvent) => {
     const previousOutput = output;
@@ -366,6 +374,8 @@ export function createCliJsonlStreamingParser(params: CliJsonlStreamingParserOpt
       (parsed.type === "tool_use" || parsed.type === "tool_result" || parsed.type === "result")
     ) {
       sawGeminiStructuredOutput = true;
+      // A Gemini tool call ends the message before it, like a tool_use block.
+      sawToolUseSinceText ||= parsed.type === "tool_use";
     }
     if (geminiErrorText) {
       output = {
@@ -589,6 +599,10 @@ export function createCliJsonlStreamingParser(params: CliJsonlStreamingParserOpt
       ) {
         const deltaText = parsed.content;
         if (deltaText) {
+          if (sawToolUseSinceText) {
+            currentMessageStart = assistantText.length;
+            sawToolUseSinceText = false;
+          }
           appendAssistantText(deltaText);
         }
       } else if (
@@ -596,11 +610,10 @@ export function createCliJsonlStreamingParser(params: CliJsonlStreamingParserOpt
         parsed.type === "result" &&
         parsed.status === "success"
       ) {
-        output = {
-          text: assistantText.trim(),
-          sessionId,
-          usage,
-        };
+        output = withCliRawFinalText(
+          { text: assistantText.trim(), sessionId, usage },
+          finalStreamedMessageText(),
+        );
       }
     }
   };
