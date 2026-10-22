@@ -177,9 +177,7 @@ export function assignGenAiModelCallAttrs(
 ): void {
   assignGenAiSpanIdentityAttrs(attrs, evt);
   if (evt.responseModel) {
-    // Request identity keeps the requested id; model.call spans also name the model
-    // that actually served routed calls (presets, openrouter/auto). Same redaction
-    // as gen_ai.request.model, and never a metric label (unbounded cardinality).
+    // Span-only, with the same redaction as gen_ai.request.model; never a metric label.
     attrs["gen_ai.response.model"] = redactSensitiveText(evt.responseModel.trim());
   }
   attrs["openclaw.model_call.observation_unit"] = evt.observationUnit ?? "request";

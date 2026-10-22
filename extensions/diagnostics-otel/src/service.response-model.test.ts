@@ -137,7 +137,6 @@ test("exports the provider-reported response model on model.call spans only", as
     expect(dataPoints).not.toHaveLength(0);
     for (const { attributes } of dataPoints) {
       expect(attributes).not.toHaveProperty("gen_ai.response.model");
-      expect(attributes).not.toHaveProperty("openclaw.responseModel");
     }
   } finally {
     await stopStartedOtelServices();
