@@ -590,9 +590,7 @@ type DiagnosticExecApprovalFollowupSuppressedEvent = DiagnosticBaseEvent & {
 
 type DiagnosticRunBaseEvent = DiagnosticBaseEvent & DiagnosticRunScopeFields;
 
-type DiagnosticRunStartedEvent = DiagnosticRunBaseEvent & {
-  type: "run.started";
-};
+type DiagnosticRunStartedEvent = DiagnosticRunBaseEvent & { type: "run.started" };
 
 type DiagnosticRunCompletedEvent = DiagnosticRunBaseEvent & {
   type: "run.completed";
@@ -667,6 +665,8 @@ type DiagnosticModelCallEndedEvent = DiagnosticModelCallBaseEvent & {
   responseStreamBytes?: number;
   timeToFirstByteMs?: number;
   usage?: DiagnosticModelCallUsage;
+  /** Provider-reported model from the terminal message; `model` stays the requested id, never synthesized. */
+  responseModel?: string;
 };
 
 type DiagnosticModelCallCompletedEvent = DiagnosticModelCallEndedEvent & {

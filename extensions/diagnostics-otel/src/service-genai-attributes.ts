@@ -169,11 +169,19 @@ export function assignGenAiModelCallAttrs(
   evt: {
     api?: string;
     model?: string;
+    /** Provider-reported model from the terminal message; absent on started events. */
+    responseModel?: string;
     observationUnit?: "request" | "turn";
     provider?: string;
   },
 ): void {
   assignGenAiSpanIdentityAttrs(attrs, evt);
+  if (evt.responseModel) {
+    // Request identity keeps the requested id; model.call spans also name the model
+    // that actually served routed calls (presets, openrouter/auto). Same redaction
+    // as gen_ai.request.model, and never a metric label (unbounded cardinality).
+    attrs["gen_ai.response.model"] = redactSensitiveText(evt.responseModel.trim());
+  }
   attrs["openclaw.model_call.observation_unit"] = evt.observationUnit ?? "request";
 }
 

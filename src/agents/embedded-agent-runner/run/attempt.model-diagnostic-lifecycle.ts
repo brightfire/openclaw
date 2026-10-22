@@ -448,6 +448,7 @@ export function createModelLifecycle(params: {
         ...providerTimingFields,
         ...sizeTimingFields,
         ...observer.usageField(),
+        ...observer.responseModelField(),
       },
       ownerGeneration,
       modelContentPrivateData(observer.completedContent()),
